@@ -1,0 +1,761 @@
+import * as L from "leaflet";
+import "leaflet-draw";
+import type { Feature, FeatureCollection } from "geojson";
+import type { DrawControlsConfig, MapConfig } from "@src/types/public";
+import { createLogger, type Logger } from "@src/utils/logger";
+import { FeatureStore } from "@src/lib/FeatureStore";
+import { expandMultiGeometries } from "@src/utils/geojson";
+
+export interface MapControllerCallbacks {
+  onReady?: (detail: { bounds?: [[number, number], [number, number]] }) => void;
+  onCreated?: (detail: {
+    id: string;
+    layerType: "polygon" | "polyline" | "rectangle" | "circle" | "marker";
+    geoJSON: Feature;
+  }) => void;
+  onEdited?: (detail: { ids: string[]; geoJSON: FeatureCollection }) => void;
+  onDeleted?: (detail: { ids: string[]; geoJSON: FeatureCollection }) => void;
+  onError?: (detail: { message: string; cause?: unknown }) => void;
+}
+
+export interface MapControllerOptions {
+  container: HTMLElement;
+  map: MapConfig;
+  controls: DrawControlsConfig;
+  readOnly?: boolean;
+  logger?: Logger;
+  callbacks?: MapControllerCallbacks;
+}
+
+/**
+ * MapController: initializes Leaflet map + Draw, bridges events, and manages data via FeatureStore.
+ */
+export class MapController {
+  private container: HTMLElement;
+  private logger: Logger;
+  private options: MapControllerOptions;
+
+  // Data store (id-centric)
+  private store: FeatureStore;
+
+  // Leaflet entities
+  private map: L.Map | null = null;
+  private drawnItems: L.FeatureGroup | null = null;
+  // Keep 'any' here to avoid type friction across different @types/leaflet-draw versions
+  private drawControl: any | null = null;
+
+  // Detacher for our polygon close-on-first-vertex patch
+  private detachPolygonFinishPatch: (() => void) | null = null;
+
+  // Context menu for vertex deletion
+  private vertexMenuEl: HTMLDivElement | null = null;
+  private vertexMenuCleanup: (() => void) | null = null;
+
+  constructor(opts: MapControllerOptions) {
+    this.options = opts;
+    this.container = opts.container;
+    this.logger = (opts.logger ?? createLogger("controller", "debug")).child(
+      "map",
+    );
+    this.store = new FeatureStore(this.logger.child("store"));
+    this.logger.debug("ctor", {
+      config: opts.map,
+      controls: opts.controls,
+      readOnly: opts.readOnly,
+    });
+  }
+
+  // ---------------- Lifecycle ----------------
+
+  async init(): Promise<void> {
+    const t0 = performance.now?.() ?? Date.now();
+    try {
+      // Remove any previous instance
+      await this.destroy();
+
+      // Create the map
+      const {
+        latitude,
+        longitude,
+        zoom,
+        minZoom,
+        maxZoom,
+        tileUrl,
+        tileAttribution,
+      } = this.options.map;
+      const center: [number, number] = [latitude, longitude];
+      this.map = L.map(this.container, {
+        zoomControl: true,
+      }).setView(center, zoom);
+
+      // Add tile layer
+      L.tileLayer(tileUrl, {
+        attribution: tileAttribution,
+        minZoom,
+        maxZoom,
+      }).addTo(this.map);
+
+      // FeatureGroup for all drawn layers
+      this.drawnItems = L.featureGroup().addTo(this.map);
+
+      // Draw control
+      const drawOptions = this.buildDrawOptions(
+        this.options.controls,
+        !!this.options.readOnly,
+      );
+      const DrawCtor = (L.Control as any).Draw; // tolerate type friction
+      this.drawControl = new DrawCtor(drawOptions);
+      this.map.addControl(this.drawControl);
+
+      // Patch known Leaflet.draw bugs (e.g., readableArea strict-mode variable)
+      this.patchLeafletDrawBugs();
+
+      // Patch: reliably allow closing polygons by clicking the first vertex (Shadow DOM safe)
+      this.installPolygonFinishPatch();
+
+      // Ensure Leaflet measures the container after layout
+      this.map.invalidateSize();
+      setTimeout(() => {
+        try {
+          this.map?.invalidateSize();
+        } catch {}
+      }, 0);
+
+      // Bind draw events
+      this.bindDrawEvents();
+
+      const elapsed = (performance.now?.() ?? Date.now()) - t0;
+      this.logger.debug("init:ready", { elapsedMs: Math.round(elapsed) });
+
+      // Announce ready with current bounds (if any)
+      const b = this.store.bounds();
+      this.options.callbacks?.onReady?.(b ? { bounds: b } : {});
+    } catch (err) {
+      this._error("Failed to initialize Leaflet map", err);
+    }
+  }
+
+  async destroy(): Promise<void> {
+    try {
+      if (this.map) {
+        this.map.off();
+        this.map.remove();
+      }
+    } catch (err) {
+      // ignore removal errors
+    }
+
+    // Detach polygon finish patch (if installed)
+    try {
+      this.detachPolygonFinishPatch?.();
+    } catch {}
+    this.detachPolygonFinishPatch = null;
+
+    // Cleanup vertex menu if present
+    try {
+      this.vertexMenuCleanup?.();
+    } catch {}
+    this.vertexMenuEl = null;
+    this.vertexMenuCleanup = null;
+
+    this.drawControl = null;
+    this.drawnItems = null;
+    this.map = null;
+  }
+
+  // ---------------- Public API (data) ----------------
+
+  async getGeoJSON(): Promise<FeatureCollection> {
+    return this.store.toFeatureCollection();
+  }
+
+  async loadGeoJSON(
+    fc: FeatureCollection,
+    fitToData: boolean = false,
+  ): Promise<void> {
+    if (!this.map || !this.drawnItems) return;
+    // Clear existing
+    await this.clearLayers();
+
+    // Add new features into store + map layers
+    const normalized = expandMultiGeometries(fc);
+    const ids = this.store.add(normalized);
+    const layers = L.geoJSON(normalized);
+    let i = 0;
+    layers.eachLayer((layer: any) => {
+      (layer as any)._fid = ids[i] ?? ids[ids.length - 1];
+      this.drawnItems!.addLayer(layer);
+      this.installVertexContextMenu(layer);
+      i++;
+    });
+
+    this.logger.debug("loadGeoJSON", {
+      count: normalized.features.length,
+      ids,
+    });
+
+    if (fitToData) {
+      await this.fitBoundsToData();
+    }
+  }
+
+  async clearLayers(): Promise<void> {
+    if (this.drawnItems) {
+      this.drawnItems.clearLayers();
+    }
+    this.store.clear();
+  }
+
+  async addFeatures(fc: FeatureCollection): Promise<string[]> {
+    if (!this.map || !this.drawnItems) return [];
+    const normalized = expandMultiGeometries(fc);
+    const ids = this.store.add(normalized);
+    const layers = L.geoJSON(normalized);
+    let i = 0;
+    layers.eachLayer((layer: any) => {
+      (layer as any)._fid = ids[i] ?? ids[ids.length - 1];
+      this.drawnItems!.addLayer(layer);
+      this.installVertexContextMenu(layer);
+      i++;
+    });
+    return ids;
+  }
+
+  async updateFeature(id: string, feature: Feature): Promise<void> {
+    this.store.update(id, feature);
+    // Replace layer visually if present: naive approach is to re-add a new layer, but for now we only update store;
+    // a later pass will sync layer geometries precisely.
+  }
+
+  async removeFeature(id: string): Promise<void> {
+    // Remove matching layer(s)
+    if (this.drawnItems) {
+      this.drawnItems.eachLayer((layer: any) => {
+        if ((layer as any)._fid === id) {
+          this.drawnItems!.removeLayer(layer);
+        }
+      });
+    }
+    this.store.remove(id);
+  }
+
+  // ---------------- Public API (map) ----------------
+
+  async fitBoundsToData(paddingRatio: number = 0.05): Promise<void> {
+    if (!this.map) return;
+    const b = this.store.bounds();
+    if (!b) return;
+    const boundsLiteral = b as unknown as L.LatLngBoundsLiteral;
+    const bounds = L.latLngBounds(boundsLiteral);
+    // Compute padded bounds by interpolating
+    if (paddingRatio > 0) {
+      const sw = bounds.getSouthWest();
+      const ne = bounds.getNorthEast();
+      const latPad = (ne.lat - sw.lat) * paddingRatio;
+      const lngPad = (ne.lng - sw.lng) * paddingRatio;
+      const padded = L.latLngBounds(
+        L.latLng(sw.lat - latPad, sw.lng - lngPad),
+        L.latLng(ne.lat + latPad, ne.lng + lngPad),
+      );
+      this.map.fitBounds(padded);
+    } else {
+      this.map.fitBounds(bounds);
+    }
+  }
+
+  async fitBounds(
+    boundsTuple: [[number, number], [number, number]],
+    paddingRatio: number = 0.05,
+  ): Promise<void> {
+    if (!this.map) return;
+    const bounds = (L as any).latLngBounds(boundsTuple as any);
+    if (paddingRatio > 0) {
+      const sw = bounds.getSouthWest();
+      const ne = bounds.getNorthEast();
+      const latPad = (ne.lat - sw.lat) * paddingRatio;
+      const lngPad = (ne.lng - sw.lng) * paddingRatio;
+      const padded = (L as any).latLngBounds(
+        (L as any).latLng(sw.lat - latPad, sw.lng - lngPad),
+        (L as any).latLng(ne.lat + latPad, ne.lng + lngPad),
+      );
+      this.map.fitBounds(padded);
+    } else {
+      this.map.fitBounds(bounds);
+    }
+  }
+
+  async setView(lat: number, lng: number, zoom?: number): Promise<void> {
+    if (!this.map) return;
+    this.map.setView([lat, lng], zoom ?? this.map.getZoom());
+  }
+
+  // ---------------- Internals ----------------
+
+  private buildDrawOptions(
+    controls: DrawControlsConfig,
+    readOnly: boolean,
+  ): L.Control.DrawOptions {
+    // Define explicit options for each tool to ensure consistent behavior.
+    const draw: Record<string, any> = {
+      polygon: controls.polygon
+        ? {
+            allowIntersection:
+              this.options.map.polygonAllowIntersection ?? false, // Disallow self-intersections by default
+            showArea: true, // Display area tooltip while drawing
+            shapeOptions: {
+              color: "#3388ff", // Default shape color
+            },
+          }
+        : false,
+      polyline: controls.polyline
+        ? {
+            shapeOptions: {
+              color: "#3388ff",
+            },
+          }
+        : false,
+      rectangle: controls.rectangle
+        ? {
+            shapeOptions: {
+              color: "#3388ff",
+            },
+          }
+        : false,
+      circle: controls.circle
+        ? {
+            shapeOptions: {
+              color: "#3388ff",
+            },
+          }
+        : false,
+      marker: controls.marker ? {} : false,
+    };
+
+    // Edit toolbar
+    let edit: any = {
+      featureGroup: this.drawnItems as any,
+    };
+    if (!controls.edit) {
+      edit = false;
+    } else {
+      if (controls.delete === false) {
+        edit.remove = false;
+      }
+    }
+
+    if (readOnly) {
+      // Disable all drawing/editing/removing
+      return {
+        draw: false,
+        edit: false,
+      } as any;
+    }
+
+    return { draw, edit } as any;
+  }
+
+  /**
+   * Workaround: In some environments (notably within Shadow DOM), clicking the first vertex
+   * to close a polygon can be unreliable due to event retargeting/hit testing.
+   * This patch listens for map clicks while the polygon draw handler is enabled and,
+   * if the click is within a small pixel radius of the first vertex, it triggers finishShape().
+   */
+  private installPolygonFinishPatch(): void {
+    if (!this.map || !this.drawControl) return;
+
+    // Remove any existing patch first
+    try {
+      this.detachPolygonFinishPatch?.();
+    } catch {}
+    this.detachPolygonFinishPatch = null;
+
+    const map: any = this.map as any;
+    const drawTb: any = (this.drawControl as any)?._toolbars?.draw;
+    if (!drawTb) return;
+
+    // Guard if polygon mode isn't available
+    const hasPolygon = !!drawTb._modes?.polygon?.handler;
+    if (!hasPolygon) return;
+
+    const CLICK_HIT_PX = 10; // be conservative to avoid accidental closes
+
+    const onClick = (e: any) => {
+      try {
+        const handler: any = drawTb._modes?.polygon?.handler;
+        if (!handler || !handler._enabled) return;
+
+        const markers: any[] = handler._markers;
+        // Only activate after 4+ vertices to avoid premature closures on early points
+        if (!Array.isArray(markers) || markers.length < 4) return;
+
+        const firstLL = markers[0]?.getLatLng?.();
+        if (!firstLL) return;
+
+        const pFirst = map.latLngToContainerPoint(firstLL);
+        const pClick = map.latLngToContainerPoint(e.latlng);
+        const dist = Math.hypot(pFirst.x - pClick.x, pFirst.y - pClick.y);
+
+        if (
+          dist <= CLICK_HIT_PX &&
+          typeof handler._finishShape === "function"
+        ) {
+          // Prevent Draw from adding an extra vertex; finish the polygon instead
+          e.originalEvent?.preventDefault?.();
+          e.originalEvent?.stopPropagation?.();
+          handler._finishShape();
+        }
+      } catch (err) {
+        this._error("polygon-finish-patch", err);
+      }
+    };
+
+    map.on("click", onClick);
+    this.detachPolygonFinishPatch = () => {
+      try {
+        map.off("click", onClick);
+      } catch {}
+    };
+  }
+
+  private patchLeafletDrawBugs(): void {
+    try {
+      const anyL: any = L as any;
+      const GU = anyL.GeometryUtil;
+      if (!GU) return;
+      // Replace readableArea with a strict-mode safe implementation
+      const defaults = {
+        km: 2,
+        ha: 2,
+        m: 0,
+        mi: 2,
+        ac: 2,
+        yd: 0,
+        ft: 0,
+        nm: 2,
+      };
+      const fmt =
+        GU.formattedNumber?.bind(GU) ??
+        ((num: number, p: number) => Number(num).toFixed(p));
+      GU.readableArea = (
+        area: number,
+        metric?: boolean | string | string[],
+        precision?: any,
+      ): string => {
+        const opts = anyL.Util?.extend
+          ? anyL.Util.extend({}, defaults, precision || {})
+          : { ...defaults, ...(precision || {}) };
+        let out: string;
+        if (metric) {
+          let units: string[] = ["ha", "m"];
+          const t = typeof metric;
+          if (t === "string") units = [metric as string];
+          else if (t !== "boolean")
+            units = Array.isArray(metric) ? (metric as string[]) : units;
+          if (area >= 1e6 && units.indexOf("km") !== -1)
+            out = `${fmt(1e-6 * area, opts.km)} km²`;
+          else if (area >= 1e4 && units.indexOf("ha") !== -1)
+            out = `${fmt(1e-4 * area, opts.ha)} ha`;
+          else out = `${fmt(area, opts.m)} m²`;
+        } else {
+          area = area / 0.836127; // square yards
+          if (area >= 3097600) out = `${fmt(area / 3097600, opts.mi)} mi²`;
+          else if (area >= 4840) out = `${fmt(area / 4840, opts.ac)} acres`;
+          else out = `${fmt(area, opts.yd)} yd²`;
+        }
+        return out;
+      };
+    } catch (err) {
+      this.logger.warn("leaflet-draw-patch:readableArea", err as any);
+    }
+  }
+
+  private bindDrawEvents(): void {
+    if (!this.map || !this.drawnItems) return;
+
+    // CREATED: single layer with layerType
+    this.map.on((L as any).Draw.Event.CREATED, (e: any) => {
+      try {
+        const { layer, layerType } = e;
+        this.drawnItems!.addLayer(layer);
+        const feat = layer.toGeoJSON() as Feature;
+        const ids = this.store.add({
+          type: "FeatureCollection",
+          features: [feat],
+        });
+        const id = ids[0];
+        (layer as any)._fid = id;
+        this.installVertexContextMenu(layer);
+
+        this.options.callbacks?.onCreated?.({ id, layerType, geoJSON: feat });
+      } catch (err) {
+        this._error("onCreated handler failed", err);
+      }
+    });
+
+    // EDITED: multiple layers in a LayerGroup
+    this.map.on((L as any).Draw.Event.EDITED, (e: any) => {
+      try {
+        const ids: string[] = [];
+        const layers: any = e.layers;
+        layers.eachLayer((layer: any) => {
+          const feat = layer.toGeoJSON() as Feature;
+          const id = (layer as any)._fid as string | undefined;
+          if (id) {
+            this.store.update(id, feat);
+            ids.push(id);
+          } else {
+            // unknown layer, add it
+            const newId = this.store.add({
+              type: "FeatureCollection",
+              features: [feat],
+            })[0];
+            (layer as any)._fid = newId;
+            ids.push(newId);
+          }
+        });
+
+        this.options.callbacks?.onEdited?.({
+          ids,
+          geoJSON: this.store.toFeatureCollection(),
+        });
+      } catch (err) {
+        this._error("onEdited handler failed", err);
+      }
+    });
+
+    // DELETED: multiple layers in a LayerGroup
+    this.map.on((L as any).Draw.Event.DELETED, (e: any) => {
+      try {
+        const ids: string[] = [];
+        const layers: any = e.layers;
+        layers.eachLayer((layer: any) => {
+          const id = (layer as any)._fid as string | undefined;
+          if (id) {
+            ids.push(id);
+            this.store.remove(id);
+          }
+        });
+
+        this.options.callbacks?.onDeleted?.({
+          ids,
+          geoJSON: this.store.toFeatureCollection(),
+        });
+      } catch (err) {
+        this._error("onDeleted handler failed", err);
+      }
+    });
+  }
+
+  private _error(message: string, cause: unknown): void {
+    this.logger.error("error", { message, cause });
+    this.options.callbacks?.onError?.({ message, cause });
+  }
+
+  // -------- Vertex deletion context menu --------
+
+  private installVertexContextMenu(layer: any): void {
+    if (!layer || typeof layer.on !== "function") return;
+    const handleContext = (evt: any) => {
+      try {
+        evt?.originalEvent?.preventDefault?.();
+        evt?.originalEvent?.stopPropagation?.();
+      } catch {}
+      this.openVertexMenu(layer, evt);
+    };
+    const handleClick = (evt: any) => {
+      const oe = evt?.originalEvent;
+      if (oe && (oe.ctrlKey || oe.metaKey)) {
+        this.openVertexMenu(layer, evt);
+      }
+    };
+    try {
+      layer.on("contextmenu", handleContext);
+      layer.on("click", handleClick);
+    } catch {}
+  }
+
+  private openVertexMenu(layer: any, evt: any): void {
+    try {
+      if (!this.map) return;
+      // Only for Polygon/Polyline-like layers
+      const isPoly =
+        typeof layer.getLatLngs === "function" &&
+        (layer instanceof (L as any).Polygon ||
+          layer instanceof (L as any).Polyline);
+      if (!isPoly) return;
+
+      // Only when editing is enabled on the layer (avoid accidental deletes)
+      const editing = (layer as any).editing;
+      if (
+        !editing ||
+        typeof editing.enabled !== "function" ||
+        !editing.enabled()
+      )
+        return;
+
+      const latlng = evt?.latlng;
+      const containerPt = this.map.latLngToContainerPoint(latlng);
+
+      const nearest = this.findNearestVertex(layer, latlng, 12); // 12px tolerance
+      if (!nearest) return;
+
+      this.showVertexMenu(containerPt, async () => {
+        await this.deleteVertex(layer, nearest.pathIndex, nearest.vertexIndex);
+      });
+    } catch (err) {
+      this._error("openVertexMenu", err);
+    }
+  }
+
+  private showVertexMenu(pt: any, onDelete: () => void): void {
+    try {
+      // Cleanup existing
+      try {
+        this.vertexMenuCleanup?.();
+      } catch {}
+      this.vertexMenuCleanup = null;
+      if (!this.container) return;
+
+      const menu = document.createElement("div");
+      menu.style.position = "absolute";
+      menu.style.top = `${pt.y}px`;
+      menu.style.left = `${pt.x}px`;
+      menu.style.transform = "translate(-50%, -100%)";
+      menu.style.background = "#fff";
+      menu.style.border = "1px solid rgba(0,0,0,0.15)";
+      menu.style.borderRadius = "6px";
+      menu.style.boxShadow = "0 4px 12px rgba(0,0,0,0.15)";
+      menu.style.padding = "6px";
+      menu.style.zIndex = "10000";
+      menu.style.fontSize = "12px";
+      menu.style.userSelect = "none";
+
+      const btn = document.createElement("button");
+      btn.textContent = "Delete vertex";
+      btn.style.padding = "6px 10px";
+      btn.style.border = "none";
+      btn.style.background = "#da1e28";
+      btn.style.color = "#fff";
+      btn.style.borderRadius = "4px";
+      btn.style.cursor = "pointer";
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        try {
+          onDelete();
+        } finally {
+          cleanup();
+        }
+      });
+      menu.appendChild(btn);
+
+      const cleanup = () => {
+        try {
+          window.removeEventListener("pointerdown", onDoc);
+          this.container.removeEventListener("scroll", cleanup, true);
+          menu.remove();
+        } catch {}
+        this.vertexMenuEl = null;
+        this.vertexMenuCleanup = null;
+      };
+
+      const onDoc = (e: any) => {
+        // Close if clicking elsewhere
+        if (!menu.contains(e.target)) cleanup();
+      };
+
+      window.addEventListener("pointerdown", onDoc, { capture: true });
+      this.container.addEventListener("scroll", cleanup, true);
+      this.container.appendChild(menu);
+      this.vertexMenuEl = menu;
+      this.vertexMenuCleanup = cleanup;
+    } catch (err) {
+      this._error("showVertexMenu", err);
+    }
+  }
+
+  private findNearestVertex(
+    layer: any,
+    latlng: L.LatLng,
+    tolerancePx: number,
+  ): { pathIndex: number; vertexIndex: number } | null {
+    if (!this.map) return null;
+    const llToPoint = (ll: L.LatLng) => this.map!.latLngToContainerPoint(ll);
+    const dist = (a: any, b: any) => Math.hypot(a.x - b.x, a.y - b.y);
+    const targetPt = llToPoint(latlng);
+
+    let bestD = Infinity;
+    let bestPath = -1;
+    let bestVertex = -1;
+    const latlngs: any = layer.getLatLngs();
+    // Normalize: Polyline -> LatLng[], Polygon -> LatLng[][] (rings)
+    const paths: L.LatLng[][] = Array.isArray(latlngs[0])
+      ? (latlngs as L.LatLng[][])
+      : [latlngs as L.LatLng[]];
+
+    paths.forEach((path, pathIndex) => {
+      path.forEach((v, vertexIndex) => {
+        const p = llToPoint(v);
+        const d = dist(p, targetPt);
+        if (d < bestD) {
+          bestD = d;
+          bestPath = pathIndex;
+          bestVertex = vertexIndex;
+        }
+      });
+    });
+
+    if (bestPath === -1 || bestD > tolerancePx) return null;
+    return { pathIndex: bestPath, vertexIndex: bestVertex };
+  }
+
+  private async deleteVertex(
+    layer: any,
+    pathIndex: number,
+    vertexIndex: number,
+  ): Promise<void> {
+    try {
+      // Only for polygon/polyline
+      const isPoly =
+        typeof layer.getLatLngs === "function" &&
+        (layer instanceof (L as any).Polygon ||
+          layer instanceof (L as any).Polyline);
+      if (!isPoly) return;
+
+      const latlngs: any = layer.getLatLngs();
+      const paths: L.LatLng[][] = Array.isArray(latlngs[0])
+        ? (latlngs as L.LatLng[][])
+        : [latlngs as L.LatLng[]];
+      const path = paths[pathIndex];
+      if (!path) return;
+
+      // Enforce minimal vertices: polygon needs >= 3, polyline >= 2
+      const isPolygon = layer instanceof (L as any).Polygon;
+      const minVerts = isPolygon ? 3 : 2;
+      if (path.length <= minVerts) return;
+
+      path.splice(vertexIndex, 1);
+      // Apply back
+      if (paths.length === 1) {
+        layer.setLatLngs(path);
+      } else {
+        const newPaths = paths.map((p, i) => (i === pathIndex ? path : p));
+        layer.setLatLngs(newPaths as any);
+      }
+      layer.redraw?.();
+
+      // Update store + emit edited callback
+      const fid = (layer as any)._fid as string | undefined;
+      if (fid) {
+        const feat = layer.toGeoJSON() as Feature;
+        this.store.update(fid, feat);
+        this.options.callbacks?.onEdited?.({
+          ids: [fid],
+          geoJSON: this.store.toFeatureCollection(),
+        });
+      }
+    } catch (err) {
+      this._error("deleteVertex", err);
+    }
+  }
+}

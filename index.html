@@ -1,0 +1,787 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>leaflet-draw-web-component — Dev</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        font-family:
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          Helvetica,
+          Arial,
+          Noto Sans,
+          "Apple Color Emoji",
+          "Segoe UI Emoji";
+        display: grid;
+        grid-template-rows: auto 1fr;
+      }
+      header {
+        padding: 10px 12px;
+        border-bottom: 1px solid #ddd;
+        background: #fafafa;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 12px;
+      }
+      .header-title {
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+      }
+      .geocoder {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .geocoder input {
+        padding: 6px 10px;
+        border: 1px solid #c6c6c6;
+        border-radius: 6px;
+        font-size: 14px;
+        min-width: 240px;
+      }
+      .geocode-status {
+        font-size: 12px;
+        color: #555;
+      }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+      .wrap {
+        padding: 12px;
+        height: 100%;
+        display: grid;
+        grid-template-columns: 1fr 360px;
+        gap: 12px;
+      }
+      leaflet-draw-map {
+        display: block;
+        height: 100%;
+        width: 100%;
+        border-radius: 8px;
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08) inset;
+      }
+      .panel {
+        border: 1px solid #e5e5e5;
+        border-radius: 8px;
+        padding: 10px;
+        background: #fff;
+        overflow: auto;
+      }
+      .panel pre {
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 12px;
+        line-height: 1.4;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+        flex-wrap: wrap;
+      }
+      .row code {
+        background: #f2f2f2;
+        padding: 2px 6px;
+        border-radius: 4px;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 10px;
+        background: #0f62fe;
+        color: #fff;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      .btn.secondary {
+        background: #e0e0e0;
+        color: #222;
+      }
+      /* Toasts */
+      .toast-container {
+        position: fixed;
+        top: 12px;
+        right: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        z-index: 9999;
+        pointer-events: none;
+      }
+      .toast {
+        pointer-events: auto;
+        min-width: 240px;
+        max-width: 420px;
+        padding: 10px 12px;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+        background: #fff;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        font-size: 13px;
+        color: #222;
+        opacity: 0;
+        transform: translateY(-4px);
+        transition:
+          opacity 0.18s ease,
+          transform 0.18s ease;
+      }
+      .toast.show {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      .toast.info {
+        border-left: 4px solid #0f62fe;
+      }
+      .toast.success {
+        border-left: 4px solid #24a148;
+      }
+      .toast.error {
+        border-left: 4px solid #da1e28;
+      }
+      .toast .toast-title {
+        font-weight: 600;
+        margin-bottom: 2px;
+      }
+      .toast .toast-message {
+        line-height: 1.35;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="header-title">
+        <strong>leaflet-draw-web-component</strong>
+        <span style="opacity: 0.6">dev harness</span>
+      </div>
+      <form id="geocodeForm" class="geocoder" autocomplete="off">
+        <label for="geocodeQuery" class="sr-only">Search address</label>
+        <input
+          type="search"
+          id="geocodeQuery"
+          name="geocodeQuery"
+          placeholder="Search address"
+          required
+        />
+        <button type="submit" class="btn">Search</button>
+      </form>
+      <label
+        style="
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 12px;
+          opacity: 0.85;
+        "
+      >
+        <input type="checkbox" id="replaceMode" />
+        Replace existing layers
+      </label>
+      <div
+        id="geocodeStatus"
+        class="geocode-status"
+        role="status"
+        aria-live="polite"
+      ></div>
+    </header>
+    <div class="wrap">
+      <leaflet-draw-map
+        id="map"
+        latitude="39.7392"
+        longitude="-104.9903"
+        zoom="11"
+        tile-url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        draw-polygon
+        draw-polyline
+        draw-rectangle
+        draw-circle
+        draw-marker
+        edit-features
+        delete-features
+        log-level="debug"
+      ></leaflet-draw-map>
+
+      <div class="panel">
+        <div class="row">
+          <button class="btn" id="btnGet">getGeoJSON()</button>
+          <button class="btn secondary" id="btnClear">clearLayers()</button>
+          <button class="btn secondary" id="btnLoad">loadGeoJSON(demo)</button>
+          <button
+            class="btn secondary"
+            id="btnUpload"
+            title="Upload GeoJSON (Ctrl/Cmd+O)"
+          >
+            Upload GeoJSON…
+          </button>
+          <input
+            type="file"
+            id="fileInput"
+            accept=".geojson,.json,application/geo+json,application/json"
+            style="display: none"
+          />
+          <button
+            class="btn"
+            id="btnExport"
+            title="Export GeoJSON (Ctrl/Cmd+S)"
+          >
+            Export GeoJSON
+          </button>
+        </div>
+        <div class="row">
+          <code>Events</code>
+          <span id="evtTag" style="opacity: 0.7">…</span>
+        </div>
+        <pre id="out">{}</pre>
+      </div>
+    </div>
+
+    <!-- For dev: import the component directly from source -->
+    <script type="module">
+      import "/src/index.ts";
+
+      const map = document.getElementById("map");
+      const geocodeForm = document.getElementById("geocodeForm");
+      const geocodeInput = document.getElementById("geocodeQuery");
+      const geocodeStatus = document.getElementById("geocodeStatus");
+      const replaceToggle = document.getElementById("replaceMode");
+      const geocodeButton = geocodeForm?.querySelector('button[type="submit"]');
+      let mapReady = false;
+
+      const waitForMapReady = () =>
+        mapReady
+          ? Promise.resolve()
+          : new Promise((resolve) => {
+              map.addEventListener("leaflet-draw:ready", resolve, {
+                once: true,
+              });
+            });
+
+      function setGeocodeStatus(message, isError = false) {
+        if (!geocodeStatus) return;
+        geocodeStatus.textContent = message;
+        geocodeStatus.style.color = isError ? "#b00020" : "#555";
+      }
+
+      function log(obj) {
+        const out = document.getElementById("out");
+        out.textContent = JSON.stringify(obj, null, 2);
+        console.log(obj);
+      }
+
+      // Toasts
+      function showToast(message, type = "info", opts = {}) {
+        const { title, timeout = 4000 } = opts;
+        let container = document.getElementById("toasts");
+        if (!container) {
+          container = document.createElement("div");
+          container.id = "toasts";
+          container.className = "toast-container";
+          container.setAttribute("role", "region");
+          container.setAttribute("aria-live", "polite");
+          document.body.appendChild(container);
+        }
+        const t = document.createElement("div");
+        t.className = `toast ${type}`;
+        t.setAttribute("role", type === "error" ? "alert" : "status");
+        t.innerHTML = `
+          ${title ? `<div class="toast-title">${title}</div>` : ""}
+          <div class="toast-message"></div>
+        `;
+        t.querySelector(".toast-message").textContent = message;
+        container.appendChild(t);
+        // Force paint then show
+        requestAnimationFrame(() => t.classList.add("show"));
+        const remove = () => {
+          t.classList.remove("show");
+          setTimeout(() => t.remove(), 200);
+        };
+        if (timeout > 0) {
+          setTimeout(remove, timeout);
+        }
+        // Close on click
+        t.addEventListener("click", remove);
+        return remove;
+      }
+
+      function toFeatureCollection(input) {
+        if (!input) return null;
+        if (input.type === "FeatureCollection") return input;
+        if (input.type === "Feature")
+          return { type: "FeatureCollection", features: [input] };
+        if (input.type && input.coordinates) {
+          return {
+            type: "FeatureCollection",
+            features: [{ type: "Feature", properties: {}, geometry: input }],
+          };
+        }
+        return null;
+      }
+
+      function isValidGeometry(geom) {
+        if (!geom || typeof geom !== "object") return false;
+        const allowed = new Set([
+          "Point",
+          "MultiPoint",
+          "LineString",
+          "MultiLineString",
+          "Polygon",
+          "MultiPolygon",
+          "GeometryCollection",
+        ]);
+        if (!allowed.has(geom.type)) return false;
+        if (geom.type === "GeometryCollection") {
+          return (
+            Array.isArray(geom.geometries) &&
+            geom.geometries.every((g) => isValidGeometry(g))
+          );
+        }
+        if (!Array.isArray(geom.coordinates)) return false;
+        if (geom.type === "Point") {
+          const [x, y] = geom.coordinates;
+          return Number.isFinite(x) && Number.isFinite(y);
+        }
+        // For non-point, basic structural check: ensure at least one finite number exists
+        const hasNumber = (arr) =>
+          Array.isArray(arr) &&
+          (arr.some((v) => Number.isFinite(v)) || arr.some(hasNumber));
+        return hasNumber(geom.coordinates);
+      }
+
+      function validateAndNormalizeGeoJSON(input) {
+        const fc = toFeatureCollection(input);
+        if (
+          !fc ||
+          fc.type !== "FeatureCollection" ||
+          !Array.isArray(fc.features)
+        ) {
+          throw new Error(
+            "Not a valid GeoJSON Feature/FeatureCollection/Geometry",
+          );
+        }
+        const filtered = [];
+        const errors = [];
+        for (const f of fc.features) {
+          if (!f || f.type !== "Feature") continue;
+          const geom = f.geometry;
+          if (!geom) continue; // skip null geometry
+          if (!isValidGeometry(geom)) {
+            errors.push(
+              `Unsupported or invalid geometry: ${geom?.type ?? "unknown"}`,
+            );
+            continue;
+          }
+          filtered.push(f);
+        }
+        if (filtered.length === 0) {
+          throw new Error(
+            "No valid features with supported geometry types found",
+          );
+        }
+        return {
+          fc: { type: "FeatureCollection", features: filtered },
+          errors,
+        };
+      }
+
+      // Flatten Multi* geometries into simple features (for editability)
+      function flattenMultiGeometries(fc) {
+        const out = [];
+        for (const f of fc.features || []) {
+          if (!f || f.type !== "Feature" || !f.geometry) continue;
+          const base = f.properties || {};
+          const g = f.geometry;
+          switch (g.type) {
+            case "MultiPolygon":
+              for (const poly of g.coordinates) {
+                out.push({
+                  type: "Feature",
+                  properties: { ...base },
+                  geometry: { type: "Polygon", coordinates: poly },
+                });
+              }
+              break;
+            case "MultiLineString":
+              for (const line of g.coordinates) {
+                out.push({
+                  type: "Feature",
+                  properties: { ...base },
+                  geometry: { type: "LineString", coordinates: line },
+                });
+              }
+              break;
+            case "MultiPoint":
+              for (const pt of g.coordinates) {
+                out.push({
+                  type: "Feature",
+                  properties: { ...base },
+                  geometry: { type: "Point", coordinates: pt },
+                });
+              }
+              break;
+            case "GeometryCollection":
+              for (const child of g.geometries || []) {
+                out.push({
+                  type: "Feature",
+                  properties: { ...base },
+                  geometry: child,
+                });
+              }
+              break;
+            default:
+              out.push(f);
+              break;
+          }
+        }
+        return { type: "FeatureCollection", features: out };
+      }
+
+      function tag(msg) {
+        document.getElementById("evtTag").textContent = msg;
+      }
+
+      // Wire events
+      map.addEventListener("leaflet-draw:ready", (e) => {
+        mapReady = true;
+        tag("ready");
+        log({ event: "ready", detail: e.detail });
+      });
+      map.addEventListener("leaflet-draw:created", (e) => {
+        tag("created");
+        log({ event: "created", detail: e.detail });
+      });
+      map.addEventListener("leaflet-draw:edited", (e) => {
+        tag("edited");
+        log({ event: "edited", detail: e.detail });
+      });
+      map.addEventListener("leaflet-draw:deleted", (e) => {
+        tag("deleted");
+        log({ event: "deleted", detail: e.detail });
+      });
+      map.addEventListener("leaflet-draw:error", (e) => {
+        tag("error");
+        log({ event: "error", detail: e.detail });
+      });
+
+      // Export event: download as .geojson with timestamp
+      map.addEventListener("leaflet-draw:export", (e) => {
+        const { geoJSON, featureCount } = e.detail || {};
+        try {
+          const text = JSON.stringify(geoJSON, null, 2);
+          const blob = new Blob([text], { type: "application/geo+json" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          const ts = new Date();
+          const pad = (n) => String(n).padStart(2, "0");
+          const stamp = `${ts.getFullYear()}${pad(ts.getMonth() + 1)}${pad(ts.getDate())}-${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}`;
+          a.href = url;
+          a.download = `leaflet-draw-export-${stamp}.geojson`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+          showToast(`Exported ${featureCount ?? 0} feature(s)`, "success");
+          log({ event: "export", featureCount, file: a.download });
+        } catch (err) {
+          console.error(err);
+          showToast("Export failed", "error");
+        }
+      });
+
+      if (geocodeForm && geocodeInput) {
+        geocodeForm.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          const query = geocodeInput.value.trim();
+          if (!query) {
+            setGeocodeStatus("Enter a search term");
+            return;
+          }
+
+          setGeocodeStatus("Searching…");
+          geocodeButton?.setAttribute("disabled", "disabled");
+
+          try {
+            await waitForMapReady();
+
+            const params = new URLSearchParams({
+              format: "jsonv2",
+              q: query,
+              addressdetails: "1",
+              limit: "1",
+              polygon_geojson: "1",
+            });
+
+            const response = await fetch(
+              `https://nominatim.openstreetmap.org/search?${params.toString()}`,
+              {
+                headers: {
+                  Accept: "application/json",
+                },
+              },
+            );
+
+            if (!response.ok) {
+              throw new Error(`Geocoder request failed: ${response.status}`);
+            }
+
+            const results = await response.json();
+
+            if (!Array.isArray(results) || results.length === 0) {
+              setGeocodeStatus("No results found");
+              showToast("No results found", "info");
+              log({ event: "geocode", query, result: null });
+              return;
+            }
+
+            const match = results[0];
+            const replace = !!(replaceToggle && replaceToggle.checked);
+
+            // Try to fit to returned bounding box if present
+            const bb =
+              Array.isArray(match.boundingbox) && match.boundingbox.length === 4
+                ? match.boundingbox.map(Number)
+                : null;
+
+            if (bb && bb.every(Number.isFinite)) {
+              const [south, north, west, east] = bb;
+              await map.fitBounds(
+                [
+                  [south, west],
+                  [north, east],
+                ],
+                0.05,
+              );
+            } else {
+              // Fallback to centering on lat/lon
+              const lat = Number(match.lat);
+              const lon = Number(match.lon);
+              if (Number.isFinite(lat) && Number.isFinite(lon)) {
+                await map.setView(lat, lon);
+              }
+            }
+
+            // If GeoJSON geometry is included, add it to the map via hooks
+            if (match.geojson && typeof match.geojson === "object") {
+              const featureCollection = {
+                type: "FeatureCollection",
+                features: [
+                  {
+                    type: "Feature",
+                    properties: {
+                      source: "nominatim",
+                      display_name: match.display_name,
+                      class: match.class,
+                      type: match.type,
+                    },
+                    geometry: match.geojson,
+                  },
+                ],
+              };
+              try {
+                if (replace) {
+                  await map.loadGeoJSON(featureCollection);
+                  await map.fitBoundsToData(0.05);
+                } else {
+                  await map.addFeatures(featureCollection);
+                }
+              } catch (err) {
+                console.warn(
+                  "Failed to add GeoJSON geometry from geocoder",
+                  err,
+                );
+              }
+            }
+
+            tag("geocode");
+            log({ event: "geocode", query, result: match });
+            setGeocodeStatus(match.display_name ?? "Moved to location");
+          } catch (error) {
+            console.error(error);
+            setGeocodeStatus("Search failed", true);
+            showToast("Search failed", "error");
+          } finally {
+            geocodeButton?.removeAttribute("disabled");
+          }
+        });
+      }
+
+      // Demo buttons
+      document.getElementById("btnGet").addEventListener("click", async () => {
+        const fc = await map.getGeoJSON();
+        log({ method: "getGeoJSON", featureCount: fc.features.length, fc });
+      });
+
+      document
+        .getElementById("btnClear")
+        .addEventListener("click", async () => {
+          await map.clearLayers();
+          log({ method: "clearLayers", ok: true });
+        });
+
+      document.getElementById("btnLoad").addEventListener("click", async () => {
+        const demo = {
+          type: "FeatureCollection",
+          features: [
+            {
+              type: "Feature",
+              properties: { name: "Demo Point" },
+              geometry: { type: "Point", coordinates: [-104.9903, 39.7392] },
+            },
+          ],
+        };
+        const replace = !!(replaceToggle && replaceToggle.checked);
+        if (replace) {
+          await map.loadGeoJSON(demo);
+          await map.fitBoundsToData(0.05);
+        } else {
+          await map.addFeatures(demo);
+        }
+        log({
+          method: "loadGeoJSON",
+          loaded: true,
+          featureCount: demo.features.length,
+        });
+      });
+
+      // Upload GeoJSON
+      const fileInput = document.getElementById("fileInput");
+      const btnUpload = document.getElementById("btnUpload");
+      if (btnUpload && fileInput) {
+        btnUpload.addEventListener("click", () => fileInput.click());
+        fileInput.addEventListener("change", async (e) => {
+          const file = e.target?.files?.[0];
+          if (!file) return;
+          try {
+            setGeocodeStatus(`Reading ${file.name}…`);
+            const text = await file.text();
+            let json;
+            try {
+              json = JSON.parse(text);
+            } catch {
+              setGeocodeStatus("Invalid JSON in file", true);
+              showToast("Invalid JSON in file", "error");
+              return;
+            }
+
+            let validated;
+            try {
+              validated = validateAndNormalizeGeoJSON(json);
+            } catch (e) {
+              const msg = e?.message || "Not a valid GeoJSON/FeatureCollection";
+              setGeocodeStatus(msg, true);
+              showToast(msg, "error");
+              return;
+            }
+            const { fc, errors } = validated;
+            if (errors.length) {
+              showToast(
+                `${errors.length} feature(s) skipped due to invalid geometry`,
+                "info",
+              );
+            }
+
+            await waitForMapReady();
+            const replace = !!(replaceToggle && replaceToggle.checked);
+            if (replace) {
+              await map.loadGeoJSON(fc);
+              await map.fitBoundsToData(0.05);
+            } else {
+              await map.addFeatures(fc);
+              await map.fitBoundsToData(0.05);
+            }
+            setGeocodeStatus(
+              `Loaded ${fc.features.length} feature(s) from ${file.name}`,
+            );
+            showToast(`Loaded ${fc.features.length} feature(s)`, "success");
+            log({
+              event: "upload",
+              file: file.name,
+              featureCount: fc.features.length,
+            });
+          } catch (err) {
+            console.error(err);
+            setGeocodeStatus("Upload failed", true);
+            showToast("Upload failed", "error");
+          } finally {
+            // reset input so selecting the same file again triggers change
+            fileInput.value = "";
+          }
+        });
+      }
+
+      // Ingest hook: flatten Multi* geometries to ensure editability
+      map.addEventListener("leaflet-draw:ingest", (e) => {
+        try {
+          const incoming = e.detail?.fc;
+          if (!incoming || incoming.type !== "FeatureCollection") return;
+          const flattened = flattenMultiGeometries(incoming);
+          e.detail.fc = flattened;
+        } catch (err) {
+          console.warn("ingest flatten failed", err);
+        }
+      });
+
+      // Export button
+      const btnExport = document.getElementById("btnExport");
+      if (btnExport) {
+        btnExport.addEventListener("click", async () => {
+          try {
+            await map.exportGeoJSON();
+          } catch (err) {
+            console.error(err);
+            showToast("Export failed", "error");
+          }
+        });
+      }
+
+      // Keyboard shortcuts: Ctrl/Cmd+S export, Ctrl/Cmd+O upload
+      window.addEventListener("keydown", async (e) => {
+        const mod = e.metaKey || e.ctrlKey;
+        if (!mod || e.shiftKey || e.altKey) return;
+        const k = (e.key || "").toLowerCase();
+        if (k === "s") {
+          e.preventDefault();
+          try {
+            await map.exportGeoJSON();
+          } catch (err) {
+            console.error(err);
+            showToast("Export failed", "error");
+          }
+        } else if (k === "o") {
+          e.preventDefault();
+          const fileInput = document.getElementById("fileInput");
+          if (fileInput && "click" in fileInput) {
+            fileInput.click();
+          }
+        }
+      });
+    </script>
+    <div
+      id="toasts"
+      class="toast-container"
+      role="region"
+      aria-live="polite"
+      aria-atomic="true"
+    ></div>
+  </body>
+</html>

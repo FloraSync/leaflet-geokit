@@ -1,0 +1,16 @@
+FROM node:24-alpine
+
+RUN apk add --no-cache git bash
+
+ENV CI=true \
+    FORCE_COLOR=1
+
+WORKDIR /app
+
+# This image expects the repository to be mounted at /app
+# Provide a simple CI entrypoint that runs typecheck, prettier check, lint, and unit tests.
+COPY scripts/ci-entry.sh /usr/local/bin/ci-entry.sh
+RUN chmod +x /usr/local/bin/ci-entry.sh
+
+ENTRYPOINT ["/usr/local/bin/ci-entry.sh"]
+

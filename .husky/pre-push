@@ -1,0 +1,6 @@
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+
+echo "[pre-push] Typecheck + unit tests..."
+npm run typecheck || exit 1
+npm run test:unit || exit 1

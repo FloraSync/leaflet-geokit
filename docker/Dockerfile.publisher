@@ -1,0 +1,14 @@
+FROM node:24-alpine
+
+# Core tooling: git, shell, jq, and GitHub CLI for device/web auth flows
+RUN apk add --no-cache git bash jq github-cli
+
+WORKDIR /app
+
+# Do not copy project files; mount the repo at runtime.
+COPY scripts/publisher-entry.sh /usr/local/bin/publisher-entry.sh
+RUN chmod +x /usr/local/bin/publisher-entry.sh
+
+ENV FORCE_COLOR=1
+
+ENTRYPOINT ["/usr/local/bin/publisher-entry.sh"]

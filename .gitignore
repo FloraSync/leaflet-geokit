@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Builds
+/dist/
+/build/
+/.cache/
+/.vite/
+
+# Tests
+/coverage/
+/test-results/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Env
+.env*
+
+# OS/Editor
+.DS_Store
+*.swp
+.vscode/
+.idea/
+
+# Misc
+.eslintcache
+*.tsbuildinfo
+.wip/

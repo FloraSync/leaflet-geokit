@@ -1,0 +1,11 @@
+FROM node:24-alpine
+
+RUN apk add --no-cache git bash curl jq github-cli openssh
+
+# Create a non-root workspace directory compatible with devcontainers
+RUN mkdir -p /workspace && chown -R node:node /workspace
+WORKDIR /workspace
+
+# Keep default user as node for better file permissions with bind mounts
+USER node
+
