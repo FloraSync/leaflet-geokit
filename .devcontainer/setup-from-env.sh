@@ -5,6 +5,16 @@ cd "$(dirname "$0")/.."
 
 echo "[devcontainer] Setting up from .env (if present)"
 
+# Check for required packages on Debian
+echo "[devcontainer] Checking for required packages on Debian"
+for pkg in git curl; do
+  if ! command -v $pkg >/dev/null 2>&1; then
+    echo "[devcontainer] Installing $pkg (may require sudo)"
+    sudo apt-get update && sudo apt-get install -y $pkg
+  fi
+done
+
+# Load environment variables from .env
 if [[ -f .env ]]; then
   set -a
   . ./.env
@@ -30,8 +40,22 @@ fi
 # GitHub credentials (PAT based) if provided
 if [[ -n "${GITHUB_USERNAME:-}" && -n "${GITHUB_TOKEN:-}" ]]; then
   git config --global credential.helper store
-  mkdir -p ~/.git-credentials
-  echo "https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com" > ~/.git-credentials
+  
+  # Handle git credentials file properly
+  GIT_CRED_FILE="${HOME}/.git-credentials"
+  
+  # If it exists as a directory, remove it first
+  if [[ -d "$GIT_CRED_FILE" ]]; then
+    echo "[devcontainer] Removing ~/.git-credentials directory"
+    rm -rf "$GIT_CRED_FILE"
+  fi
+  
+  # Ensure parent directory exists but don't create the credentials file as a directory
+  mkdir -p "$(dirname "$GIT_CRED_FILE")"
+  
+  # Write credentials to file
+  echo "https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com" > "$GIT_CRED_FILE"
+  chmod 600 "$GIT_CRED_FILE"  # Ensure secure permissions on Debian
   echo "[devcontainer] Stored GitHub credentials for HTTPS pushes"
 fi
 
@@ -43,13 +67,41 @@ fi
 
 # OpenAI / Codex CLI
 if [[ -n "${OPENAI_API_KEY:-}" ]]; then
+  # Update shell profiles
   echo "export OPENAI_API_KEY=$OPENAI_API_KEY" >> ~/.bashrc
-  echo "[devcontainer] OPENAI_API_KEY exported in ~/.bashrc"
+  if [[ -f ~/.bash_profile ]]; then
+    echo "export OPENAI_API_KEY=$OPENAI_API_KEY" >> ~/.bash_profile
+  fi
+  # Also add to .profile for broader compatibility
+  if [[ -f ~/.profile ]]; then
+    echo "export OPENAI_API_KEY=$OPENAI_API_KEY" >> ~/.profile
+  fi
+  echo "[devcontainer] OPENAI_API_KEY exported in shell profiles"
+fi
+
+# Gemini API key
+if [[ -n "${GEMINI_API_KEY:-}" ]]; then
+  # Update shell profiles
+  echo "export GEMINI_API_KEY=$GEMINI_API_KEY" >> ~/.bashrc
+  if [[ -f ~/.bash_profile ]]; then
+    echo "export GEMINI_API_KEY=$GEMINI_API_KEY" >> ~/.bash_profile
+  fi
+  # Also add to .profile for broader compatibility
+  if [[ -f ~/.profile ]]; then
+    echo "export GEMINI_API_KEY=$GEMINI_API_KEY" >> ~/.profile
+  fi
+  echo "[devcontainer] GEMINI_API_KEY exported in shell profiles"
 fi
 
 if [[ "${DEVCONTAINER_INSTALL_CODEX:-}" =~ ^(1|y|Y|true|TRUE)$ ]]; then
   echo "[devcontainer] Installing @openai/codex globally"
   npm install -g @openai/codex
+fi
+
+# Set proper permissions for the home directory in Debian
+if [[ -d "$HOME" ]]; then
+  # Ensure any created directories have proper ownership
+  find "$HOME" -not -user $(whoami) -exec sudo chown $(whoami):$(id -gn) {} \; 2>/dev/null || true
 fi
 
 echo "[devcontainer] Setup complete"

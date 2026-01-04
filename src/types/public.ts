@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 import type { Feature, FeatureCollection, Geometry } from "geojson";
 import type { LogLevel } from "@src/utils/logger";
 
@@ -17,7 +18,11 @@ export interface MapConfig {
   logLevel?: LogLevel;
   devOverlay?: boolean;
   polygonAllowIntersection?: boolean;
+  /** Use Canvas rendering instead of SVG for better performance with large datasets. Default: true */
+  preferCanvas?: boolean;
 }
+
+export type MeasurementSystem = "metric" | "imperial";
 
 /**
  * Draw controls toggles (presence = true on the element).
@@ -30,6 +35,7 @@ export interface DrawControlsConfig {
   marker?: boolean;
   edit?: boolean;
   delete?: boolean;
+  ruler?: boolean;
 }
 
 /**
@@ -75,6 +81,22 @@ export interface LeafletDrawMapElementAPI {
    * Returns the exported FeatureCollection for convenience.
    */
   exportGeoJSON(): Promise<FeatureCollection>;
+
+  /**
+   * Merge all visible polygon layers into a single polygon.
+   * This removes the original polygon features and adds a new merged feature.
+   * @param options Optional configuration for the merge operation
+   * @returns Promise resolving to the ID of the newly created merged feature, or null if no polygons to merge
+   */
+  mergePolygons(options?: {
+    /** Properties to apply to the merged feature (defaults to properties from first polygon) */
+    properties?: Record<string, any>;
+  }): Promise<string | null>;
+
+  /**
+   * Change the measurement system for the Leaflet ruler tool.
+   */
+  setMeasurementUnits(system: MeasurementSystem): Promise<void>;
 }
 
 // Re-exports for consumers

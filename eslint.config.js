@@ -29,8 +29,8 @@ export default [
     },
     rules: {
       // Disable base JS rules in favor of TypeScript-specific rules
-      "no-unused-vars": "off", // Disable in favor of @typescript-eslint/no-unused-vars
-      "no-empty": ["error", { allowEmptyCatch: true }], // Allow empty catch blocks
+      // "no-unused-vars": "off", // Disable in favor of @typescript-eslint/no-unused-vars
+      // "no-empty": ["error", { allowEmptyCatch: true }], // Allow empty catch blocks
 
       // TypeScript-specific rules
       "@typescript-eslint/consistent-type-imports": [

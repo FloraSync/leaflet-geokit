@@ -14,7 +14,8 @@ describe("utils/logger — more cases", () => {
 
   it("child level is captured at creation (independent after)", () => {
     const calls: string[] = [];
-    const sink: any = { debug: (...args: any[]) => calls.push("debug") };
+    // eslint-disable-next-line no-unused-vars
+    const sink: any = { debug: (..._args: any[]) => calls.push("debug") };
     const parent = createLogger("p", "warn", sink);
     const child = parent.child("c"); // child starts at 'warn'
     // Raise parent verbosity; child should remain at 'warn'

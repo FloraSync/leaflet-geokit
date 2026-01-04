@@ -1,20 +1,42 @@
 import * as L from "leaflet";
 import "leaflet-draw";
+import "leaflet-ruler";
 import type { Feature, FeatureCollection } from "geojson";
-import type { DrawControlsConfig, MapConfig } from "@src/types/public";
+import type {
+  DrawControlsConfig,
+  MapConfig,
+  MeasurementSystem,
+} from "@src/types/public";
 import { createLogger, type Logger } from "@src/utils/logger";
 import { FeatureStore } from "@src/lib/FeatureStore";
-import { expandMultiGeometries } from "@src/utils/geojson";
+import {
+  expandMultiGeometries,
+  mergePolygons,
+  isPolygon,
+  isMultiPolygon,
+} from "@src/utils/geojson";
+import { computePreciseDistance, magicRound } from "@src/utils/geodesic";
+import {
+  getRulerOptions,
+  measurementSystemDescriptions,
+} from "@src/utils/ruler";
+
+let rulerPrecisionPatched = false;
 
 export interface MapControllerCallbacks {
+  // eslint-disable-next-line no-unused-vars
   onReady?: (detail: { bounds?: [[number, number], [number, number]] }) => void;
+  // eslint-disable-next-line no-unused-vars
   onCreated?: (detail: {
     id: string;
     layerType: "polygon" | "polyline" | "rectangle" | "circle" | "marker";
     geoJSON: Feature;
   }) => void;
+  // eslint-disable-next-line no-unused-vars
   onEdited?: (detail: { ids: string[]; geoJSON: FeatureCollection }) => void;
+  // eslint-disable-next-line no-unused-vars
   onDeleted?: (detail: { ids: string[]; geoJSON: FeatureCollection }) => void;
+  // eslint-disable-next-line no-unused-vars
   onError?: (detail: { message: string; cause?: unknown }) => void;
 }
 
@@ -43,6 +65,17 @@ export class MapController {
   private drawnItems: L.FeatureGroup | null = null;
   // Keep 'any' here to avoid type friction across different @types/leaflet-draw versions
   private drawControl: any | null = null;
+  private rulerControl: L.Control.Ruler | null = null;
+  private measurementControl: L.Control | null = null;
+  private measurementSystem: MeasurementSystem = "metric";
+  private measurementModalOverlay: HTMLDivElement | null = null;
+  private measurementModalDialog: HTMLDivElement | null = null;
+  private measurementModalRadios: Partial<
+    Record<MeasurementSystem, HTMLInputElement>
+  > = {};
+  private measurementModalKeydownHandler:
+    | ((e: KeyboardEvent) => void) // eslint-disable-line no-unused-vars
+    | null = null;
 
   // Detacher for our polygon close-on-first-vertex patch
   private detachPolygonFinishPatch: (() => void) | null = null;
@@ -82,10 +115,12 @@ export class MapController {
         maxZoom,
         tileUrl,
         tileAttribution,
+        preferCanvas = true, // Default to Canvas rendering for better performance
       } = this.options.map;
       const center: [number, number] = [latitude, longitude];
       this.map = L.map(this.container, {
         zoomControl: true,
+        preferCanvas,
       }).setView(center, zoom);
 
       // Add tile layer
@@ -107,6 +142,20 @@ export class MapController {
       this.drawControl = new DrawCtor(drawOptions);
       this.map.addControl(this.drawControl);
 
+      if (this.options.controls.ruler) {
+        this.logger.debug("init:ruler", {
+          available: typeof L.control.ruler === "function",
+        });
+        if (typeof L.control.ruler === "function") {
+          this.addRulerControl();
+          this.installMeasurementSettingsControl();
+        } else {
+          this.logger.warn("init:ruler:missing", {
+            msg: "L.control.ruler is not defined",
+          });
+        }
+      }
+
       // Patch known Leaflet.draw bugs (e.g., readableArea strict-mode variable)
       this.patchLeafletDrawBugs();
 
@@ -118,7 +167,9 @@ export class MapController {
       setTimeout(() => {
         try {
           this.map?.invalidateSize();
-        } catch {}
+        } catch {
+          // Ignore invalidateSize errors - this is just a UI refresh
+        }
       }, 0);
 
       // Bind draw events
@@ -142,23 +193,30 @@ export class MapController {
         this.map.remove();
       }
     } catch (err) {
-      // ignore removal errors
+      this._error("Failed to remove Leaflet map", err);
     }
 
     // Detach polygon finish patch (if installed)
     try {
       this.detachPolygonFinishPatch?.();
-    } catch {}
+    } catch {
+      // Ignore errors when detaching polygon finish patch during cleanup
+    }
     this.detachPolygonFinishPatch = null;
 
     // Cleanup vertex menu if present
     try {
       this.vertexMenuCleanup?.();
-    } catch {}
+    } catch {
+      // Ignore errors when cleaning up vertex menu during destruction
+    }
     this.vertexMenuEl = null;
     this.vertexMenuCleanup = null;
 
     this.drawControl = null;
+    this.rulerControl = null;
+    this.measurementControl = null;
+    this.removeMeasurementModal();
     this.drawnItems = null;
     this.map = null;
   }
@@ -289,6 +347,70 @@ export class MapController {
     this.map.setView([lat, lng], zoom ?? this.map.getZoom());
   }
 
+  /**
+   * Merge all visible polygon features into a single polygon feature.
+   * This removes the original features and adds a new feature with the merged geometry.
+   *
+   * @param options Optional configuration for the merge operation
+   * @returns The ID of the newly created merged feature, or null if no polygons to merge
+   */
+  async mergeVisiblePolygons(options?: {
+    /** Properties to apply to the merged feature (defaults to properties from first polygon) */
+    properties?: Record<string, any>;
+  }): Promise<string | null> {
+    if (!this.map || !this.drawnItems) return null;
+
+    // Get all current features
+    const fc = await this.getGeoJSON();
+
+    // Filter for polygon features only
+    const polygonFeatures = fc.features.filter((feature) => {
+      const geom = feature.geometry;
+      return geom && (isPolygon(geom) || isMultiPolygon(geom));
+    });
+
+    if (polygonFeatures.length <= 1) {
+      // No polygons or just one polygon - nothing to merge
+      if (polygonFeatures.length === 1) {
+        const existingId = (polygonFeatures[0] as any).id;
+        return existingId ? String(existingId) : null;
+      }
+      return null;
+    }
+
+    // Merge the polygons
+    const mergedFeature = mergePolygons(polygonFeatures, options?.properties);
+    if (!mergedFeature) return null;
+
+    // Get IDs of original polygons to remove - extract from feature.id
+    const idsToRemove: string[] = [];
+    for (const feature of polygonFeatures) {
+      const id = (feature as any).id;
+      if (id) idsToRemove.push(String(id));
+    }
+
+    // Remove original polygons
+    for (const id of idsToRemove) {
+      await this.removeFeature(id);
+    }
+
+    // Add the merged polygon as a new feature
+    const [newFeatureId] = await this.addFeatures({
+      type: "FeatureCollection",
+      features: [mergedFeature],
+    });
+
+    return newFeatureId || null;
+  }
+
+  setRulerUnits(system: MeasurementSystem): void {
+    if (this.measurementSystem === system) return;
+    this.measurementSystem = system;
+    this.logger.debug("ruler:units", { system });
+    this.syncMeasurementModalState();
+    this.rebuildRulerControl();
+  }
+
   // ---------------- Internals ----------------
 
   private buildDrawOptions(
@@ -354,6 +476,250 @@ export class MapController {
     return { draw, edit } as any;
   }
 
+  /* c8 ignore start */
+  private addRulerControl(): void {
+    if (!this.map) return;
+    this.installRulerPrecisionPatch();
+    const options = getRulerOptions(this.measurementSystem);
+    this.rulerControl = L.control.ruler(options);
+    this.map.addControl(this.rulerControl);
+  }
+
+  private installRulerPrecisionPatch(): void {
+    if (rulerPrecisionPatched) return;
+    const RulerCtor = (L.Control as any).Ruler;
+    if (!RulerCtor || typeof RulerCtor !== "function") return;
+    const proto = RulerCtor.prototype;
+    const original = proto._calculateBearingAndDistance;
+    if (typeof original !== "function") return;
+
+    const logger = this.logger;
+
+    proto._calculateBearingAndDistance = function patchedPrecision() {
+      original.call(this);
+      try {
+        const start = this._clickedLatLong;
+        const end = this._movingLatLong ?? this._clickedLatLong;
+        if (!start || !end) return;
+
+        const { meters, bearingDegrees } = computePreciseDistance(
+          start.lat,
+          start.lng,
+          end.lat,
+          end.lng,
+        );
+        const kilometers = meters / 1000;
+        const conversion =
+          typeof this.options?.lengthUnit?.factor === "number"
+            ? this.options.lengthUnit.factor
+            : 1;
+        const distance = magicRound(kilometers * conversion);
+
+        this._result = this._result || {};
+        this._result.Distance = distance;
+        this._result.Bearing = bearingDegrees;
+        this._result.meters = meters;
+      } catch (err) {
+        logger?.warn("ruler:precision-patch", err as any);
+      }
+    };
+
+    rulerPrecisionPatched = true;
+  }
+
+  private rebuildRulerControl(): void {
+    if (!this.map || !this.options.controls.ruler) return;
+    if (this.rulerControl) {
+      try {
+        this.map.removeControl(this.rulerControl);
+      } catch (err) {
+        this.logger.warn("ruler:remove-failed", err as any);
+      }
+      this.rulerControl = null;
+    }
+    this.addRulerControl();
+  }
+
+  /* c8 ignore next */
+  private installMeasurementSettingsControl(): void {
+    if (!this.map || this.measurementControl) return;
+    const controller = this;
+    const SettingsControl = L.Control.extend({
+      options: { position: "topleft" },
+      onAdd() {
+        const container = L.DomUtil.create(
+          "div",
+          "leaflet-bar leaflet-ruler-settings-control",
+        );
+        const button = L.DomUtil.create(
+          "button",
+          "leaflet-ruler-settings-button",
+          container,
+        );
+        button.type = "button";
+        button.title = "Measurement settings";
+        button.setAttribute("aria-label", "Measurement settings");
+        button.addEventListener("click", (event: MouseEvent) => {
+          event.preventDefault();
+          event.stopPropagation();
+          controller.toggleMeasurementModal(true);
+        });
+        L.DomEvent.disableClickPropagation(container);
+        L.DomEvent.disableScrollPropagation(container);
+        return container;
+      },
+    }) as typeof L.Control;
+    this.measurementControl = new SettingsControl();
+    this.map.addControl(this.measurementControl);
+  }
+
+  /* c8 ignore next */
+  private ensureMeasurementModal(): HTMLDivElement {
+    if (this.measurementModalOverlay) return this.measurementModalOverlay;
+    if (typeof document === "undefined") {
+      throw new Error("Measurement modal requires a browser environment");
+    }
+    const overlay = document.createElement("div");
+    overlay.className = "leaflet-ruler-modal-overlay";
+    overlay.setAttribute("aria-hidden", "true");
+    const dialog = document.createElement("div");
+    dialog.className = "leaflet-ruler-modal";
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    dialog.tabIndex = -1;
+
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) {
+        this.toggleMeasurementModal(false);
+      }
+    });
+
+    const title = document.createElement("h2");
+    title.className = "leaflet-ruler-modal-title";
+    title.textContent = "Measurement Units";
+    dialog.appendChild(title);
+
+    const description = document.createElement("p");
+    description.className = "leaflet-ruler-modal-description";
+    description.textContent =
+      "Choose how the measurement tool reports distances.";
+    dialog.appendChild(description);
+
+    const optionsList = document.createElement("div");
+    optionsList.className = "leaflet-ruler-modal-options";
+    dialog.appendChild(optionsList);
+
+    (["metric", "imperial"] as MeasurementSystem[]).forEach((system) => {
+      const label = document.createElement("label");
+      label.className = "leaflet-ruler-modal-option";
+
+      const input = document.createElement("input");
+      input.type = "radio";
+      input.name = "leaflet-ruler-units";
+      input.value = system;
+      input.addEventListener("change", () => {
+        if (input.checked) {
+          this.setRulerUnits(system);
+        }
+      });
+
+      const span = document.createElement("span");
+      span.textContent = measurementSystemDescriptions[system];
+
+      label.appendChild(input);
+      label.appendChild(span);
+      optionsList.appendChild(label);
+      this.measurementModalRadios[system] = input;
+    });
+
+    const actions = document.createElement("div");
+    actions.className = "leaflet-ruler-modal-actions";
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "leaflet-ruler-modal-close";
+    close.textContent = "Close";
+    close.addEventListener("click", () => this.toggleMeasurementModal(false));
+    actions.appendChild(close);
+    dialog.appendChild(actions);
+
+    overlay.appendChild(dialog);
+    this.container.appendChild(overlay);
+    this.measurementModalOverlay = overlay;
+    this.measurementModalDialog = dialog;
+    this.syncMeasurementModalState();
+    return overlay;
+  }
+
+  /* c8 ignore next */
+  private toggleMeasurementModal(show: boolean): void {
+    if (!show) {
+      if (this.measurementModalOverlay) {
+        this.measurementModalOverlay.classList.remove("is-open");
+        this.measurementModalOverlay.setAttribute("aria-hidden", "true");
+      }
+      this.detachMeasurementModalKeydown();
+      return;
+    }
+
+    const overlay = this.ensureMeasurementModal();
+    overlay.classList.add("is-open");
+    overlay.setAttribute("aria-hidden", "false");
+    this.syncMeasurementModalState();
+    this.attachMeasurementModalKeydown();
+    this.measurementModalDialog?.focus();
+  }
+
+  private syncMeasurementModalState(): void {
+    for (const [system, input] of Object.entries(this.measurementModalRadios)) {
+      if (input) {
+        input.checked = system === this.measurementSystem;
+      }
+    }
+  }
+
+  /* c8 ignore next */
+  private removeMeasurementModal(): void {
+    if (this.measurementModalOverlay) {
+      this.measurementModalOverlay.remove();
+    }
+    this.measurementModalOverlay = null;
+    this.measurementModalDialog = null;
+    this.measurementModalRadios = {};
+    this.detachMeasurementModalKeydown();
+  }
+
+  /* c8 ignore next */
+  private attachMeasurementModalKeydown(): void {
+    if (
+      this.measurementModalKeydownHandler ||
+      typeof document === "undefined"
+    ) {
+      return;
+    }
+    this.measurementModalKeydownHandler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        this.toggleMeasurementModal(false);
+      }
+    };
+    document.addEventListener("keydown", this.measurementModalKeydownHandler);
+  }
+
+  /* c8 ignore next */
+  private detachMeasurementModalKeydown(): void {
+    if (
+      !this.measurementModalKeydownHandler ||
+      typeof document === "undefined"
+    ) {
+      return;
+    }
+    document.removeEventListener(
+      "keydown",
+      this.measurementModalKeydownHandler,
+    );
+    this.measurementModalKeydownHandler = null;
+  }
+  /* c8 ignore end */
+
   /**
    * Workaround: In some environments (notably within Shadow DOM), clicking the first vertex
    * to close a polygon can be unreliable due to event retargeting/hit testing.
@@ -366,7 +732,9 @@ export class MapController {
     // Remove any existing patch first
     try {
       this.detachPolygonFinishPatch?.();
-    } catch {}
+    } catch {
+      // Ignore errors when detaching existing polygon patch
+    }
     this.detachPolygonFinishPatch = null;
 
     const map: any = this.map as any;
@@ -413,7 +781,9 @@ export class MapController {
     this.detachPolygonFinishPatch = () => {
       try {
         map.off("click", onClick);
-      } catch {}
+      } catch {
+        // Ignore errors when removing map click event listener
+      }
     };
   }
 
@@ -559,7 +929,9 @@ export class MapController {
       try {
         evt?.originalEvent?.preventDefault?.();
         evt?.originalEvent?.stopPropagation?.();
-      } catch {}
+      } catch {
+        // Ignore errors when preventing default context menu behavior
+      }
       this.openVertexMenu(layer, evt);
     };
     const handleClick = (evt: any) => {
@@ -571,7 +943,9 @@ export class MapController {
     try {
       layer.on("contextmenu", handleContext);
       layer.on("click", handleClick);
-    } catch {}
+    } catch {
+      // Ignore errors when attaching event handlers to the layer
+    }
   }
 
   private openVertexMenu(layer: any, evt: any): void {
@@ -612,7 +986,9 @@ export class MapController {
       // Cleanup existing
       try {
         this.vertexMenuCleanup?.();
-      } catch {}
+      } catch {
+        // Ignore errors when cleaning up previous vertex menu
+      }
       this.vertexMenuCleanup = null;
       if (!this.container) return;
 
@@ -654,7 +1030,9 @@ export class MapController {
           window.removeEventListener("pointerdown", onDoc);
           this.container.removeEventListener("scroll", cleanup, true);
           menu.remove();
-        } catch {}
+        } catch {
+          // Ignore errors during menu cleanup operations
+        }
         this.vertexMenuEl = null;
         this.vertexMenuCleanup = null;
       };

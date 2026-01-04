@@ -137,6 +137,7 @@ Attributes (string/boolean)
   - max-zoom (string number, optional)
   - tile-url (string): tile URL template (default OSM)
   - tile-attribution (string, optional): attribution text
+  - prefer-canvas (boolean): use Canvas rendering instead of SVG for better performance with large datasets; default true
 - Controls (boolean; presence = enabled)
   - draw-polygon, draw-polyline, draw-rectangle, draw-circle, draw-marker
   - edit-features, delete-features
@@ -157,6 +158,7 @@ Properties (runtime)
 - readOnly: boolean
 - logLevel: 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'silent'
 - devOverlay: boolean
+- preferCanvas: boolean
 
 Methods (Promise-based, invoked on the element instance)
 
@@ -354,7 +356,9 @@ Troubleshooting checklist:
 
 Performance
 
-- L.geoJSON is adequate for small/medium collections. For large data, consider server-side tiling or clustering (not included).
+- **Canvas Rendering (Default)**: The component uses Canvas rendering by default (prefer-canvas="true"), which provides significantly better performance than SVG when displaying large numbers of features or complex polygons. Canvas uses a single canvas element instead of individual DOM elements for each feature, reducing DOM overhead and improving rendering speed.
+- To switch to SVG rendering (e.g., for better print quality or specific styling needs), remove the prefer-canvas attribute or set it explicitly: `<leaflet-draw-map prefer-canvas="false">`.
+- L.geoJSON is adequate for small/medium collections. For very large datasets (thousands of features), consider server-side tiling or clustering (not included).
 - fitBoundsToData uses padding to reduce cramped framing; tune via method arg.
 
 Accessibility
