@@ -11,6 +11,7 @@ import iconUrl from "leaflet/dist/images/marker-icon.png";
 
 import shadowUrl from "leaflet/dist/images/marker-shadow.png";
 import cogIconUrl from "@src/assets/cog.svg?url";
+import layerCakeIconUrl from "@src/assets/layer-cake.svg?url";
 
 import rulerIconUrl from "leaflet-ruler/dist/icon.png";
 import rulerIconColoredUrl from "leaflet-ruler/dist/icon-colored.png";
@@ -156,6 +157,37 @@ ${leafletRulerCSS}
 }
 .leaflet-ruler-modal-close:hover {
   background: #1a56c2;
+}
+
+/* --- Layer Cake draw tool icon + manager UI --- */
+.leaflet-draw-draw-cake {
+  background-image: url(${layerCakeIconUrl}) !important;
+  background-size: 18px 18px;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-color: #fff;
+}
+
+.layer-cake-controls__container {
+  display: flex;
+  gap: 6px;
+  background: white;
+  padding: 5px;
+  border-radius: 4px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+}
+
+.layer-cake-controls button {
+  border: 1px solid #ccc;
+  background: white;
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.layer-cake-controls button:hover {
+  background: #f4f4f4;
 }
 `;
   root.appendChild(style);

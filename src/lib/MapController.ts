@@ -9,6 +9,9 @@ import type {
 } from "@src/types/public";
 import { createLogger, type Logger } from "@src/utils/logger";
 import { FeatureStore } from "@src/lib/FeatureStore";
+import { registerLayerCakeTool } from "@src/lib/draw/toolbar-patch";
+import { DrawCake } from "@src/lib/draw/L.Draw.Cake";
+import { LayerCakeManager } from "@src/lib/layer-cake/LayerCakeManager";
 import {
   expandMultiGeometries,
   mergePolygons,
@@ -83,6 +86,7 @@ export class MapController {
   // Context menu for vertex deletion
   private vertexMenuEl: HTMLDivElement | null = null;
   private vertexMenuCleanup: (() => void) | null = null;
+  private activeCakeSession: LayerCakeManager | null = null;
 
   constructor(opts: MapControllerOptions) {
     this.options = opts;
@@ -96,6 +100,8 @@ export class MapController {
       controls: opts.controls,
       readOnly: opts.readOnly,
     });
+
+    registerLayerCakeTool();
   }
 
   // ---------------- Lifecycle ----------------
@@ -218,6 +224,14 @@ export class MapController {
     this.measurementControl = null;
     this.removeMeasurementModal();
     this.drawnItems = null;
+
+    try {
+      this.activeCakeSession?.destroy();
+    } catch {
+      // Ignore errors when cleaning up an in-progress cake session
+    }
+    this.activeCakeSession = null;
+
     this.map = null;
   }
 
@@ -450,6 +464,14 @@ export class MapController {
             },
           }
         : false,
+      cake: controls.cake
+        ? {
+            shapeOptions: {
+              color: "#8A2BE2", // Violet color for distinction
+              fillOpacity: 0.2,
+            },
+          }
+        : false,
       marker: controls.marker ? {} : false,
     };
 
@@ -544,7 +566,7 @@ export class MapController {
   private installMeasurementSettingsControl(): void {
     if (!this.map || this.measurementControl) return;
     const controller = this;
-    const SettingsControl = L.Control.extend({
+    const SettingsControl = (L.Control as any).extend({
       options: { position: "topleft" },
       onAdd() {
         const container = L.DomUtil.create(
@@ -837,6 +859,51 @@ export class MapController {
     } catch (err) {
       this.logger.warn("leaflet-draw-patch:readableArea", err as any);
     }
+
+    // Patch Leaflet.draw circle editing strict-mode bug:
+    // L.Edit.Circle.prototype._resize assigns to an undeclared `radius` variable.
+    try {
+      const anyL: any = L as any;
+      const EditCircle = anyL.Edit?.Circle;
+      const DrawEvent = anyL.Draw?.Event;
+      const GU = anyL.GeometryUtil;
+      if (!EditCircle?.prototype?._resize || !DrawEvent || !GU) return;
+
+      EditCircle.prototype._resize = function patchedCircleResize(latlng: any) {
+        const center = this._moveMarker.getLatLng();
+        const radius = GU.isVersion07x()
+          ? center.distanceTo(latlng)
+          : this._map.distance(center, latlng);
+
+        this._shape.setRadius(radius);
+
+        try {
+          if (this._map?.editTooltip && this._map?._editTooltip?.updateContent) {
+            this._map._editTooltip.updateContent({
+              text:
+                anyL.drawLocal.edit.handlers.edit.tooltip.subtext +
+                "<br />" +
+                anyL.drawLocal.edit.handlers.edit.tooltip.text,
+              subtext:
+                anyL.drawLocal.draw.handlers.circle.radius +
+                ": " +
+                GU.readableDistance(
+                  radius,
+                  true,
+                  this.options.feet,
+                  this.options.nautic,
+                ),
+            });
+          }
+        } catch {
+          // Ignore tooltip update errors in patched circle resize
+        }
+
+        this._map.fire(DrawEvent.EDITRESIZE, { layer: this._shape });
+      };
+    } catch (err) {
+      this.logger.warn("leaflet-draw-patch:circle-resize", err as any);
+    }
   }
 
   private bindDrawEvents(): void {
@@ -846,6 +913,43 @@ export class MapController {
     this.map.on((L as any).Draw.Event.CREATED, (e: any) => {
       try {
         const { layer, layerType } = e;
+
+        if (layerType === DrawCake.TYPE) {
+          try {
+            this.activeCakeSession?.destroy();
+          } catch {
+            // Ignore previous session cleanup failures
+          }
+
+          this.activeCakeSession = new LayerCakeManager(
+            this.map!,
+            layer as L.Circle,
+            (featureCollection) => {
+              if (!this.drawnItems) return;
+              const ids = this.store.add(featureCollection);
+              const layers = L.geoJSON(featureCollection);
+
+              let i = 0;
+              layers.eachLayer((createdLayer: any) => {
+                const id = ids[i] ?? ids[ids.length - 1];
+                (createdLayer as any)._fid = id;
+                this.drawnItems!.addLayer(createdLayer);
+                this.installVertexContextMenu(createdLayer);
+                this.options.callbacks?.onCreated?.({
+                  id,
+                  layerType: "polygon",
+                  geoJSON: createdLayer.toGeoJSON(),
+                });
+                i++;
+              });
+
+              this.activeCakeSession = null;
+            },
+          );
+
+          return;
+        }
+
         this.drawnItems!.addLayer(layer);
         const feat = layer.toGeoJSON() as Feature;
         const ids = this.store.add({

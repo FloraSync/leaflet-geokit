@@ -139,7 +139,7 @@ Attributes (string/boolean)
   - tile-attribution (string, optional): attribution text
   - prefer-canvas (boolean): use Canvas rendering instead of SVG for better performance with large datasets; default true
 - Controls (boolean; presence = enabled)
-  - draw-polygon, draw-polyline, draw-rectangle, draw-circle, draw-marker
+  - draw-polygon, draw-polyline, draw-rectangle, draw-circle, draw-layer-cake, draw-marker
   - edit-features, delete-features
 - Behavior
   - read-only (boolean): disables all drawing/editing/removing
@@ -212,6 +212,7 @@ A. Basic HTML, served by Vite (development)
   draw-polyline
   draw-rectangle
   draw-circle
+  draw-layer-cake
   draw-marker
   edit-features
   delete-features

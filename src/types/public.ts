@@ -32,6 +32,8 @@ export interface DrawControlsConfig {
   polyline?: boolean;
   rectangle?: boolean;
   circle?: boolean;
+  /** Draw a Layer Cake base circle + manager to create concentric donut polygons. */
+  cake?: boolean;
   marker?: boolean;
   edit?: boolean;
   delete?: boolean;
