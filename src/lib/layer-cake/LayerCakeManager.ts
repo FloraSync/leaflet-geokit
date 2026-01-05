@@ -3,6 +3,29 @@ import { v4 as uuidv4 } from "uuid";
 import { bakeLayerCake } from "@src/lib/layer-cake/CakeBaker";
 import { bindCakeControls } from "@src/lib/layer-cake/bindCakeControls";
 import { ensureCircleEditable } from "@src/lib/layer-cake/ensureCircleEditable";
+import type { MeasurementSystem } from "@src/types/public";
+
+/**
+ * Format distance in meters to a friendly string based on measurement system.
+ * Metric: meters (m) or kilometers (km)
+ * Imperial: feet (ft) or miles (mi)
+ */
+function formatDistance(meters: number, system: MeasurementSystem): string {
+  if (system === "imperial") {
+    const feet = meters * 3.28084;
+    if (feet >= 5280) {
+      const miles = feet / 5280;
+      return `${miles.toFixed(2)} mi`;
+    }
+    return `${Math.round(feet)} ft`;
+  }
+
+  // Metric (default)
+  if (meters >= 1000) {
+    return `${(meters / 1000).toFixed(2)} km`;
+  }
+  return `${Math.round(meters)} m`;
+}
 
 export class LayerCakeManager {
   private map: L.Map;
@@ -13,14 +36,17 @@ export class LayerCakeManager {
   private baseCircleOptions: L.CircleMarkerOptions;
   private detachMapListeners: (() => void)[] = [];
   private renderScheduled = false;
+  private measurementSystem: MeasurementSystem;
 
   constructor(
     map: L.Map,
     initialCircle: L.Circle,
     onSave: (geojson: GeoJSON.FeatureCollection) => void,
+    measurementSystem: MeasurementSystem = "metric",
   ) {
     this.map = map;
     this.onSave = onSave;
+    this.measurementSystem = measurementSystem;
     this.controlsGroup = L.layerGroup().addTo(map);
     this.baseCircleOptions = { ...(initialCircle.options as any) };
     delete (this.baseCircleOptions as any).editing;
@@ -35,6 +61,8 @@ export class LayerCakeManager {
     const anyL: any = L as any;
     const EDITMOVE = anyL?.Draw?.Event?.EDITMOVE;
     const EDITRESIZE = anyL?.Draw?.Event?.EDITRESIZE;
+    const EDITSTART = anyL?.Draw?.Event?.EDITSTART;
+    const EDITSTOP = anyL?.Draw?.Event?.EDITSTOP;
     if (!EDITMOVE || !EDITRESIZE) return;
 
     const onMove = (e: any) => {
@@ -48,11 +76,50 @@ export class LayerCakeManager {
       const layer = e?.layer as L.Layer | undefined;
       if (!layer) return;
       if (!this.layers.includes(layer as any)) return;
+      this.updateLabels(layer as any);
       this.requestRenderControls();
+    };
+
+    const onEditStart = (e: any) => {
+      const layer = e?.layer as L.Layer | undefined;
+      if (!layer) return;
+      if (!this.layers.includes(layer as any)) return;
+      // Make the tooltip follow the resize handle by updating its position
+      const circle = layer as L.Circle;
+      const tooltip = (circle as any).getTooltip?.();
+      if (tooltip) {
+        // Update immediately to show we're in edit mode
+        this.updateLabels(circle);
+      }
+    };
+
+    const onEditStop = () => {
+      // Reset all labels to simple format (total radius only) and standard position
+      this.layers.forEach((circle) => {
+        const tooltip = (circle as any).getTooltip?.();
+        if (tooltip) {
+          circle.setTooltipContent(
+            formatDistance(circle.getRadius(), this.measurementSystem),
+          );
+          // Reset tooltip to standard right-side position
+          tooltip.options.offset = [10, 0];
+          tooltip.options.direction = "right";
+          circle.closeTooltip();
+          circle.openTooltip();
+        }
+      });
     };
 
     this.map.on(EDITMOVE, onMove);
     this.map.on(EDITRESIZE, onResize);
+    if (EDITSTART) {
+      this.map.on(EDITSTART, onEditStart);
+      this.detachMapListeners.push(() => this.map.off(EDITSTART, onEditStart));
+    }
+    if (EDITSTOP) {
+      this.map.on(EDITSTOP, onEditStop);
+      this.detachMapListeners.push(() => this.map.off(EDITSTOP, onEditStop));
+    }
     this.detachMapListeners.push(() => this.map.off(EDITMOVE, onMove));
     this.detachMapListeners.push(() => this.map.off(EDITRESIZE, onResize));
   }
@@ -75,6 +142,17 @@ export class LayerCakeManager {
   private addLayer(circle: L.Circle): void {
     this.layers.push(circle);
     circle.addTo(this.map);
+
+    // Bind a permanent tooltip showing the total radius
+    circle.bindTooltip(
+      formatDistance(circle.getRadius(), this.measurementSystem),
+      {
+        permanent: true,
+        direction: "right",
+        className: "cake-label",
+        offset: [10, 0],
+      },
+    );
 
     const editing: any = (circle as any).editing;
     // For programmatically-created circles, Leaflet.draw can compute resize handle points
@@ -134,6 +212,52 @@ export class LayerCakeManager {
       (layer as any).editing?.updateMarkers?.();
     });
     this.requestRenderControls();
+  }
+
+  /**
+   * Update the label for the active circle being resized.
+   * Shows both total radius and delta (ring width) from the next smaller circle.
+   * Positions the tooltip on the left side to avoid toolbar interference.
+   */
+  private updateLabels(activeCircle: L.Circle): void {
+    const currentRadius = activeCircle.getRadius();
+    let labelText = formatDistance(currentRadius, this.measurementSystem);
+
+    // Find all circles smaller than this one
+    const smallerCircles = this.layers.filter(
+      (c) => c !== activeCircle && c.getRadius() < currentRadius,
+    );
+
+    if (smallerCircles.length > 0) {
+      // Find the largest of the smaller circles (the immediate inner neighbor)
+      const innerNeighbor = smallerCircles.reduce((prev, curr) =>
+        prev.getRadius() > curr.getRadius() ? prev : curr,
+      );
+
+      const delta = currentRadius - innerNeighbor.getRadius();
+      const deltaStr = formatDistance(delta, this.measurementSystem);
+      // Show both total and delta during editing
+      labelText = `${formatDistance(currentRadius, this.measurementSystem)} (+${deltaStr})`;
+    }
+
+    // Update the tooltip content and position
+    const tooltip = (activeCircle as any).getTooltip?.();
+    if (tooltip) {
+      activeCircle.setTooltipContent(labelText);
+      
+      // Position tooltip on the LEFT (West) side to avoid toolbar at NorthEast
+      const bounds = activeCircle.getBounds();
+      const westPoint = bounds.getSouthWest();
+      westPoint.lat = activeCircle.getLatLng().lat; // Center it vertically
+      
+      tooltip.options.direction = "left";
+      tooltip.options.offset = [-10, 0];
+      tooltip.setLatLng(westPoint);
+      
+      // Ensure tooltip is open and visible during editing
+      activeCircle.closeTooltip();
+      activeCircle.openTooltip();
+    }
   }
 
   private renderControls(): void {

@@ -945,6 +945,7 @@ export class MapController {
 
               this.activeCakeSession = null;
             },
+            this.measurementSystem,
           );
 
           return;

@@ -189,6 +189,23 @@ ${leafletRulerCSS}
 .layer-cake-controls button:hover {
   background: #f4f4f4;
 }
+
+/* --- Layer Cake measurement tooltips --- */
+.cake-label {
+  background-color: rgba(255, 255, 255, 0.95) !important;
+  border: 2px solid #8A2BE2 !important;
+  border-radius: 4px !important;
+  color: #333 !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  padding: 4px 8px !important;
+  white-space: nowrap !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2) !important;
+}
+
+.cake-label::before {
+  border-right-color: #8A2BE2 !important;
+}
 `;
   root.appendChild(style);
 }
