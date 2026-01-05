@@ -217,6 +217,7 @@
         draw-rectangle
         draw-circle
         draw-marker
+        draw-ruler
         edit-features
         delete-features
         log-level="debug"
@@ -246,6 +247,13 @@
             title="Export GeoJSON (Ctrl/Cmd+S)"
           >
             Export GeoJSON
+          </button>
+          <button
+            class="btn secondary"
+            id="btnMergePolygons"
+            title="Merge all visible polygons into one"
+          >
+            Merge Polygons
           </button>
         </div>
         <div class="row">
@@ -750,6 +758,55 @@
           } catch (err) {
             console.error(err);
             showToast("Export failed", "error");
+          }
+        });
+      }
+
+      // Merge Polygons button
+      const btnMergePolygons = document.getElementById("btnMergePolygons");
+      if (btnMergePolygons) {
+        btnMergePolygons.addEventListener("click", async () => {
+          try {
+            // Get current feature count before merging
+            const beforeFC = await map.getGeoJSON();
+            const beforeCount = beforeFC.features.length;
+
+            // No need to merge if 0-1 features
+            if (beforeCount <= 1) {
+              showToast("Need at least 2 polygon layers to merge", "info");
+              return;
+            }
+
+            // Perform the merge
+            const newId = await map.mergePolygons({
+              properties: {
+                merged: true,
+                source: "merged-features",
+                timestamp: new Date().toISOString(),
+              },
+            });
+
+            if (newId) {
+              const afterFC = await map.getGeoJSON();
+              const mergedCount = beforeCount - afterFC.features.length + 1;
+
+              tag("merged");
+              showToast(`Merged ${mergedCount} polygon layers`, "success", {
+                title: "Polygons Merged",
+              });
+              log({
+                method: "mergePolygons",
+                beforeCount,
+                afterCount: afterFC.features.length,
+                mergedCount,
+                mergedFeatureId: newId,
+              });
+            } else {
+              showToast("No polygon layers were found to merge", "info");
+            }
+          } catch (err) {
+            console.error(err);
+            showToast("Failed to merge polygons", "error");
           }
         });
       }

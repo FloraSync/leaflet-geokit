@@ -1,11 +1,19 @@
-FROM node:24-alpine
+FROM node:24-bookworm
 
-RUN apk add --no-cache git bash curl jq github-cli openssh
+RUN apt-get update && apt-get install -y git bash curl jq gh openssh-client
 
 # Create a non-root workspace directory compatible with devcontainers
 RUN mkdir -p /workspace && chown -R node:node /workspace
 WORKDIR /workspace
 
+# Add node to the sudoers group
+RUN apt-get update && apt-get install -y sudo \
+    && echo "node ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+
+# Make a user home for node
+RUN mkdir -p /home/node && chown -R node:node /home/node
+
 # Keep default user as node for better file permissions with bind mounts
 USER node
+
 

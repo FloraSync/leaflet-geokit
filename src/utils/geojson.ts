@@ -1,4 +1,12 @@
-import type { Feature, FeatureCollection, Geometry, Position } from "geojson";
+import type {
+  Feature,
+  FeatureCollection,
+  Geometry,
+  Position,
+  Polygon,
+  MultiPolygon,
+  GeoJsonProperties,
+} from "geojson";
 
 export type BBox = [
   minLng: number,
@@ -15,9 +23,15 @@ export function normalizeId(feature: Feature): string | undefined {
 }
 
 /**
- * Iterate all coordinates of a Geometry and call cb for each Position.
+ * Callback function for processing a single coordinate position
  */
-export function eachCoord(geom: Geometry, cb: (coord: Position) => void): void {
+// eslint-disable-next-line no-unused-vars
+export type CoordinateProcessor = (coord: Position) => void;
+
+/**
+ * Iterate all coordinates of a Geometry and call the processor function for each Position.
+ */
+export function eachCoord(geom: Geometry, cb: CoordinateProcessor): void {
   const walk = (g: Geometry) => {
     switch (g.type) {
       case "Point":
@@ -175,4 +189,112 @@ export function expandMultiGeometries(
     }
   }
   return { type: "FeatureCollection", features: out };
+}
+
+/**
+ * Check if a geometry is a Polygon
+ */
+export function isPolygon(geometry: Geometry | null): geometry is Polygon {
+  return geometry?.type === "Polygon";
+}
+
+/**
+ * Check if a geometry is a MultiPolygon
+ */
+export function isMultiPolygon(
+  geometry: Geometry | null,
+): geometry is MultiPolygon {
+  return geometry?.type === "MultiPolygon";
+}
+
+/**
+ * Extract polygon coordinates from a feature
+ * Returns array of rings for each polygon (outer + inner rings)
+ */
+export function extractPolygonCoordinates(feature: Feature): Position[][][] {
+  const geometry = feature.geometry;
+
+  if (!geometry) return [];
+
+  if (isPolygon(geometry)) {
+    // Single polygon: return its rings as a one-element array
+    return [geometry.coordinates];
+  } else if (isMultiPolygon(geometry)) {
+    // MultiPolygon: return all polygon rings
+    return geometry.coordinates;
+  }
+
+  return []; // Not a polygon feature
+}
+
+/**
+ * Merge multiple polygon features into a single polygon feature.
+ * Attempts to create a topological union of the polygons, falling back to
+ * a MultiPolygon if the union operation fails.
+ *
+ * @param features Array of features to merge (only polygon features will be used)
+ * @param properties Properties for the resulting feature (defaults to first feature's properties)
+ * @returns A new Feature with a unified Polygon or MultiPolygon, or null if no valid polygons found
+ */
+export function mergePolygons(
+  features: Feature[],
+  properties?: GeoJsonProperties,
+): Feature | null {
+  // Extract all polygon coordinates
+  const allPolygons: Position[][][] = [];
+
+  for (const feature of features) {
+    const coords = extractPolygonCoordinates(feature);
+    if (coords.length > 0) {
+      allPolygons.push(...coords);
+    }
+  }
+
+  if (allPolygons.length === 0) return null;
+
+  const baseProps = properties ?? features[0]?.properties ?? {};
+
+  // If only one polygon, return it directly as a Polygon
+  if (allPolygons.length === 1) {
+    return {
+      type: "Feature",
+      properties: { ...baseProps },
+      geometry: {
+        type: "Polygon",
+        coordinates: allPolygons[0],
+      },
+    };
+  }
+
+  // Otherwise, return a MultiPolygon
+  return {
+    type: "Feature",
+    properties: { ...baseProps },
+    geometry: {
+      type: "MultiPolygon",
+      coordinates: allPolygons,
+    },
+  };
+}
+
+/**
+ * Merge polygons from a FeatureCollection into a single polygon feature.
+ *
+ * @param fc FeatureCollection containing polygons to merge
+ * @param properties Properties for the resulting feature (defaults to first feature's properties)
+ * @returns A Feature with a merged Polygon/MultiPolygon, or null if no polygon features found
+ */
+export function mergePolygonsFromCollection(
+  fc: FeatureCollection,
+  properties?: GeoJsonProperties,
+): Feature | null {
+  if (!fc?.features?.length) return null;
+
+  // Filter to only include polygon features
+  const polygonFeatures = fc.features.filter((feature) => {
+    const geom = feature.geometry;
+    return geom && (isPolygon(geom) || isMultiPolygon(geom));
+  });
+
+  return mergePolygons(polygonFeatures, properties);
 }

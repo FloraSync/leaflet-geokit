@@ -3,6 +3,7 @@ import type {
   LeafletDrawMapElementAPI,
   MapConfig,
   DrawControlsConfig,
+  MeasurementSystem,
 } from "@src/types/public";
 import { createLogger, type Logger, type LogLevel } from "@src/utils/logger";
 import {
@@ -34,6 +35,7 @@ export class LeafletDrawMapElement
   private _logLevel: LogLevel = "debug";
   private _devOverlay = false;
   private _polygonAllowIntersection = false;
+  private _preferCanvas = true; // Default to Canvas for performance
 
   // Controller
   private _controller: MapController | null = null;
@@ -52,6 +54,7 @@ export class LeafletDrawMapElement
         .map-container {
           width: 100%;
           height: 100%;
+          position: relative;
         }
       </style>
       <div class="map-container" part="map"></div>
@@ -81,6 +84,7 @@ export class LeafletDrawMapElement
       marker: this.hasAttribute("draw-marker"),
       edit: this.hasAttribute("edit-features"),
       delete: this.hasAttribute("delete-features"),
+      ruler: this.hasAttribute("draw-ruler"),
     };
   }
 
@@ -98,6 +102,7 @@ export class LeafletDrawMapElement
       logLevel: this._logLevel,
       devOverlay: this._devOverlay,
       polygonAllowIntersection: this._polygonAllowIntersection,
+      preferCanvas: this._preferCanvas,
     };
   }
 
@@ -154,7 +159,6 @@ export class LeafletDrawMapElement
       this._controller = null;
     }
   }
-
   // Observed attributes and reflection
   static get observedAttributes(): string[] {
     return [
@@ -168,12 +172,14 @@ export class LeafletDrawMapElement
       "read-only",
       "log-level",
       "dev-overlay",
+      "prefer-canvas",
       // draw controls
       "draw-polygon",
       "draw-polyline",
       "draw-rectangle",
       "draw-circle",
       "draw-marker",
+      "draw-ruler",
       "edit-features",
       "delete-features",
       "polygon-allow-intersection",
@@ -222,6 +228,9 @@ export class LeafletDrawMapElement
       case "polygon-allow-intersection":
         this._polygonAllowIntersection = value !== null;
         break;
+      case "prefer-canvas":
+        this._preferCanvas = value !== null;
+        break;
       default:
         break;
     }
@@ -243,6 +252,7 @@ export class LeafletDrawMapElement
         name === "read-only" ||
         name === "dev-overlay" ||
         name === "log-level" ||
+        name === "prefer-canvas" ||
         name.startsWith("draw-") ||
         name === "edit-features" ||
         name === "delete-features"
@@ -335,6 +345,14 @@ export class LeafletDrawMapElement
     this._booleanReflect("dev-overlay", this._devOverlay);
   }
 
+  get preferCanvas(): boolean {
+    return this._preferCanvas;
+  }
+  set preferCanvas(v: boolean) {
+    this._preferCanvas = Boolean(v);
+    this._booleanReflect("prefer-canvas", this._preferCanvas);
+  }
+
   // Public API methods (delegating to controller)
   async getGeoJSON(): Promise<FeatureCollection> {
     this._logger.debug("getGeoJSON");
@@ -418,6 +436,48 @@ export class LeafletDrawMapElement
     const detail = { geoJSON: fc, featureCount: fc.features.length };
     this.dispatchEvent(new CustomEvent("leaflet-draw:export", { detail }));
     return fc;
+  }
+
+  /**
+   * Merge all visible polygon layers into a single polygon.
+   * This removes the original polygon features and adds a new merged feature.
+   *
+   * @param options Optional configuration for the merge operation
+   * @returns Promise resolving to the ID of the newly created merged feature, or null if no polygons to merge
+   */
+  async mergePolygons(options?: {
+    properties?: Record<string, any>;
+  }): Promise<string | null> {
+    this._logger.debug("mergePolygons");
+    if (!this._controller) return null;
+
+    // Get current state before merge for event detail
+    const preState = await this._controller.getGeoJSON();
+    const preCount = preState.features.length;
+
+    // Perform the merge operation
+    const newFeatureId = await this._controller.mergeVisiblePolygons(options);
+
+    if (newFeatureId) {
+      // Get state after merge to provide in the event
+      const postState = await this._controller.getGeoJSON();
+      const detail = {
+        id: newFeatureId,
+        mergedFeatureCount: preCount - postState.features.length + 1,
+        geoJSON: postState,
+      };
+
+      // Dispatch event to notify listeners
+      this.dispatchEvent(new CustomEvent("leaflet-draw:merged", { detail }));
+    }
+
+    return newFeatureId;
+  }
+
+  async setMeasurementUnits(system: MeasurementSystem): Promise<void> {
+    this._logger.debug("setMeasurementUnits", { system });
+    if (!this._controller) return;
+    this._controller.setRulerUnits(system);
   }
 
   async loadGeoJSONFromUrl(url: string): Promise<void> {
