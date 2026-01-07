@@ -18,6 +18,14 @@ describe("LeafletDrawMapElement (scaffold)", () => {
     expect(ctor).toBeInstanceOf(Function);
   });
 
+  it("observes the layer-cake draw attribute", () => {
+    const ctor: any = customElements.get(TAG);
+    expect(ctor.observedAttributes).toContain("draw-layer-cake");
+    const el: any = document.createElement(TAG);
+    el.setAttribute("draw-layer-cake", "");
+    expect(el._controlsFromAttributes().cake).toBe(true);
+  });
+
   it("reflects basic attributes to properties", () => {
     el.setAttribute("latitude", "51.5");
     el.setAttribute("longitude", "-0.12");
