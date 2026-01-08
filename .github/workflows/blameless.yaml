@@ -8,4 +8,4 @@ jobs:
     with:
       base_ref: main
     secrets:
-      github_token: ${{ secrets.GITHUB_TOKEN }}
+      github_token: ${{ secrets.ci_token }}
