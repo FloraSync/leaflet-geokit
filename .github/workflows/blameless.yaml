@@ -1,0 +1,11 @@
+name: Add Co-Author On PR Approval
+on:
+  pull_request_review:
+    types: [submitted]
+jobs:
+  add-coauthor:
+    uses: shoe-point-0/blameless/.github/workflows/reusable-add-coauthor-on-approval.yml@v1
+    with:
+      base_ref: main
+    secrets:
+      github_token: ${{ secrets.GITHUB_TOKEN }}
