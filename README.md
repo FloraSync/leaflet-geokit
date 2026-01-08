@@ -387,7 +387,6 @@ Versioning and releases
 
 - Types shipped in dist/types
 - Keep a Changelog in CHANGELOG.md (to be populated during releases)
-
 ---
 
 ## License
