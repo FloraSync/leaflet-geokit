@@ -367,10 +367,6 @@ Accessibility
 - Keyboard navigation and zoom are Leaflet-provided. Consider documenting shortcuts in your app.
 - Host element applies modern focus/shape defaults; restyle as desired.
 
-SSR
-
-- This is a browser-only custom element. If importing in SSR, gate the import to client-side only.
-
 ---
 
 ## Roadmap and versioning
