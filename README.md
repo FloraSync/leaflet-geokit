@@ -60,7 +60,7 @@ Inside this package directory:
 
 - npm install
 - npm run dev — starts Vite dev server
-- Open [index.html](index.html) to exercise the component during development
+- Open http://localhost:5173 in the browser (or whatever port VITE is using
 
 For consumption from another app:
 
