@@ -25,7 +25,6 @@ export function normalizeId(feature: Feature): string | undefined {
 /**
  * Callback function for processing a single coordinate position
  */
-// eslint-disable-next-line no-unused-vars
 export type CoordinateProcessor = (coord: Position) => void;
 
 /**

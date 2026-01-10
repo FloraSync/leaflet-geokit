@@ -125,8 +125,14 @@ function bakeRingFeature(args: {
   layerIndex: number;
   steps: number;
 }): GeoJSON.Feature {
-  const { id, center, radiusOuterMeters, radiusInnerMeters, layerIndex, steps } =
-    args;
+  const {
+    id,
+    center,
+    radiusOuterMeters,
+    radiusInnerMeters,
+    layerIndex,
+    steps,
+  } = args;
   const outer = ensureWinding(
     circleToRing(center, radiusOuterMeters, steps),
     false,
@@ -190,4 +196,3 @@ export function bakeLayerCake(
 
   return { type: "FeatureCollection", features };
 }
-

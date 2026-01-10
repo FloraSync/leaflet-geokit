@@ -1,6 +1,6 @@
-# Contributing to leaflet-draw-web-component
+# Contributing to @florasync/leaflet-geokit
 
-Welcome! We had an epic pairing session getting this into great shape. This doc captures how to keep the momentum going—with kindness, clarity, and a high bar for quality.
+Welcome! This doc captures how to keep the momentum going—with kindness, clarity, and a high bar for quality.
 
 ## Good Vibes Policy
 

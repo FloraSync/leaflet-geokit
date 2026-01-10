@@ -13,8 +13,8 @@ export default defineConfig({
     sourcemap: true,
     lib: {
       entry: resolve(__dirname, "src/index.ts"),
-      name: "LeafletDrawWebComponent",
-      fileName: (format: string) => `leaflet-draw-web-component.${format}.js`,
+      name: "LeafletGeoKit",
+      fileName: (format: string) => `leaflet-geokit.${format}.js`,
       formats: ["es", "umd"],
     },
     rollupOptions: {

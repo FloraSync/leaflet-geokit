@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# Builds
+dist/
+build/
+.cache/
+.vite/
+
+# Tests
+coverage/
+test-results/
+playwright-report/
+
+# Local tools
+.npm-cache/
+.letta/
+

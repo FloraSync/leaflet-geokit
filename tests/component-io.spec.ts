@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import "@src/index";
 
-const TAG = "leaflet-draw-map";
+const TAG = "leaflet-geokit";
 
 describe("LeafletDrawMapElement — IO helpers", () => {
   it("loadGeoJSONFromText dispatches error on invalid JSON", async () => {

@@ -1,26 +1,38 @@
 {
-  "name": "leaflet-draw-web-component",
+  "name": "@florasync/leaflet-geokit",
   "version": "0.1.0",
   "description": "Framework-agnostic Leaflet + Leaflet.draw web component with TypeScript, verbose logging, and tests.",
   "type": "module",
-  "main": "./dist/leaflet-draw-web-component.umd.js",
-  "module": "./dist/leaflet-draw-web-component.es.js",
+  "main": "./dist/leaflet-geokit.umd.js",
+  "module": "./dist/leaflet-geokit.es.js",
   "types": "./dist/types/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/types/index.d.ts",
-      "import": "./dist/leaflet-draw-web-component.es.js",
-      "require": "./dist/leaflet-draw-web-component.umd.js"
+      "import": "./dist/leaflet-geokit.es.js",
+      "require": "./dist/leaflet-geokit.umd.js"
     }
   },
   "files": [
     "dist",
+    "LICENSE",
     "README.md",
     "CHANGELOG.md"
   ],
   "sideEffects": [
     "**/*.css"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FloraSync/leaflet-geokit.git"
+  },
+  "bugs": {
+    "url": "https://github.com/FloraSync/leaflet-geokit/issues"
+  },
+  "homepage": "https://github.com/FloraSync/leaflet-geokit#readme",
   "scripts": {
     "dev": "vite",
     "build": "tsc -p tsconfig.json --emitDeclarationOnly && vite build",
@@ -45,9 +57,10 @@
     "web-component",
     "geojson",
     "preact",
+    "geokit",
     "typescript"
   ],
-  "author": "Schuyler Ankele",
+  "author": "FloraSync",
   "license": "MIT",
   "engines": {
     "node": ">=20",

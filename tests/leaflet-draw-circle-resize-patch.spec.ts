@@ -34,4 +34,3 @@ describe("Leaflet.draw strict-mode patches", () => {
     expect(setRadius).toHaveBeenCalledWith(123);
   });
 });
-

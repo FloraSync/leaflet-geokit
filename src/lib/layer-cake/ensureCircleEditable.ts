@@ -13,4 +13,3 @@ export function ensureCircleEditable(circle: L.Circle): void {
     options.editing = { ...options };
   }
 }
-

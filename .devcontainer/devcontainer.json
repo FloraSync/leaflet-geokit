@@ -1,5 +1,5 @@
 {
-  "name": "leaflet-draw-web-component — Dev",
+  "name": "@florasync/leaflet-geokit — Dev",
   "build": {
     "dockerfile": "../docker/Dockerfile.devcontainer",
     "context": ".."

@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+.npm-cache/
 
 # Builds
 /dist/
@@ -19,6 +20,7 @@ yarn-error.log*
 
 # Env
 .env*
+!.env.example
 
 # OS/Editor
 .DS_Store

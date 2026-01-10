@@ -6,7 +6,16 @@ import globals from "globals";
 
 export default [
   {
-    ignores: ["dist/**", "node_modules/**"],
+    ignores: [
+      "dist/**",
+      "node_modules/**",
+      "coverage/**",
+      "test-results/**",
+      "playwright-report/**",
+      ".npm-cache/**",
+      ".letta/**",
+      "test-data/**",
+    ],
   },
   js.configs.recommended,
   {
@@ -29,7 +38,8 @@ export default [
     },
     rules: {
       // Disable base JS rules in favor of TypeScript-specific rules
-      // "no-unused-vars": "off", // Disable in favor of @typescript-eslint/no-unused-vars
+      "no-undef": "off",
+      "no-unused-vars": "off",
       // "no-empty": ["error", { allowEmptyCatch: true }], // Allow empty catch blocks
 
       // TypeScript-specific rules
