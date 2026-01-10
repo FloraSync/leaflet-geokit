@@ -21,7 +21,7 @@ export class LeafletDrawMapElement
   private _container: HTMLDivElement;
 
   // Logging
-  private _logger: Logger = createLogger("component:leaflet-draw", "debug");
+  private _logger: Logger = createLogger("component:leaflet-geokit", "debug");
 
   // Internal state mirrors for attributes/properties
   private _latitude = 0;

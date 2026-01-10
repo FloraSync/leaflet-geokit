@@ -1,12 +1,12 @@
-# ARCHITECTURE: Leaflet Draw Web Component
+# ARCHITECTURE: Leaflet GeoKit
 
 This document specifies the end-to-end architecture for a framework-agnostic, TypeScript-first web component for Leaflet + Leaflet.draw. It aligns with the initial plan in [implementation_plan.md](implementation_plan.md:1) and incorporates the approved decisions (Preset B).
 
 ## Decisions snapshot
 
 - Name and directory
-  - Package name: leaflet-draw-web-component
-  - Location: packages/leaflet-draw-web-component
+  - Package name: @florasync/leaflet-geokit
+  - Location: repo root
 - Bundling
   - Bundle leaflet and leaflet-draw JS/CSS into the library (no peer deps)
   - Inject styling into Shadow DOM
@@ -218,11 +218,11 @@ Event detail types live in [events.ts](src/types/events.ts:1) and are documented
   - Include CSS via Vite CSS handling; inject into Shadow DOM at runtime
   - Ensure asset URLs for Leaflet markers are imported via [leaflet-assets.ts](src/lib/leaflet-assets.ts:1) and wired through L.Icon.Default
   - Build target: es2019
-  - Define exports fileName: 'leaflet-draw-web-component'
+  - Define exports fileName: 'leaflet-geokit'
 - [package.json](package.json:1)
   - "type": "module"
-  - "main": "./dist/leaflet-draw-web-component.umd.js"
-  - "module": "./dist/leaflet-draw-web-component.es.js"
+  - "main": "./dist/leaflet-geokit.umd.js"
+  - "module": "./dist/leaflet-geokit.es.js"
   - "types": "./dist/types/index.d.ts"
   - "exports" mapping for import/require and types
   - "sideEffects": ["**/*.css"] to preserve CSS

@@ -29,12 +29,12 @@ prompt_secret() {
 }
 
 main() {
-  banner "Leaflet Draw Web Component • Publisher"
+  banner "Leaflet GeoKit • Publisher"
   echo "This container will help you prep, dry-run, and optionally publish to npm, and push to GitHub."
 
   if [[ ! -f package.json ]]; then
     echo "Error: package.json not found. Mount the repo into /app, e.g.:"
-    echo "  docker run -it --rm -v \"$PWD\":/app ldwc-publisher"
+    echo "  docker run -it --rm -v \"$PWD\":/app leaflet-geokit-publisher"
     exit 1
   fi
 

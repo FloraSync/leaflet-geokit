@@ -1,4 +1,3 @@
-/* eslint-disable no-unused-vars */
 import type { Feature, FeatureCollection, Geometry } from "geojson";
 import type { LogLevel } from "@src/utils/logger";
 

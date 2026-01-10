@@ -1,6 +1,6 @@
 **Scope**
 
-- Repository: `packages/leaflet-draw-web-component`
+- Repository: `@florasync/leaflet-geokit` (repo root)
 - Component: `<leaflet-draw-map>` custom element, Leaflet + Leaflet.draw bridge, Feature store, build config
 
 **Summary**

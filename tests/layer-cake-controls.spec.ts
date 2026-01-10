@@ -61,4 +61,3 @@ describe("bindCakeControls", () => {
     expect(parentSpy).not.toHaveBeenCalled();
   });
 });
-

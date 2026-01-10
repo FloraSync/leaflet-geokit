@@ -26,4 +26,3 @@ export function registerLayerCakeTool(): void {
 
   patched = true;
 }
-

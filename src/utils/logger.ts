@@ -1,6 +1,5 @@
 export type LogLevel = "trace" | "debug" | "info" | "warn" | "error" | "silent";
 
-/* eslint-disable no-unused-vars */
 export interface Logger {
   level: LogLevel;
   trace: (...args: unknown[]) => void;
@@ -11,7 +10,6 @@ export interface Logger {
   child: (childName: string) => Logger;
   setLevel: (level: LogLevel) => void;
 }
-/* eslint-enable no-unused-vars */
 
 const levelWeight: Record<Exclude<LogLevel, "silent">, number> = {
   trace: 10,
@@ -53,7 +51,7 @@ export function createLogger(
         if (!shouldLog(currentLevel, lvl)) return;
         const prefix = `[${nowISO()}][${name}][${lvl.toUpperCase()}]`;
         // Route to appropriate console method if exists, otherwise fallback to console.log
-        const method = (sink as any)[lvl] as  // eslint-disable-next-line no-unused-vars
+        const method = (sink as any)[lvl] as
           | ((...args: unknown[]) => void)
           | undefined;
         if (typeof method === "function") {

@@ -27,19 +27,14 @@ import {
 let rulerPrecisionPatched = false;
 
 export interface MapControllerCallbacks {
-  // eslint-disable-next-line no-unused-vars
   onReady?: (detail: { bounds?: [[number, number], [number, number]] }) => void;
-  // eslint-disable-next-line no-unused-vars
   onCreated?: (detail: {
     id: string;
     layerType: "polygon" | "polyline" | "rectangle" | "circle" | "marker";
     geoJSON: Feature;
   }) => void;
-  // eslint-disable-next-line no-unused-vars
   onEdited?: (detail: { ids: string[]; geoJSON: FeatureCollection }) => void;
-  // eslint-disable-next-line no-unused-vars
   onDeleted?: (detail: { ids: string[]; geoJSON: FeatureCollection }) => void;
-  // eslint-disable-next-line no-unused-vars
   onError?: (detail: { message: string; cause?: unknown }) => void;
 }
 
@@ -76,9 +71,8 @@ export class MapController {
   private measurementModalRadios: Partial<
     Record<MeasurementSystem, HTMLInputElement>
   > = {};
-  private measurementModalKeydownHandler:
-    | ((e: KeyboardEvent) => void) // eslint-disable-line no-unused-vars
-    | null = null;
+  private measurementModalKeydownHandler: ((e: KeyboardEvent) => void) | null =
+    null;
 
   // Detacher for our polygon close-on-first-vertex patch
   private detachPolygonFinishPatch: (() => void) | null = null;
@@ -878,7 +872,10 @@ export class MapController {
         this._shape.setRadius(radius);
 
         try {
-          if (this._map?.editTooltip && this._map?._editTooltip?.updateContent) {
+          if (
+            this._map?.editTooltip &&
+            this._map?._editTooltip?.updateContent
+          ) {
             this._map._editTooltip.updateContent({
               text:
                 anyL.drawLocal.edit.handlers.edit.tooltip.subtext +

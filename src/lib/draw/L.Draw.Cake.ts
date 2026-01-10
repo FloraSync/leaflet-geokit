@@ -21,4 +21,3 @@ export class DrawCake extends (L as any).Draw.Circle {
 }
 
 (L as any).Draw.Cake = DrawCake;
-

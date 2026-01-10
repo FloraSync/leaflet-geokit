@@ -15,4 +15,3 @@ describe("ensureCircleEditable", () => {
     expect(circle.options.editing.color).toBe("red");
   });
 });
-

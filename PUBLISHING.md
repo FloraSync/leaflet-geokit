@@ -6,7 +6,7 @@ This project is set up to publish a ready‑to‑use bundle and TypeScript types
 
 - An npm account with 2FA (recommended)
 - Node 22 LTS or 24.x
-- You own/control the target package name (e.g., `leaflet-draw-web-component` or a scoped name like `@yourname/leaflet-draw-web-component`).
+- You own/control the target package name (e.g., `@florasync/leaflet-geokit`).
 
 ## 1) Update package.json fields
 
@@ -32,8 +32,8 @@ npm run pack:dry   # shows what will be published
 
 You should see:
 
-- `dist/leaflet-draw-web-component.es.js`
-- `dist/leaflet-draw-web-component.umd.js`
+- `dist/leaflet-geokit.es.js`
+- `dist/leaflet-geokit.umd.js`
 - `dist/types/**/*.d.ts`
 - `README.md`
 
@@ -44,20 +44,23 @@ npm login
 npm publish --access public
 ```
 
-For scoped packages (e.g., `@yourname/pkg`), `--access public` is required the first time.
+For scoped packages (e.g., `@florasync/leaflet-geokit`), `--access public` is required the first time.
+
+## Optional: Publish via GitHub Actions (main only)
+
+- Add `NPM_TOKEN` as a GitHub Actions secret (an npm access token with publish rights for `@florasync`).
+- Run the `Publish (npm)` workflow (`.github/workflows/npm-publish.yml`) on the `main` branch.
+- The workflow bumps the **minor** version, publishes to npm, then pushes the version commit + tag back to `main`.
 
 ## 4) Verify install as a consumer
 
 In a fresh project or codesandbox:
 
 ```ts
-import "leaflet-draw-web-component";
-
-// or with a scoped name
-// import '@yourname/leaflet-draw-web-component';
+import "@florasync/leaflet-geokit";
 
 // Then use the custom element in HTML
-// <leaflet-draw-map ...></leaflet-draw-map>
+// <leaflet-geokit ...></leaflet-geokit>
 ```
 
 ## Notes
@@ -73,13 +76,13 @@ import "leaflet-draw-web-component";
 Build the publisher image once:
 
 ```bash
-docker build -f docker/Dockerfile.publisher -t ldwc-publisher .
+docker build -f docker/Dockerfile.publisher -t leaflet-geokit-publisher .
 ```
 
 Run it with the repo mounted (interactive prompts included):
 
 ```bash
-docker run -it --rm -v "$PWD":/app ldwc-publisher
+docker run -it --rm -v "$PWD":/app leaflet-geokit-publisher
 ```
 
 This will:

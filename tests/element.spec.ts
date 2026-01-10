@@ -3,7 +3,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 // Importing our custom element will register it with customElements
 import "@src/index";
 
-const TAG = "leaflet-draw-map";
+const TAG = "leaflet-geokit";
 
 describe("LeafletDrawMapElement (scaffold)", () => {
   let el: any;

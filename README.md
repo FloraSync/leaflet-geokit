@@ -1,4 +1,4 @@
-# leaflet-draw-web-component
+# @florasync/leaflet-geokit
 
 A framework-agnostic, TypeScript-first Web Component that wraps Leaflet and Leaflet.draw to provide a beautiful, stateful, embeddable GeoJSON editor. Ships as a Vite library (ESM + UMD), bundles Leaflet/Draw assets, injects CSS into Shadow DOM, exposes a clean attributes/events/methods API, and includes verbose, structured logging for first-class diagnostics.
 
@@ -38,7 +38,7 @@ Documentation quick-links
 
 ## What you get
 
-- A self-contained custom element, <leaflet-draw-map>, that:
+- A self-contained custom element, <leaflet-geokit>, that:
   - Renders a Leaflet map inside Shadow DOM
   - Configures Leaflet.draw tools via boolean attributes
   - Injects Leaflet and Leaflet.draw CSS automatically
@@ -65,7 +65,8 @@ Inside this package directory:
 For consumption from another app:
 
 - Add this package as a dependency
-- Import the ESM bundle and ensure the element is sized via CSS (it does not self-size)
+- `npm install @florasync/leaflet-geokit`
+- `import "@florasync/leaflet-geokit";` and ensure the element is sized via CSS (it does not self-size)
 
 ---
 
@@ -75,8 +76,8 @@ Tooling
 
 - Build: Vite (library mode), target: ES2019
 - Outputs:
-  - dist/leaflet-draw-web-component.es.js (ESM)
-  - dist/leaflet-draw-web-component.umd.js (UMD)
+  - dist/leaflet-geokit.es.js (ESM)
+  - dist/leaflet-geokit.umd.js (UMD)
   - dist/types/\*\* (TypeScript declaration files)
 - Bundles Leaflet and Leaflet.draw by default
 - CSS/Assets handled by Vite and injected into Shadow DOM at runtime
@@ -89,7 +90,7 @@ Scripts (see [package.json](package.json))
 - npm run typecheck — TypeScript noEmit
 - npm run lint — ESLint (strict TS rules)
 - npm run format — Prettier write
-- npm run test:e2e — placeholder; e2e specs are not included in this repo yet
+- npm run test:e2e — Playwright (currently a minimal smoke test under e2e/)
 
 Browser support
 
@@ -195,7 +196,7 @@ A. Basic HTML, served by Vite (development)
 
 ```html
 <style>
-  leaflet-draw-map {
+  leaflet-geokit {
     display: block;
     width: 100%;
     height: 500px;
@@ -203,7 +204,7 @@ A. Basic HTML, served by Vite (development)
 </style>
 <script type="module" src="/src/index.ts"></script>
 
-<leaflet-draw-map
+<leaflet-geokit
   latitude="39.7392"
   longitude="-104.9903"
   zoom="11"
@@ -217,10 +218,10 @@ A. Basic HTML, served by Vite (development)
   edit-features
   delete-features
   log-level="debug"
-></leaflet-draw-map>
+></leaflet-geokit>
 
 <script type="module">
-  const el = document.querySelector("leaflet-draw-map");
+  const el = document.querySelector("leaflet-geokit");
 
   el.addEventListener("leaflet-draw:ready", (e) =>
     console.log("READY", e.detail),
@@ -241,10 +242,10 @@ B. ESM consumption from another app (node_modules)
 
 ```js
 // main.ts
-import "leaflet-draw-web-component/dist/leaflet-draw-web-component.es.js";
+import "@florasync/leaflet-geokit";
 
 // later in DOM:
-const el = document.querySelector("leaflet-draw-map");
+const el = document.querySelector("leaflet-geokit");
 await el.loadGeoJSONFromUrl("/data/feature-collection.json");
 ```
 
@@ -302,13 +303,13 @@ el.addEventListener("leaflet-draw:edited", async (e) => {
 2. Read-only review mode
 
 ```html
-<leaflet-draw-map read-only></leaflet-draw-map>
+<leaflet-geokit read-only></leaflet-geokit>
 ```
 
 3. Alternate tile provider with attribution
 
 ```html
-<leaflet-draw-map
+<leaflet-geokit
   tile-url="https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png"
   tile-attribution="&copy; OSM contributors, Humanitarian style"
 />
@@ -330,9 +331,9 @@ el.addEventListener("leaflet-draw:edited", async (e) => {
 
 Logger namespaces:
 
-- component:leaflet-draw — element lifecycle, attribute changes, public methods
-- component:leaflet-draw:controller — controller init, draw events, CRUD, timings
-- component:leaflet-draw:controller:store — feature add/update/remove, bounds, ids
+- component:leaflet-geokit — element lifecycle, attribute changes, public methods
+- component:leaflet-geokit:controller — controller init, draw events, CRUD, timings
+- component:leaflet-geokit:controller:store — feature add/update/remove, bounds, ids
 
 Control verbosity:
 
@@ -358,7 +359,7 @@ Troubleshooting checklist:
 Performance
 
 - **Canvas Rendering (Default)**: The component uses Canvas rendering by default (prefer-canvas="true"), which provides significantly better performance than SVG when displaying large numbers of features or complex polygons. Canvas uses a single canvas element instead of individual DOM elements for each feature, reducing DOM overhead and improving rendering speed.
-- To switch to SVG rendering (e.g., for better print quality or specific styling needs), remove the prefer-canvas attribute or set it explicitly: `<leaflet-draw-map prefer-canvas="false">`.
+- To switch to SVG rendering (e.g., for better print quality or specific styling needs), remove the prefer-canvas attribute or set it explicitly: `<leaflet-geokit prefer-canvas="false">`.
 - L.geoJSON is adequate for small/medium collections. For very large datasets (thousands of features), consider server-side tiling or clustering (not included).
 - fitBoundsToData uses padding to reduce cramped framing; tune via method arg.
 

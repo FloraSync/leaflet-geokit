@@ -244,16 +244,16 @@ export class LayerCakeManager {
     const tooltip = (activeCircle as any).getTooltip?.();
     if (tooltip) {
       activeCircle.setTooltipContent(labelText);
-      
+
       // Position tooltip on the LEFT (West) side to avoid toolbar at NorthEast
       const bounds = activeCircle.getBounds();
       const westPoint = bounds.getSouthWest();
       westPoint.lat = activeCircle.getLatLng().lat; // Center it vertically
-      
+
       tooltip.options.direction = "left";
       tooltip.options.offset = [-10, 0];
       tooltip.setLatLng(westPoint);
-      
+
       // Ensure tooltip is open and visible during editing
       activeCircle.closeTooltip();
       activeCircle.openTooltip();
