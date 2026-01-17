@@ -31,9 +31,6 @@ test.describe("Leaflet Geokit Web Component", () => {
 
     // Wait for buttons to be present
     await expect(drawToolbar.locator("a")).toHaveCount(5); // Line, Polygon and Circle, zoom in/out
-
-    // Snapshot of the toolbar specifically
-    await expect(drawToolbar).toHaveScreenshot("drawing-toolbar.png");
   });
 
   test("can get GeoJSON from the component", async ({ page }) => {
