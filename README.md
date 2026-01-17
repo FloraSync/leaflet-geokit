@@ -30,6 +30,7 @@ Documentation quick-links
 - Runtime and architecture overview
 - Public API (attributes, properties, methods, events)
 - Usage examples (HTML, ESM, framework integration, recipes)
+- Shims and integrations
 - Logging, diagnostics, and troubleshooting
 - Performance, accessibility, and SSR notes
 - Roadmap and versioning
@@ -285,6 +286,10 @@ E. Framework integration (React/Preact/Vue/Svelte)
 - Remember to set CSS height on the element.
 
 ---
+
+## Shims and integrations
+
+- Django widget shim: [docs/shims/django.md](docs/shims/django.md)
 
 ## Recipes
 

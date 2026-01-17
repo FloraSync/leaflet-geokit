@@ -11,11 +11,19 @@ export default defineConfig({
       enabled: true,
       reporter: ["html", "text-summary"], // Generates both HTML and console summary reports
       thresholds: {
-        statements: 60,
-        branches: 60,
-        functions: 60,
-        lines: 60,
+        // Shore up testing to keep it above 75%
+        statements: 75,
+        branches: 75, // Branches are currently at 77%, let's be slightly conservative
+        functions: 75,
+        lines: 75,
       },
+      exclude: [
+        "playwright.config.ts",
+        "node_modules/**",
+        "dist/**",
+        "e2e/**",
+        "tests/**",
+      ],
     },
   },
   resolve: {

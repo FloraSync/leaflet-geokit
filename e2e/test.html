@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Leaflet Geokit Vanilla</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 20px;
+        font-family: sans-serif;
+      }
+      #map-container {
+        height: 500px;
+        width: 100%;
+        border: 1px solid #ccc;
+      }
+      leaflet-geokit {
+        display: block;
+        height: 100%;
+        width: 100%;
+      }
+      .controls {
+        margin-top: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Leaflet Geokit Vanilla Test</h1>
+    <div id="map-container">
+      <leaflet-geokit
+        id="map"
+        latitude="45.523062"
+        longitude="-122.676482"
+        zoom="13"
+        draw-polygon
+        draw-circle
+        edit-features
+        delete-features
+      ></leaflet-geokit>
+    </div>
+    <div class="controls">
+      <button id="get-geojson">Get GeoJSON</button>
+      <pre id="output"></pre>
+    </div>
+
+    <script type="module">
+      import "/src/index.ts";
+
+      const map = document.getElementById("map");
+      const btn = document.getElementById("get-geojson");
+      const output = document.getElementById("output");
+
+      map.addEventListener("leaflet-draw:ready", () => {
+        console.log("Map is ready");
+        window.mapReady = true;
+      });
+
+      btn.addEventListener("click", async () => {
+        const geojson = await map.getGeoJSON();
+        output.textContent = JSON.stringify(geojson, null, 2);
+      });
+    </script>
+  </body>
+</html>

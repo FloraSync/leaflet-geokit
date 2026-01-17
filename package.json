@@ -11,6 +11,10 @@
       "types": "./dist/types/index.d.ts",
       "import": "./dist/leaflet-geokit.es.js",
       "require": "./dist/leaflet-geokit.umd.js"
+    },
+    "./django": {
+      "types": "./dist/types/django/index.d.ts",
+      "import": "./dist/django/index.js"
     }
   },
   "files": [
@@ -35,7 +39,7 @@
   "homepage": "https://github.com/FloraSync/leaflet-geokit#readme",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -p tsconfig.json --emitDeclarationOnly && vite build",
+    "build": "tsc -p tsconfig.json --emitDeclarationOnly && vite build && vite build -c vite.config.django.ts",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
