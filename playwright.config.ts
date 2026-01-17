@@ -12,9 +12,12 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   use: {
     trace: "on-first-retry",
-    vite: {
-      configFile: resolve(__dirname, "vite.config.e2e.ts"),
-    },
+    baseURL: "http://localhost:5173",
+  },
+  webServer: {
+    command: "npm run dev",
+    port: 5173,
+    reuseExistingServer: !process.env.CI,
   },
   projects: [
     {
