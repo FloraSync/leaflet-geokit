@@ -1,0 +1,40 @@
+/* Dark mode skin for E2E testing */
+:host {
+  color-scheme: dark;
+}
+
+.leaflet-container {
+  background-color: #30435b;
+}
+
+.leaflet-bar a,
+.leaflet-draw-toolbar a {
+  background-color: #1f2933 !important;
+  border-color: #db8dfa !important;
+  color: rgb(252, 167, 39) !important;
+}
+
+.leaflet-bar a:hover,
+.leaflet-draw-toolbar a:hover {
+  background-color: #6f59a1 !important;
+}
+
+.leaflet-draw-toolbar a.leaflet-disabled {
+  background-color: #141a21 !important;
+  color: #5b6570 !important;
+}
+
+.leaflet-control-attribution {
+  color: #9aa5b1;
+  background: rgba(5, 8, 12, 0.8);
+}
+
+.leaflet-control-zoom-in,
+.leaflet-control-zoom-out {
+  color: #f5f7fa !important;
+}
+
+.leaflet-control-layers {
+  background-color: #3b83ca !important;
+  color: #f5f7fa !important;
+}

@@ -35,6 +35,39 @@ describe("LeafletDrawMapElement (scaffold)", () => {
     expect(el.zoom).toBe(10);
   });
 
+  it("applies theme url and theme css inside Shadow DOM", () => {
+    el.setAttribute("theme-url", "https://example.com/theme.css");
+    const themeLink = el.shadowRoot?.querySelector(
+      "link[data-geokit-theme-url]",
+    ) as HTMLLinkElement | null;
+    expect(themeLink?.getAttribute("href")).toBe(
+      "https://example.com/theme.css",
+    );
+
+    el.themeCss = ".leaflet-container { background: red; }";
+    const themeStyle = el.shadowRoot?.querySelector(
+      "style[data-geokit-theme-css]",
+    ) as HTMLStyleElement | null;
+    expect(themeStyle?.textContent).toContain("background: red");
+
+    el.setAttribute("theme-url", "https://example.com/next.css");
+    expect(themeLink?.getAttribute("href")).toBe(
+      "https://example.com/next.css",
+    );
+
+    el.removeAttribute("theme-url");
+    const themeLinkAfter = el.shadowRoot?.querySelector(
+      "link[data-geokit-theme-url]",
+    );
+    expect(themeLinkAfter).toBeNull();
+
+    el.themeCss = "";
+    const themeStyleAfter = el.shadowRoot?.querySelector(
+      "style[data-geokit-theme-css]",
+    );
+    expect(themeStyleAfter).toBeNull();
+  });
+
   it("boolean attributes toggle correctly", () => {
     el.setAttribute("read-only", "");
     expect(el.readOnly).toBe(true);

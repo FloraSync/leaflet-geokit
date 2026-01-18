@@ -55,6 +55,7 @@ export interface LeafletDrawMapElementAPI {
   readOnly: boolean;
   logLevel: LogLevel;
   devOverlay: boolean;
+  themeCss: string;
 
   // Methods
   getGeoJSON(): Promise<FeatureCollection>;

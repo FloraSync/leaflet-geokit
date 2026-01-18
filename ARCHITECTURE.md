@@ -79,6 +79,7 @@ All interactions occur via the Custom Element host [LeafletDrawMapElement](src/c
   - read-only (boolean)
   - log-level: "trace" | "debug" | "info" | "warn" | "error" | "silent"
   - dev-overlay (boolean; reserved for future)
+  - theme-url (string, optional): external CSS to inject into Shadow DOM
 
 Attributes reflect to typed properties defined on [LeafletDrawMapElement](src/components/LeafletDrawMapElement.ts:1).
 
@@ -94,6 +95,7 @@ Attributes reflect to typed properties defined on [LeafletDrawMapElement](src/co
 - LeafletDrawMapElement.readOnly: boolean
 - LeafletDrawMapElement.logLevel: LogLevel
 - LeafletDrawMapElement.devOverlay: boolean
+- LeafletDrawMapElement.themeCss: string
 
 ### Methods
 
@@ -243,6 +245,7 @@ Event detail types live in [events.ts](src/types/events.ts:1) and are documented
   7. Dispatch 'leaflet-draw:ready' with initial bounds if data exists
 - CSS and icons
   - Import Leaflet and Leaflet.draw CSS as strings and inject inside Shadow DOM
+  - Apply theme overrides via theme-url (link) and themeCss (inline style) after defaults
   - Use [leaflet-assets.ts](src/lib/leaflet-assets.ts:1) to resolve default marker icons via URL imports
 - Data loading
   - On LeafletDrawMapElement.loadGeoJSON(): clear and add via FeatureStore.add(); it does not auto-fit

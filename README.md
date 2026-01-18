@@ -140,6 +140,7 @@ Attributes (string/boolean)
   - tile-url (string): tile URL template (default OSM)
   - tile-attribution (string, optional): attribution text
   - prefer-canvas (boolean): use Canvas rendering instead of SVG for better performance with large datasets; default true
+  - theme-url (string, optional): external CSS to inject into the component Shadow DOM
 - Controls (boolean; presence = enabled)
   - draw-polygon, draw-polyline, draw-rectangle, draw-circle, draw-layer-cake, draw-marker
   - edit-features, delete-features
@@ -161,6 +162,7 @@ Properties (runtime)
 - logLevel: 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'silent'
 - devOverlay: boolean
 - preferCanvas: boolean
+- themeCss: string
 
 Methods (Promise-based, invoked on the element instance)
 
@@ -329,6 +331,29 @@ el.addEventListener("leaflet-draw:edited", async (e) => {
 
 - At runtime, set el.logLevel = 'info' to reduce chatter.
 - If you need a different sink, wrap the element logic in your app and forward to your own logger (see [src/utils/logger.ts](src/utils/logger.ts)).
+
+6. Runtime theming (CSS injection)
+
+- Provide a theme stylesheet URL via the theme-url attribute.
+- Provide inline CSS overrides via the themeCss property.
+- Cascade order is: built-in Leaflet styles → theme-url → themeCss.
+- Updates are dynamic; changing theme-url or themeCss updates the Shadow DOM styles in place.
+
+```html
+<leaflet-geokit
+  theme-url="/themes/geokit-brand.css"
+  draw-polygon
+  edit-features
+></leaflet-geokit>
+```
+
+```js
+const el = document.querySelector("leaflet-geokit");
+el.themeCss = `
+  .leaflet-container { font-family: "Inter", sans-serif; }
+  .leaflet-draw-toolbar a { border-radius: 8px; }
+`;
+```
 
 ---
 
