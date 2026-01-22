@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as L from "leaflet";
 import { LayerCakeManager } from "@src/lib/layer-cake/LayerCakeManager";
 
@@ -160,5 +160,159 @@ describe("LayerCakeManager", () => {
     manager.destroy();
 
     expect(offSpy).toHaveBeenCalled();
+  });
+
+  it("handles editing setup failures gracefully", () => {
+    const manager = new LayerCakeManager(map, initialCircle, onSave);
+    
+    // Mock a circle with problematic editing property
+    const problematicCircle = L.circle([0, 0], { radius: 200 });
+    const mockEditing = {
+      enabled: vi.fn(() => false),
+      enable: vi.fn(() => { throw new Error("Editing failed"); }),
+      updateMarkers: vi.fn()
+    };
+    (problematicCircle as any).editing = mockEditing;
+    
+    // This should not throw even if editing setup fails (it's done in addLayer method)
+    expect(() => {
+      (manager as any).addLayer(problematicCircle);
+    }).not.toThrow();
+    
+    manager.destroy();
+  });
+
+  it("calculates delta labels correctly with inner neighbors", () => {
+    const manager = new LayerCakeManager(map, initialCircle, onSave);
+    
+    // Add multiple rings to create inner neighbors
+    manager.addRing(); // 150m
+    manager.addRing(); // 225m
+    
+    const circles: L.Circle[] = [];
+    map.eachLayer((l) => {
+      if (l instanceof L.Circle) circles.push(l as L.Circle);
+    });
+    
+    // Find the largest circle (should be 225m)
+    const largestCircle = circles.reduce((prev, curr) =>
+      prev.getRadius() > curr.getRadius() ? prev : curr
+    );
+    
+    // Update labels for the largest circle - this should trigger the delta calculation
+    (manager as any).updateLabels(largestCircle);
+    
+    // The tooltip should show both total and delta
+    const content = largestCircle.getTooltip()?.getContent();
+    expect(content).toContain("+");
+    expect(content).toContain("75 m"); // Delta from 150m to 225m
+    
+    manager.destroy();
+  });
+
+  it("handles listener cleanup errors during destroy", () => {
+    const manager = new LayerCakeManager(map, initialCircle, onSave);
+    
+    // Add a problematic detach function that throws
+    (manager as any).detachMapListeners.push(() => {
+      throw new Error("Cleanup failed");
+    });
+    
+    // Destroy should not throw even if listener cleanup fails
+    expect(() => manager.destroy()).not.toThrow();
+  });
+
+  it("renders controls asynchronously with setTimeout", async () => {
+    const manager = new LayerCakeManager(map, initialCircle, onSave);
+    
+    // The controls are rendered with setTimeout, so we need to wait
+    await new Promise(resolve => setTimeout(resolve, 10));
+    
+    // Check that controls group exists on the map
+    let hasControlsGroup = false;
+    map.eachLayer((layer) => {
+      if (layer === (manager as any).controlsGroup) {
+        hasControlsGroup = true;
+      }
+    });
+    expect(hasControlsGroup).toBe(true);
+    
+    manager.destroy();
+  });
+
+  it("tests event listener detachment with existing L.Draw setup", () => {
+    // Since L.Draw is already set up from the top of the file,
+    // this should create listeners that need to be detached
+    const manager = new LayerCakeManager(map, initialCircle, onSave);
+    
+    // The constructor should have set up event listeners if L.Draw.Event exists
+    // This covers the listener setup including line 124 (the EDITRESIZE detachment)
+    expect(() => {
+      manager.destroy();
+    }).not.toThrow();
+  });
+
+  it("uses setTimeout fallback when requestAnimationFrame is not available", async () => {
+    // Mock requestAnimationFrame to be undefined to trigger line 134
+    const originalRAF = global.requestAnimationFrame;
+    delete (global as any).requestAnimationFrame;
+    
+    const setTimeoutSpy = vi.spyOn(global, "setTimeout");
+    
+    const manager = new LayerCakeManager(map, initialCircle, onSave);
+    
+    // Trigger requestRenderControls to exercise the setTimeout fallback
+    (manager as any).requestRenderControls();
+    
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 0);
+    
+    // Restore requestAnimationFrame
+    global.requestAnimationFrame = originalRAF;
+    
+    // Wait for setTimeout to complete
+    await new Promise(resolve => setTimeout(resolve, 10));
+    
+    manager.destroy();
+  });
+
+  it("handles already-enabled editing state in addLayer", async () => {
+    const manager = new LayerCakeManager(map, initialCircle, onSave);
+    
+    // Create a circle with editing already enabled (lines 165-169)
+    const circle = L.circle([0, 0], { radius: 200 });
+    const mockEditing = {
+      enabled: vi.fn(() => true), // Return true to trigger early return on line 166
+      updateMarkers: vi.fn(),
+      enable: vi.fn()
+    };
+    (circle as any).editing = mockEditing;
+    
+    // Mock requestRenderControls to verify it gets called (line 167)
+    const requestRenderSpy = vi.spyOn(manager as any, "requestRenderControls");
+    
+    (manager as any).addLayer(circle);
+    
+    // Wait for setTimeout to execute
+    await new Promise(resolve => setTimeout(resolve, 10));
+    
+    expect(mockEditing.enabled).toHaveBeenCalled();
+    expect(mockEditing.updateMarkers).toHaveBeenCalled();
+    expect(requestRenderSpy).toHaveBeenCalled();
+    // Should not call enable() since editing is already enabled
+    expect(mockEditing.enable).not.toHaveBeenCalled();
+    
+    manager.destroy();
+  });
+
+  it("formats imperial distances with miles for large distances", () => {
+    // Test the imperial miles formatting path (line 16-18)
+    const largeCircle = L.circle([0, 0], { radius: 2000 }); // ~6562 feet > 5280
+    const manager = new LayerCakeManager(map, largeCircle, onSave, "imperial");
+    
+    // 2000 meters = ~6562 feet = ~1.24 miles
+    const content = largeCircle.getTooltip()?.getContent() as string;
+    expect(content).toMatch(/\d+\.\d+ mi$/);
+    
+    manager.destroy();
   });
 });

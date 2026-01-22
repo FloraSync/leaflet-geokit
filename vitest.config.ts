@@ -9,13 +9,13 @@ export default defineConfig({
     include: ["tests/**/*.{test,spec}.{ts,tsx}"],
     coverage: {
       enabled: true,
-      reporter: ["html", "text-summary"], // Generates both HTML and console summary reports
+      reporter: ["html", "text"], // Generates both HTML and console summary reports
       thresholds: {
         // Shore up testing to keep it above 75%
-        statements: 75,
-        branches: 75, // Branches are currently at 77%, let's be slightly conservative
-        functions: 75,
-        lines: 75,
+        statements: 85,
+        branches: 83, // Branches are currently at 77%, let's be slightly conservative
+        functions: 85,
+        lines: 85,
       },
       exclude: [
         "playwright.config.ts",
@@ -23,6 +23,11 @@ export default defineConfig({
         "dist/**",
         "e2e/**",
         "tests/**",
+        "eslint.config.js",
+        "vite.config*.ts",
+        "vitest.config.ts",
+        "src/types/*.d.ts",
+        "src/state/types.ts",
       ],
     },
   },

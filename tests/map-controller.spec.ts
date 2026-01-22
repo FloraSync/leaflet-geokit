@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as L from "leaflet";
 import { MapController } from "@src/lib/MapController";
 
@@ -135,5 +135,179 @@ describe("MapController", () => {
     controller.fitBoundsToData(0.1);
     expect(mapSpy).toHaveBeenCalled();
     controller.destroy();
+  });
+
+  describe("mergeVisiblePolygons", () => {
+    it("returns null when no polygons exist", async () => {
+      const controller = new MapController(opts);
+      await controller.init();
+      
+      // Mock getGeoJSON to return no features
+      vi.spyOn(controller, "getGeoJSON").mockResolvedValue({
+        type: "FeatureCollection",
+        features: []
+      });
+      
+      const result = await controller.mergeVisiblePolygons();
+      expect(result).toBeNull();
+      controller.destroy();
+    });
+
+    it("returns existing ID when only one polygon exists", async () => {
+      const controller = new MapController(opts);
+      await controller.init();
+      
+      const polygonFeature = {
+        type: "Feature" as const,
+        id: "test-polygon-id",
+        geometry: {
+          type: "Polygon" as const,
+          coordinates: [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]
+        },
+        properties: {}
+      };
+      
+      // Mock getGeoJSON to return one polygon
+      vi.spyOn(controller, "getGeoJSON").mockResolvedValue({
+        type: "FeatureCollection",
+        features: [polygonFeature]
+      });
+      
+      const result = await controller.mergeVisiblePolygons();
+      expect(result).toBe("test-polygon-id");
+      controller.destroy();
+    });
+
+    it("merges multiple polygons", async () => {
+      const controller = new MapController(opts);
+      await controller.init();
+      
+      const polygon1 = {
+        type: "Feature" as const,
+        id: "poly1",
+        geometry: {
+          type: "Polygon" as const,
+          coordinates: [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]
+        },
+        properties: { name: "first" }
+      };
+      
+      const polygon2 = {
+        type: "Feature" as const,
+        id: "poly2",
+        geometry: {
+          type: "Polygon" as const,
+          coordinates: [[[2, 2], [3, 2], [3, 3], [2, 3], [2, 2]]]
+        },
+        properties: { name: "second" }
+      };
+      
+      // Mock getGeoJSON to return multiple polygons
+      vi.spyOn(controller, "getGeoJSON").mockResolvedValue({
+        type: "FeatureCollection",
+        features: [polygon1, polygon2]
+      });
+      
+      // Mock removeFeature and addFeatures
+      const removeSpy = vi.spyOn(controller, "removeFeature").mockResolvedValue();
+      const addSpy = vi.spyOn(controller, "addFeatures").mockResolvedValue(["merged-id"]);
+      
+      const result = await controller.mergeVisiblePolygons({
+        properties: { merged: true }
+      });
+      
+      expect(result).toBe("merged-id");
+      expect(removeSpy).toHaveBeenCalledWith("poly1");
+      expect(removeSpy).toHaveBeenCalledWith("poly2");
+      expect(addSpy).toHaveBeenCalled();
+      controller.destroy();
+    });
+
+    it("handles merge failure gracefully", async () => {
+      const controller = new MapController(opts);
+      await controller.init();
+      
+      const polygon1 = {
+        type: "Feature" as const,
+        id: "poly1",
+        geometry: {
+          type: "Polygon" as const,
+          coordinates: [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]
+        },
+        properties: {}
+      };
+      
+      const polygon2 = {
+        type: "Feature" as const,
+        id: "poly2",
+        geometry: {
+          type: "Polygon" as const,
+          coordinates: [[[2, 2], [3, 2], [3, 3], [2, 3], [2, 2]]]
+        },
+        properties: {}
+      };
+      
+      // Mock getGeoJSON to return polygons
+      vi.spyOn(controller, "getGeoJSON").mockResolvedValue({
+        type: "FeatureCollection",
+        features: [polygon1, polygon2]
+      });
+      
+      // Mock the geojson utilities directly on the imported module
+      const geojsonModule = await import("@src/utils/geojson");
+      const mergePolygonsSpy = vi.spyOn(geojsonModule, "mergePolygons").mockReturnValue(null);
+      const isPolygonSpy = vi.spyOn(geojsonModule, "isPolygon").mockReturnValue(true);
+      const isMultiPolygonSpy = vi.spyOn(geojsonModule, "isMultiPolygon").mockReturnValue(false);
+      
+      const result = await controller.mergeVisiblePolygons();
+      expect(result).toBeNull();
+      
+      // Verify the mocked functions were called
+      expect(isPolygonSpy).toHaveBeenCalled();
+      expect(mergePolygonsSpy).toHaveBeenCalled();
+      
+      // Restore the spies
+      mergePolygonsSpy.mockRestore();
+      isPolygonSpy.mockRestore();
+      isMultiPolygonSpy.mockRestore();
+      
+      controller.destroy();
+    });
+  });
+
+  describe("setRulerUnits", () => {
+    it("updates measurement system", async () => {
+      const controller = new MapController(opts);
+      await controller.init();
+      
+      // Mock the internal methods that setRulerUnits calls
+      const syncSpy = vi.spyOn(controller as any, "syncMeasurementModalState").mockImplementation(() => {});
+      const rebuildSpy = vi.spyOn(controller as any, "rebuildRulerControl").mockImplementation(() => {});
+      
+      controller.setRulerUnits("imperial");
+      
+      expect((controller as any).measurementSystem).toBe("imperial");
+      expect(syncSpy).toHaveBeenCalled();
+      expect(rebuildSpy).toHaveBeenCalled();
+      controller.destroy();
+    });
+
+    it("does nothing when system is already set", async () => {
+      const controller = new MapController(opts);
+      await controller.init();
+      
+      // Set initial system
+      (controller as any).measurementSystem = "imperial";
+      
+      const syncSpy = vi.spyOn(controller as any, "syncMeasurementModalState").mockImplementation(() => {});
+      const rebuildSpy = vi.spyOn(controller as any, "rebuildRulerControl").mockImplementation(() => {});
+      
+      // Try to set the same system
+      controller.setRulerUnits("imperial");
+      
+      expect(syncSpy).not.toHaveBeenCalled();
+      expect(rebuildSpy).not.toHaveBeenCalled();
+      controller.destroy();
+    });
   });
 });

@@ -101,4 +101,63 @@ describe("Django shim", () => {
     expect(getSpy).toHaveBeenCalled();
     expect(textarea.value).toBe(JSON.stringify(initial));
   });
+
+  it("handles false/0 attribute values correctly", () => {
+    const textarea = document.createElement("textarea");
+    textarea.className = "geokit-editor-widget";
+    textarea.setAttribute("data-geokit-draw-polygon", "false");
+    textarea.setAttribute("data-geokit-zoom", "0");
+    document.body.appendChild(textarea);
+
+    const [handle] = initDjangoGeokit();
+
+    // These attributes should not be set because their values were "false" or "0"
+    expect(handle!.element.hasAttribute("draw-polygon")).toBe(false);
+    expect(handle!.element.hasAttribute("zoom")).toBe(false);
+  });
+
+  it("handles non-Error objects in toError function", async () => {
+    const textarea = document.createElement("textarea");
+    textarea.className = "geokit-editor-widget";
+    textarea.value = "invalid json";
+    document.body.appendChild(textarea);
+
+    let capturedError: Error | null = null;
+    const [handle] = initDjangoGeokit({
+      onError: (error) => {
+        capturedError = error;
+      },
+    });
+
+    // Mock loadGeoJSONFromText to throw a non-Error object
+    vi.spyOn(handle!.element, "loadGeoJSONFromText").mockRejectedValue("String error");
+
+    handle!.element.dispatchEvent(new CustomEvent("leaflet-draw:ready"));
+    await flushPromises();
+
+    expect(capturedError).toBeInstanceOf(Error);
+    expect(capturedError!.message).toBe("String error");
+  });
+
+  it("handles null/undefined errors in toError function", async () => {
+    const textarea = document.createElement("textarea");
+    textarea.className = "geokit-editor-widget";
+    textarea.value = "{}";
+    document.body.appendChild(textarea);
+
+    let capturedError: Error | null = null;
+    const [handle] = initDjangoGeokit({
+      onError: (error) => {
+        capturedError = error;
+      },
+    });
+
+    // Mock getGeoJSON to throw null
+    vi.spyOn(handle!.element, "getGeoJSON").mockRejectedValue(null);
+
+    await handle!.sync();
+
+    expect(capturedError).toBeInstanceOf(Error);
+    expect(capturedError!.message).toBe("Unknown GeoKit Django shim error");
+  });
 });
