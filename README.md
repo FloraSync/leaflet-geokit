@@ -129,65 +129,502 @@ CSS and assets:
 
 ## Public API
 
-Attributes (string/boolean)
+The `<leaflet-geokit>` custom element provides a comprehensive API for embedding interactive maps with drawing capabilities. All functionality is exposed through HTML attributes, JavaScript properties, methods, and events.
 
-- Map configuration
-  - latitude (string number): initial map latitude; default 0
-  - longitude (string number): initial map longitude; default 0
-  - zoom (string number): initial zoom; default 2
-  - min-zoom (string number, optional)
-  - max-zoom (string number, optional)
-  - tile-url (string): tile URL template (default OSM)
-  - tile-attribution (string, optional): attribution text
-  - prefer-canvas (boolean): use Canvas rendering instead of SVG for better performance with large datasets; default true
-- Controls (boolean; presence = enabled)
-  - draw-polygon, draw-polyline, draw-rectangle, draw-circle, draw-layer-cake, draw-marker
-  - edit-features, delete-features
-- Behavior
-  - read-only (boolean): disables all drawing/editing/removing
-  - log-level (string): trace | debug | info | warn | error | silent (default debug)
-  - dev-overlay (boolean): reserved for a runtime overlay (future)
+### HTML Attributes
 
-Properties (runtime)
+#### Map Configuration
 
-- latitude: number
-- longitude: number
-- zoom: number
-- minZoom?: number
-- maxZoom?: number
-- tileUrl: string
-- tileAttribution?: string
-- readOnly: boolean
-- logLevel: 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'silent'
-- devOverlay: boolean
-- preferCanvas: boolean
+Configure the initial map view and tile layer:
 
-Methods (Promise-based, invoked on the element instance)
+- **`latitude`** (string number): Initial map latitude coordinate. Default: `"0"`
+- **`longitude`** (string number): Initial map longitude coordinate. Default: `"0"`
+- **`zoom`** (string number): Initial zoom level. Default: `"2"`
+- **`min-zoom`** (string number, optional): Minimum allowed zoom level
+- **`max-zoom`** (string number, optional): Maximum allowed zoom level
+- **`tile-url`** (string): Tile server URL template with `{z}`, `{x}`, `{y}` placeholders. Default: OpenStreetMap
+- **`tile-attribution`** (string, optional): Attribution text for the tile layer
 
-- getGeoJSON(): returns FeatureCollection of current data
-- loadGeoJSON(fc): clears + loads FeatureCollection; does not auto-fit
-- clearLayers(): clears map layers and store
-- addFeatures(fc): adds features; returns array of assigned ids
-- updateFeature(id, feature): replaces a feature in the store (visual sync is progressively enhanced)
-- removeFeature(id): removes a feature (and layers with matching id)
-- fitBoundsToData(padding?): fits view to data bounds (default padding ~0.05)
-- fitBounds(bounds, padding?): fits view to provided [[south, west], [north, east]] bounds with optional padding ratio
-- setView(lat, lng, zoom?): sets map view
-- loadGeoJSONFromUrl(url): fetches a URL (application/json) and loads; auto-fits
-- loadGeoJSONFromText(text): parses JSON text and loads; auto-fits
-- exportGeoJSON(): emits 'leaflet-draw:export' with current FeatureCollection and returns it
+```html
+<leaflet-geokit
+  latitude="39.7392"
+  longitude="-104.9903"
+  zoom="11"
+  min-zoom="8"
+  max-zoom="18"
+  tile-url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+  tile-attribution="&copy; OpenStreetMap contributors"
+></leaflet-geokit>
+```
 
-Events (CustomEvent with detail)
+#### Drawing Tools
 
-- leaflet-draw:ready — { bounds?: [[south, west], [north, east]] }
-- leaflet-draw:created — { id: string, layerType: 'polygon'|'polyline'|'rectangle'|'circle'|'marker', geoJSON: Feature }
-- leaflet-draw:edited — { ids: string[], geoJSON: FeatureCollection }
-- leaflet-draw:deleted — { ids: string[], geoJSON: FeatureCollection }
-- leaflet-draw:error — { message: string, cause?: unknown }
-- leaflet-draw:export — { geoJSON: FeatureCollection, featureCount: number }
-- leaflet-draw:ingest — { fc: FeatureCollection, mode: 'load'|'add' } (listener may mutate detail.fc to transform input)
+Enable specific drawing tools by adding boolean attributes (presence = enabled):
 
-Event payload types live in [src/types/events.ts](src/types/events.ts). Public API types live in [src/types/public.ts](src/types/public.ts).
+- **`draw-polygon`**: Enable polygon drawing tool
+- **`draw-polyline`**: Enable polyline/line drawing tool
+- **`draw-rectangle`**: Enable rectangle drawing tool
+- **`draw-circle`**: Enable circle drawing tool
+- **`draw-layer-cake`**: Enable Layer Cake tool for creating concentric donut polygons
+- **`draw-marker`**: Enable point marker drawing tool
+- **`draw-ruler`**: Enable measurement/ruler tool for distances and areas
+
+```html
+<leaflet-geokit
+  draw-polygon
+  draw-polyline
+  draw-rectangle
+  draw-circle
+  draw-layer-cake
+  draw-marker
+  draw-ruler
+></leaflet-geokit>
+```
+
+#### Editing Controls
+
+Control editing and deletion of existing features:
+
+- **`edit-features`**: Enable editing mode for modifying existing shapes
+- **`delete-features`**: Enable deletion mode for removing shapes
+
+```html
+<leaflet-geokit draw-polygon edit-features delete-features></leaflet-geokit>
+```
+
+#### Behavior Modifiers
+
+- **`read-only`**: Disables all drawing, editing, and deleting tools. Map becomes view-only
+- **`polygon-allow-intersection`**: Allows polygons to intersect/overlap during drawing
+- **`prefer-canvas`**: Use Canvas rendering instead of SVG for better performance with large datasets. Default: `true`
+
+```html
+<leaflet-geokit read-only></leaflet-geokit>
+<leaflet-geokit draw-polygon polygon-allow-intersection></leaflet-geokit>
+<leaflet-geokit prefer-canvas="false"></leaflet-geokit>
+```
+
+#### Theming & Styling
+
+Customize the visual appearance:
+
+- **`theme-url`** (string, optional): External CSS stylesheet URL to inject into Shadow DOM
+- **`themeCss`** (property only): Inline CSS strings for custom styling
+
+```html
+<leaflet-geokit theme-url="/css/custom-map-theme.css"></leaflet-geokit>
+```
+
+#### Debugging & Development
+
+- **`log-level`** (string): Control console logging verbosity. Options: `trace`, `debug`, `info`, `warn`, `error`, `silent`. Default: `"debug"`
+- **`dev-overlay`** (boolean): Reserved for future development overlay features
+
+```html
+<leaflet-geokit log-level="info"></leaflet-geokit>
+```
+
+### JavaScript Properties
+
+All attributes have corresponding JavaScript properties for runtime access and modification:
+
+```javascript
+const map = document.querySelector("leaflet-geokit");
+
+// Map configuration
+map.latitude = 40.7128; // number
+map.longitude = -74.006; // number
+map.zoom = 12; // number
+map.minZoom = 8; // number | undefined
+map.maxZoom = 18; // number | undefined
+map.tileUrl = "https://..."; // string
+map.tileAttribution = "..."; // string | undefined
+
+// Behavior
+map.readOnly = true; // boolean
+map.preferCanvas = false; // boolean
+map.logLevel = "info"; // LogLevel
+
+// Theming
+map.themeCss = `
+  .leaflet-container { font-family: "Inter", sans-serif; }
+  .leaflet-draw-toolbar a { border-radius: 8px; }
+`;
+```
+
+### Methods
+
+All methods return Promises and should be awaited. Invoke on the element instance:
+
+#### Data Management
+
+**[`getGeoJSON()`](src/components/LeafletDrawMapElement.ts:384)**: Promise<FeatureCollection>
+
+- Returns current map data as a GeoJSON FeatureCollection
+- Includes all drawn features with stable IDs
+
+```javascript
+const data = await map.getGeoJSON();
+console.log(`${data.features.length} features on map`);
+```
+
+**[`loadGeoJSON(fc)`](src/components/LeafletDrawMapElement.ts:390)**: Promise<void>
+
+- Clears existing data and loads new FeatureCollection
+- Does NOT auto-fit the view (use [`fitBoundsToData()`](src/components/LeafletDrawMapElement.ts:428) separately)
+- Triggers [`leaflet-draw:ingest`](src/types/events.ts:51) event before loading
+
+```javascript
+await map.loadGeoJSON({
+  type: "FeatureCollection",
+  features: [
+    /* ... */
+  ],
+});
+```
+
+**[`addFeatures(fc)`](src/components/LeafletDrawMapElement.ts:406)**: Promise<string[]>
+
+- Adds features to existing map data (does not clear)
+- Returns array of assigned stable feature IDs
+- Triggers [`leaflet-draw:ingest`](src/types/events.ts:51) event before adding
+
+```javascript
+const ids = await map.addFeatures(newFeatures);
+console.log("Added features with IDs:", ids);
+```
+
+**[`clearLayers()`](src/components/LeafletDrawMapElement.ts:400)**: Promise<void>
+
+- Removes all features from map and internal storage
+
+```javascript
+await map.clearLayers();
+```
+
+#### Individual Feature Operations
+
+**[`updateFeature(id, feature)`](src/components/LeafletDrawMapElement.ts:416)**: Promise<void>
+
+- Replaces an existing feature by ID
+- Visual synchronization is progressively enhanced
+
+```javascript
+await map.updateFeature(featureId, {
+  type: "Feature",
+  properties: { name: "Updated" },
+  geometry: {
+    /* ... */
+  },
+});
+```
+
+**[`removeFeature(id)`](src/components/LeafletDrawMapElement.ts:422)**: Promise<void>
+
+- Removes a feature and its visual representation by ID
+
+```javascript
+await map.removeFeature(featureId);
+```
+
+#### View Control
+
+**[`setView(lat, lng, zoom?)`](src/components/LeafletDrawMapElement.ts:448)**: Promise<void>
+
+- Sets map center and optionally zoom level
+- Updates element properties to maintain consistency
+
+```javascript
+await map.setView(39.7392, -104.9903, 12);
+```
+
+**[`fitBoundsToData(padding?)`](src/components/LeafletDrawMapElement.ts:428)**: Promise<void>
+
+- Automatically fits map view to show all current data
+- Optional padding as ratio of bounds size (default: 0.05 = 5%)
+
+```javascript
+await map.fitBoundsToData(0.1); // 10% padding
+```
+
+**[`fitBounds(bounds, padding?)`](src/components/LeafletDrawMapElement.ts:436)**: Promise<void>
+
+- Fits map view to specified bounds
+- Bounds format: `[[south, west], [north, east]]`
+- Optional padding ratio (default: 0.05)
+
+```javascript
+await map.fitBounds(
+  [
+    [39.6, -105.1], // southwest
+    [39.8, -104.8], // northeast
+  ],
+  0.05,
+);
+```
+
+#### Data Import Helpers
+
+**[`loadGeoJSONFromUrl(url)`](src/components/LeafletDrawMapElement.ts:510)**: Promise<void>
+
+- Fetches GeoJSON from URL and loads it
+- Expects `application/json` content type
+- Automatically fits view to loaded data
+- Emits error events on fetch/parse failures
+
+```javascript
+await map.loadGeoJSONFromUrl("/api/geodata.json");
+```
+
+**[`loadGeoJSONFromText(text)`](src/components/LeafletDrawMapElement.ts:533)**: Promise<void>
+
+- Parses GeoJSON from text string and loads it
+- Automatically fits view to loaded data
+- Emits error events on parse failures
+
+```javascript
+const text = await file.text();
+await map.loadGeoJSONFromText(text);
+```
+
+**[`exportGeoJSON()`](src/components/LeafletDrawMapElement.ts:459)**: Promise<FeatureCollection>
+
+- Exports current data and emits [`leaflet-draw:export`](src/types/events.ts:57) event
+- Returns the FeatureCollection for convenience
+- Useful for triggering export workflows
+
+```javascript
+const exported = await map.exportGeoJSON();
+// Listen for the event to trigger download/save workflows
+```
+
+#### Advanced Features
+
+**[`mergePolygons(options?)`](src/components/LeafletDrawMapElement.ts:475)**: Promise<string | null>
+
+- Merges all visible polygon features into a single polygon
+- Removes original polygons and creates new merged feature
+- Returns ID of merged feature, or null if no polygons to merge
+- Emits `leaflet-draw:merged` event with merge details
+
+```javascript
+const mergedId = await map.mergePolygons({
+  properties: { name: "Merged Area", type: "combined" },
+});
+```
+
+**[`setMeasurementUnits(system)`](src/components/LeafletDrawMapElement.ts:504)**: Promise<void>
+
+- Changes measurement system for ruler tool
+- Options: `"metric"` (meters/kilometers) or `"imperial"` (feet/miles)
+
+```javascript
+await map.setMeasurementUnits("imperial");
+```
+
+### Events
+
+The component emits typed CustomEvents that can be listened to for real-time updates. All events include structured `detail` objects.
+
+#### Core Lifecycle Events
+
+**[`leaflet-draw:ready`](src/types/events.ts:7)**
+
+- Fired when map is fully initialized and ready for interaction
+- Detail: `{ bounds?: [[number, number], [number, number]] }`
+
+```javascript
+map.addEventListener("leaflet-draw:ready", (e) => {
+  console.log("Map ready!", e.detail.bounds);
+});
+```
+
+**[`leaflet-draw:error`](src/types/events.ts:42)**
+
+- Fired when errors occur (fetch failures, parse errors, etc.)
+- Detail: `{ message: string, cause?: unknown }`
+
+```javascript
+map.addEventListener("leaflet-draw:error", (e) => {
+  console.error("Map error:", e.detail.message, e.detail.cause);
+});
+```
+
+#### Drawing & Editing Events
+
+**[`leaflet-draw:created`](src/types/events.ts:15)**
+
+- Fired when user creates a new feature via drawing tools
+- Detail: `{ id: string, layerType: string, geoJSON: Feature }`
+- Layer types: `'polygon'`, `'polyline'`, `'rectangle'`, `'circle'`, `'marker'`
+
+```javascript
+map.addEventListener('leaflet-draw:created', (e) => {
+  const { id, layerType, geoJSON } = e.detail;
+  console.log(`Created ${layerType} with ID: ${id}`);
+
+  // Save to your backend
+  await saveFeature(id, geoJSON);
+});
+```
+
+**[`leaflet-draw:edited`](src/types/events.ts:25)**
+
+- Fired when user modifies existing features via edit tools
+- Detail: `{ ids: string[], geoJSON: FeatureCollection }`
+- Includes all edited feature IDs and current state
+
+```javascript
+map.addEventListener('leaflet-draw:edited', (e) => {
+  const { ids, geoJSON } = e.detail;
+  console.log(`Edited ${ids.length} features`);
+
+  // Sync changes to backend
+  for (const id of ids) {
+    const feature = geoJSON.features.find(f => f.id === id);
+    if (feature) await updateFeature(id, feature);
+  }
+});
+```
+
+**[`leaflet-draw:deleted`](src/types/events.ts:34)**
+
+- Fired when user deletes features via delete tools
+- Detail: `{ ids: string[], geoJSON: FeatureCollection }`
+- `geoJSON` contains remaining features (after deletion)
+
+```javascript
+map.addEventListener('leaflet-draw:deleted', (e) => {
+  const { ids } = e.detail;
+  console.log(`Deleted features: ${ids.join(', ')}`);
+
+  // Remove from backend
+  for (const id of ids) {
+    await deleteFeature(id);
+  }
+});
+```
+
+#### Data Flow Events
+
+**[`leaflet-draw:ingest`](src/types/events.ts:51)**
+
+- Fired BEFORE data is loaded/added to the map
+- Detail: `{ fc: FeatureCollection, mode: 'load' | 'add' }`
+- Listeners can mutate `detail.fc` to transform incoming data
+- Useful for data validation, filtering, or preprocessing
+
+```javascript
+map.addEventListener("leaflet-draw:ingest", (e) => {
+  const { fc, mode } = e.detail;
+
+  // Filter out invalid features
+  e.detail.fc.features = fc.features.filter(
+    (f) => f.geometry && f.geometry.coordinates.length > 0,
+  );
+
+  // Add default properties
+  e.detail.fc.features.forEach((f) => {
+    f.properties = {
+      ...f.properties,
+      imported: true,
+      timestamp: Date.now(),
+    };
+  });
+});
+```
+
+**[`leaflet-draw:export`](src/types/events.ts:57)**
+
+- Fired when [`exportGeoJSON()`](src/components/LeafletDrawMapElement.ts:459) method is called
+- Detail: `{ geoJSON: FeatureCollection, featureCount: number }`
+- Use for triggering download workflows
+
+```javascript
+map.addEventListener("leaflet-draw:export", (e) => {
+  const { geoJSON, featureCount } = e.detail;
+
+  // Create download link
+  const blob = new Blob([JSON.stringify(geoJSON, null, 2)], {
+    type: "application/geo+json",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `map-data-${new Date().toISOString()}.geojson`;
+  a.click();
+});
+```
+
+#### Extended Tool Events
+
+**`leaflet-draw:drawstart`** / **`leaflet-draw:drawstop`**
+
+- Fired when drawing mode starts/stops
+- Useful for UI state management
+
+**`leaflet-draw:editstart`** / **`leaflet-draw:editstop`**
+
+- Fired when edit mode starts/stops
+
+**`leaflet-draw:merged`**
+
+- Fired after successful polygon merge operation
+- Detail includes merge statistics and result
+
+```javascript
+// Show/hide UI elements based on draw state
+map.addEventListener("leaflet-draw:drawstart", () => {
+  document.querySelector("#toolbar").classList.add("drawing-active");
+});
+
+map.addEventListener("leaflet-draw:drawstop", () => {
+  document.querySelector("#toolbar").classList.remove("drawing-active");
+});
+```
+
+### Feature ID Management
+
+The component guarantees stable, persistent feature IDs that survive editing operations:
+
+1. **Explicit IDs**: If a feature has `feature.id` property, it's preserved
+2. **Property IDs**: If no `feature.id` but has `properties.id`, that's used
+3. **Generated IDs**: Otherwise, a UUID is generated and stored in `properties.id`
+
+```javascript
+// Features maintain their IDs through edit cycles
+const data = await map.getGeoJSON();
+data.features.forEach((f) => {
+  console.log(`Feature ID: ${f.id}, Properties ID: ${f.properties?.id}`);
+});
+```
+
+### TypeScript Support
+
+Full TypeScript definitions are provided in [`src/types/public.ts`](src/types/public.ts) and [`src/types/events.ts`](src/types/events.ts):
+
+```typescript
+import type {
+  LeafletDrawMapElementAPI,
+  MeasurementSystem,
+} from "@florasync/leaflet-geokit";
+import type {
+  CreatedEventDetail,
+  EditedEventDetail,
+} from "@florasync/leaflet-geokit/events";
+
+const map = document.querySelector(
+  "leaflet-geokit",
+) as LeafletDrawMapElementAPI;
+
+map.addEventListener(
+  "leaflet-draw:created",
+  (e: CustomEvent<CreatedEventDetail>) => {
+    const { id, layerType, geoJSON } = e.detail;
+    // Fully typed event handling
+  },
+);
+```
 
 ---
 
@@ -329,6 +766,29 @@ el.addEventListener("leaflet-draw:edited", async (e) => {
 
 - At runtime, set el.logLevel = 'info' to reduce chatter.
 - If you need a different sink, wrap the element logic in your app and forward to your own logger (see [src/utils/logger.ts](src/utils/logger.ts)).
+
+6. Runtime theming (CSS injection)
+
+- Provide a theme stylesheet URL via the theme-url attribute.
+- Provide inline CSS overrides via the themeCss property.
+- Cascade order is: built-in Leaflet styles → theme-url → themeCss.
+- Updates are dynamic; changing theme-url or themeCss updates the Shadow DOM styles in place.
+
+```html
+<leaflet-geokit
+  theme-url="/themes/geokit-brand.css"
+  draw-polygon
+  edit-features
+></leaflet-geokit>
+```
+
+```js
+const el = document.querySelector("leaflet-geokit");
+el.themeCss = `
+  .leaflet-container { font-family: "Inter", sans-serif; }
+  .leaflet-draw-toolbar a { border-radius: 8px; }
+`;
+```
 
 ---
 

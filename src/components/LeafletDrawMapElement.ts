@@ -37,6 +37,12 @@ export class LeafletDrawMapElement
   private _polygonAllowIntersection = false;
   private _preferCanvas = true; // Default to Canvas for performance
 
+  // Theming
+  private _themeUrl?: string;
+  private _themeCss = "";
+  private _themeLinkEl: HTMLLinkElement | null = null;
+  private _themeStyleEl: HTMLStyleElement | null = null;
+
   // Controller
   private _controller: MapController | null = null;
 
@@ -118,6 +124,8 @@ export class LeafletDrawMapElement
       this._logger.warn("leaflet-style-inject-failed", err as any);
     }
 
+    this._applyThemeStyles();
+
     // Initialize controller
     this._controller = new MapController({
       container: this._container,
@@ -174,6 +182,7 @@ export class LeafletDrawMapElement
       "log-level",
       "dev-overlay",
       "prefer-canvas",
+      "theme-url",
       // draw controls
       "draw-polygon",
       "draw-polyline",
@@ -216,6 +225,12 @@ export class LeafletDrawMapElement
         break;
       case "tile-attribution":
         this._tileAttribution = value ?? undefined;
+        break;
+      case "theme-url":
+        this._themeUrl = value ?? undefined;
+        if (this.isConnected) {
+          this._applyThemeStyles();
+        }
         break;
       case "read-only":
         this._readOnly = value !== null;
@@ -353,6 +368,16 @@ export class LeafletDrawMapElement
   set preferCanvas(v: boolean) {
     this._preferCanvas = Boolean(v);
     this._booleanReflect("prefer-canvas", this._preferCanvas);
+  }
+
+  get themeCss(): string {
+    return this._themeCss;
+  }
+  set themeCss(v: string) {
+    this._themeCss = typeof v === "string" ? v : "";
+    if (this.isConnected) {
+      this._applyThemeStyles();
+    }
   }
 
   // Public API methods (delegating to controller)
@@ -542,6 +567,41 @@ export class LeafletDrawMapElement
       devOverlay: this._devOverlay,
       polygonAllowIntersection: this._polygonAllowIntersection,
     };
+  }
+
+  private _applyThemeStyles(): void {
+    const themeUrl = this._themeUrl?.trim();
+    if (themeUrl) {
+      if (!this._themeLinkEl) {
+        const link = document.createElement("link");
+        link.setAttribute("rel", "stylesheet");
+        link.setAttribute("data-geokit-theme-url", "true");
+        this._root.appendChild(link);
+        this._themeLinkEl = link;
+      }
+      if (this._themeLinkEl.getAttribute("href") !== themeUrl) {
+        this._themeLinkEl.setAttribute("href", themeUrl);
+      }
+    } else if (this._themeLinkEl) {
+      this._themeLinkEl.remove();
+      this._themeLinkEl = null;
+    }
+
+    const themeCss = this._themeCss;
+    if (themeCss.trim().length > 0) {
+      if (!this._themeStyleEl) {
+        const style = document.createElement("style");
+        style.setAttribute("data-geokit-theme-css", "true");
+        this._root.appendChild(style);
+        this._themeStyleEl = style;
+      }
+      if (this._themeStyleEl.textContent !== themeCss) {
+        this._themeStyleEl.textContent = themeCss;
+      }
+    } else if (this._themeStyleEl) {
+      this._themeStyleEl.remove();
+      this._themeStyleEl = null;
+    }
   }
 
   private _reflect(name: string, value: string | null): void {

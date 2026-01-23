@@ -23,6 +23,16 @@ test.describe("Leaflet Geokit Web Component", () => {
     });
   });
 
+  test("should apply dark theme styles", async ({ page }) => {
+    await page.waitForFunction(() => (window as any).mapReady === true);
+    const toolbarButton = page.locator(".leaflet-draw-toolbar a").first();
+    const background = await toolbarButton.evaluate((el) => {
+      return window.getComputedStyle(el).backgroundColor;
+    });
+
+    expect(background).toBe("rgb(31, 41, 51)");
+  });
+
   test("should have drawing controls", async ({ page }) => {
     // Drawing controls are in .leaflet-draw-toolbar
     await page.waitForFunction(() => (window as any).mapReady === true);

@@ -32,3 +32,6 @@ yarn-error.log*
 .eslintcache
 *.tsbuildinfo
 .wip/
+
+# Internal
+docs/roadmap/*

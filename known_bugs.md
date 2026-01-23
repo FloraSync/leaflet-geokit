@@ -1,16 +1,15 @@
 **Scope**
 
 - Repository: `@florasync/leaflet-geokit` (repo root)
-- Component: `<leaflet-draw-map>` custom element, Leaflet + Leaflet.draw bridge, Feature store, build config
+- Component: `<leaflet-geokit>` custom element, Leaflet + Leaflet.draw bridge, Feature store, build config
 
 **Summary**
 
-- Overall implementation is clean and modular, but there are notable mismatches between docs and code, edge‑case gaps in GeoJSON→Layer id mapping, and lifecycle behaviors that can cause data loss during attribute changes. Tests are scaffold‑level and won’t catch runtime regressions. Several roadmap features are referenced in docs but not implemented.
+- This is where we log pesky bugs, known limitations, and other issues. Ideally we would have most things linked to issues or PRs, but for now this is a living document.
 
 **Functional Mismatches**
 
-- **loadGeoJSON fit behavior:** `README.md` states load fits bounds by default; `LeafletDrawMapElement.loadGeoJSON(fc)` passes `false` to controller (no auto‑fit). Impact: confusing DX; dev harness button won’t recenter after load. Suggest: default to auto‑fit or add a `fit-to-data-on-load` attribute.
-- **Dev overlay advertised, not implemented:** Docs and architecture reference a dev overlay UI and related state store, but there is no `src/ui/...` overlay code, nor mounting based on `dev-overlay`. Impact: missing documented feature; attribute has no effect beyond internal flag. Suggest: implement or remove docs/attribute for now.
+- **loadGeoJSON fit behavior:** `README.md` states load fits bounds by default; `LeafletDrawMapElement.loadGeoJSON(fc)` passes `false` to controller (no auto‑fit). Impact: confusing DX; dev harness button won’t recenter after load. Suggest: default to auto‑fit or add a `fit-to-data-on-load` attribute..
 - **Event coverage (verbose events):** `events.ts` exports draw/edit start/stop constants, but controller does not dispatch them. Impact: consumers relying on advertised events won’t receive them. Suggest: wire Leaflet.draw lifecycle events.
 
 **Data & ID Mapping**
@@ -38,7 +37,7 @@
 **Tests & Tooling**
 
 - **Unit tests won’t catch runtime issues:** Tests run in `happy-dom` and append the element, but Leaflet init errors are swallowed; methods are mostly no‑ops when controller is null. Impact: green tests despite runtime regressions. Suggest: add tests that assert controller readiness or mock Leaflet to exercise draw flows.
-- **Playwright script present but no e2e assets:** `test:e2e` uses Playwright, but no `e2e/` config/specs are present in the repo. Impact: script fails if run. Suggest: add minimal e2e or remove script until available.
+- **Playwright coverage is limited** `test:e2e` uses Playwright. There is minimal coverage to check the CSS injection but not much else.
 
 **Types & Declarations**
 
