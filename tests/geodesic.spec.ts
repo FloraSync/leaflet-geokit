@@ -44,10 +44,10 @@ describe("utils/geodesic", () => {
   it("handles nearly identical points correctly", () => {
     // Points so close that sinSigma becomes effectively 0
     const result = computePreciseDistance(
-      40.712800000,
-      -74.006000000,
+      40.7128,
+      -74.006,
       40.712800001,
-      -74.006000001
+      -74.006000001,
     );
     expect(result.meters).toBeCloseTo(0, 3); // Less strict precision since these aren't exactly identical
     expect(result.bearingDegrees).toBeDefined();
@@ -57,7 +57,7 @@ describe("utils/geodesic", () => {
     // The sinSigma === 0 condition (lines 110-116) occurs when the calculated
     // sinSigma becomes 0 during the iterative refinement process.
     // This happens when points become effectively identical during the iteration.
-    
+
     // Use coordinates where the iterative process will detect identical points
     // North pole coordinates - any longitude at 90° latitude is the same point
     const result = computePreciseDistance(90, 0, 90, 180);
@@ -70,20 +70,20 @@ describe("utils/geodesic", () => {
     // To hit lines 209-210 (sigma === 0 in karney), we need:
     // 1. Vincenty to fail to converge (max iterations exceeded)
     // 2. Karney algorithm to process effectively identical points
-    
+
     // Use coordinates that are known to cause Vincenty convergence issues
     // Nearly antipodal points on the equator are particularly problematic
     const result = computePreciseDistance(0, 0, 0, 179.99999999999);
-    
+
     // This should either converge with Vincenty or fallback to Karney
-    if (result.algorithm === 'karney') {
+    if (result.algorithm === "karney") {
       // If Karney was used, test that it handled the case properly
       expect(result.meters).toBeGreaterThan(19_900_000);
       expect(result.bearingDegrees).toBeGreaterThanOrEqual(0);
       expect(result.bearingDegrees).toBeLessThan(360);
     } else {
       // Vincenty managed to converge
-      expect(result.algorithm).toBe('vincenty');
+      expect(result.algorithm).toBe("vincenty");
       expect(result.meters).toBeGreaterThan(19_900_000);
     }
   });
@@ -93,7 +93,7 @@ describe("utils/geodesic", () => {
     const result1 = computePreciseDistance(-90, 0, -90, 90);
     expect(result1.meters).toBeCloseTo(0, 8); // Allow for floating point precision
     expect(result1.bearingDegrees).toBeDefined(); // Bearing can be any value for identical points
-    
+
     const result2 = computePreciseDistance(-90, -45, -90, 135);
     expect(result2.meters).toBeCloseTo(0, 8);
     expect(result2.bearingDegrees).toBeDefined();
@@ -103,21 +103,21 @@ describe("utils/geodesic", () => {
     // Create a scenario that pushes Vincenty to its iteration limit
     // forcing a fallback to Karney algorithm
     // Use coordinates that are nearly but not exactly antipodal
-    
-    const lat1 = 0.1;      // Slightly off equator
-    const lon1 = 0.1;      // Slightly off prime meridian
-    const lat2 = -0.1;     // Nearly antipodal latitude
-    const lon2 = 179.9;    // Nearly antipodal longitude
-    
+
+    const lat1 = 0.1; // Slightly off equator
+    const lon1 = 0.1; // Slightly off prime meridian
+    const lat2 = -0.1; // Nearly antipodal latitude
+    const lon2 = 179.9; // Nearly antipodal longitude
+
     const result = computePreciseDistance(lat1, lon1, lat2, lon2);
-    
+
     // Should produce a valid result regardless of algorithm used
     expect(result.meters).toBeGreaterThan(19_800_000);
     expect(result.bearingDegrees).toBeGreaterThanOrEqual(0);
     expect(result.bearingDegrees).toBeLessThan(360);
-    expect(['vincenty', 'karney']).toContain(result.algorithm);
-    
-    if (result.algorithm === 'karney') {
+    expect(["vincenty", "karney"]).toContain(result.algorithm);
+
+    if (result.algorithm === "karney") {
       // Vincenty failed to converge, so Karney was used
       expect(result.iterations).toBeGreaterThanOrEqual(200); // Max vincenty iterations
     }
@@ -136,7 +136,7 @@ describe("utils/geodesic", () => {
     });
 
     it("handles very large numbers", () => {
-      expect(magicRound(1234567890.123456789)).toBeCloseTo(1234567890.123456789, 6);
+      expect(magicRound(1234567890.1234567)).toBeCloseTo(1234567890.1234567, 7);
     });
   });
 });

@@ -130,7 +130,9 @@ describe("Django shim", () => {
     });
 
     // Mock loadGeoJSONFromText to throw a non-Error object
-    vi.spyOn(handle!.element, "loadGeoJSONFromText").mockRejectedValue("String error");
+    vi.spyOn(handle!.element, "loadGeoJSONFromText").mockRejectedValue(
+      "String error",
+    );
 
     handle!.element.dispatchEvent(new CustomEvent("leaflet-draw:ready"));
     await flushPromises();

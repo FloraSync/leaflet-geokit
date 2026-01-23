@@ -49,14 +49,18 @@ describe("utils/logger", () => {
   it("handles Date.toISOString() failures gracefully", () => {
     // Mock Date.prototype.toISOString to throw
     const originalToISOString = Date.prototype.toISOString;
-    Date.prototype.toISOString = () => { throw new Error("ISO failed"); };
+    Date.prototype.toISOString = () => {
+      throw new Error("ISO failed");
+    };
 
     try {
       const calls: string[] = [];
-      const sink: any = { info: (...args: any[]) => calls.push(String(args[0])) };
+      const sink: any = {
+        info: (...args: any[]) => calls.push(String(args[0])),
+      };
       const log = createLogger("test", "info", sink as any);
       log.info("test message");
-      
+
       // Should still log but with empty timestamp
       expect(calls.length).toBe(1);
       expect(calls[0]).toContain("[][test][INFO]");
@@ -68,11 +72,13 @@ describe("utils/logger", () => {
 
   it("handles logging failures gracefully", () => {
     const problematicSink: any = {
-      info: () => { throw new Error("Sink failed"); }
+      info: () => {
+        throw new Error("Sink failed");
+      },
     };
-    
+
     const log = createLogger("test", "info", problematicSink);
-    
+
     // This should not throw even if the sink throws
     expect(() => log.info("test message")).not.toThrow();
   });
@@ -80,7 +86,7 @@ describe("utils/logger", () => {
   it("exposes level getter correctly", () => {
     const log = createLogger("test", "warn");
     expect(log.level).toBe("warn");
-    
+
     log.setLevel("debug");
     expect(log.level).toBe("debug");
   });

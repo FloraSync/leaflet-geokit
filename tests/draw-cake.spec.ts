@@ -7,23 +7,23 @@ const mockAddHooks = vi.fn();
 const mockUpdateContent = vi.fn();
 
 vi.mock("leaflet", async () => {
-  const actual = await vi.importActual<typeof import("leaflet")>("leaflet");
-  
+  const actual = await vi.importActual<typeof L>("leaflet");
+
   class MockCircle {
     type: string = "";
     _tooltip: any;
-    
-    constructor(map: L.Map, options?: L.DrawOptions.CircleOptions) {
+
+    constructor(_map: L.Map, _options?: L.DrawOptions.CircleOptions) {
       this._tooltip = {
         updateContent: mockUpdateContent,
       };
     }
-    
+
     addHooks() {
       mockAddHooks();
     }
   }
-  
+
   return {
     ...actual,
     Draw: {
@@ -70,14 +70,14 @@ describe("DrawCake", () => {
     // Create instance without tooltip
     const drawCakeNoTooltip = new DrawCake(map);
     (drawCakeNoTooltip as any)._tooltip = null;
-    
+
     expect(() => drawCakeNoTooltip.addHooks()).not.toThrow();
   });
 
   it("should handle tooltip without updateContent method", () => {
     const drawCakeNoUpdate = new DrawCake(map);
     (drawCakeNoUpdate as any)._tooltip = {};
-    
+
     expect(() => drawCakeNoUpdate.addHooks()).not.toThrow();
   });
 

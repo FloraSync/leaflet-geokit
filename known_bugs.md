@@ -5,7 +5,7 @@
 
 **Summary**
 
-- This is where we log pesky bugs, known limitations, and other issues.  Ideally we would have most things linked to issues or PRs, but for now this is a living document.
+- This is where we log pesky bugs, known limitations, and other issues. Ideally we would have most things linked to issues or PRs, but for now this is a living document.
 
 **Functional Mismatches**
 
@@ -37,7 +37,7 @@
 **Tests & Tooling**
 
 - **Unit tests won’t catch runtime issues:** Tests run in `happy-dom` and append the element, but Leaflet init errors are swallowed; methods are mostly no‑ops when controller is null. Impact: green tests despite runtime regressions. Suggest: add tests that assert controller readiness or mock Leaflet to exercise draw flows.
-- **Playwright coverage is limited** `test:e2e` uses Playwright.  There is minimal coverage to check the CSS injection but not much else.
+- **Playwright coverage is limited** `test:e2e` uses Playwright. There is minimal coverage to check the CSS injection but not much else.
 
 **Types & Declarations**
 
