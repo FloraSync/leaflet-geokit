@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import React from "react";
 import { render } from "@testing-library/react";
+import "@src/index";
 
 vi.mock("@src/lib/MapController", () => {
   class MapController {
@@ -79,6 +80,8 @@ describe("React shim", () => {
       ],
     };
 
+    await flushPromises();
+
     vi.spyOn(element, "getGeoJSON").mockResolvedValue(geoJSON);
     element.dispatchEvent(new CustomEvent("leaflet-draw:created"));
     await flushPromises();
@@ -99,6 +102,8 @@ describe("React shim", () => {
     );
 
     const element = container.querySelector("leaflet-geokit") as any;
+    await flushPromises();
+
     const loadSpy = vi
       .spyOn(element, "loadGeoJSONFromText")
       .mockResolvedValue(undefined);

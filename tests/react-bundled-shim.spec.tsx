@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import React from "react";
-import { render } from "@testing-library/react";
+import { render, waitFor } from "@testing-library/react";
 
 vi.mock("@src/lib/MapController", () => {
   class MapController {
@@ -32,7 +32,7 @@ describe("React bundled shim", () => {
     document.body.innerHTML = "";
   });
 
-  it("mounts without external/additive attributes by default", () => {
+  it("mounts without external/additive attributes by default", async () => {
     const { container } = render(
       React.createElement(ReactLeafletGeoKit, {
         style: { width: "100%", height: "420px" },
@@ -44,11 +44,13 @@ describe("React bundled shim", () => {
     );
 
     const element = container.querySelector("leaflet-geokit") as HTMLElement;
-    expect(element).toBeTruthy();
-    expect(element.getAttribute("zoom")).toBe("10");
-    expect(element.hasAttribute("draw-polygon")).toBe(true);
-    expect(element.hasAttribute("use-external-leaflet")).toBe(false);
-    expect(element.hasAttribute("skip-leaflet-styles")).toBe(false);
-    expect(element.getAttribute("style")).toContain("height: 420px;");
+    await waitFor(() => {
+      expect(element).toBeTruthy();
+      expect(element.getAttribute("zoom")).toBe("10");
+      expect(element.hasAttribute("draw-polygon")).toBe(true);
+      expect(element.hasAttribute("use-external-leaflet")).toBe(false);
+      expect(element.hasAttribute("skip-leaflet-styles")).toBe(false);
+      expect(element.getAttribute("style")).toContain("height: 420px;");
+    });
   });
 });
