@@ -19,6 +19,16 @@ export interface MapConfig {
   polygonAllowIntersection?: boolean;
   /** Use Canvas rendering instead of SVG for better performance with large datasets. Default: true */
   preferCanvas?: boolean;
+  /**
+   * If true, attempt to use an externally provided Leaflet/Leaflet.draw instead of bundled imports.
+   * When enabled, MapController will validate the presence of window.L and Draw APIs; if absent, it may fall back to bundled.
+   */
+  useExternalLeaflet?: boolean;
+  /**
+   * If true, skip injecting Leaflet/Draw CSS and default icon wiring (host is responsible).
+   * Ignored when useExternalLeaflet is false (bundled path still injects by default).
+   */
+  skipLeafletStyles?: boolean;
 }
 
 export type MeasurementSystem = "metric" | "imperial";
@@ -56,6 +66,13 @@ export interface LeafletDrawMapElementAPI {
   logLevel: LogLevel;
   devOverlay: boolean;
   themeCss: string;
+  /** Prefer external Leaflet/Draw if available (falls back to bundled if missing). */
+  useExternalLeaflet?: boolean;
+  /** Disable our CSS/icon injection when host supplies styles. */
+  skipLeafletStyles?: boolean;
+
+  /** Optional injection of a pre-existing Leaflet namespace to use instead of bundled import. */
+  leafletInstance?: typeof import("leaflet");
 
   // Methods
   getGeoJSON(): Promise<FeatureCollection>;

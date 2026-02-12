@@ -30,7 +30,7 @@ Documentation quick-links
 - Runtime and architecture overview
 - Public API (attributes, properties, methods, events)
 - Usage examples (HTML, ESM, framework integration, recipes)
-- Shims and integrations
+- Framework Support
 - Logging, diagnostics, and troubleshooting
 - Performance, accessibility, and SSR notes
 - Roadmap and versioning
@@ -69,6 +69,43 @@ For consumption from another app:
 - `npm install @florasync/leaflet-geokit`
 - `import "@florasync/leaflet-geokit";` and ensure the element is sized via CSS (it does not self-size)
 
+### Bundled vs external Leaflet/Leaflet.draw
+
+We ship two entrypoints so you can avoid double-loading Leaflet if your app already includes it.
+
+- **Bundled (default)** — includes Leaflet + Leaflet.draw JS/CSS inside the library bundle. Use this when you are _not_ providing Leaflet yourself.
+  - Import: `import "@florasync/leaflet-geokit";`
+
+- **External (no Leaflet bytes)** — expects Leaflet + Leaflet.draw + CSS to be provided by the host (e.g., your framework already loads them).
+  - Import: `import "@florasync/leaflet-geokit/external";`
+  - Requires `window.L` with `L.Control.Draw` available, and Leaflet/Draw CSS loaded by you.
+  - If external `L` is present but Draw APIs are incomplete, runtime falls back to bundled Leaflet/Draw and logs a warning.
+
+Runtime options (advanced)
+
+- Programmatic flag: `map.useExternalLeaflet = true` to prefer a provided `window.L` (falls back to bundled if missing). See [LeafletDrawMapElement](src/components/LeafletDrawMapElement.ts:15) and [MapController](src/lib/MapController.ts:41).
+- Programmatic flag: `map.skipLeafletStyles = true` to disable our CSS/icon injection when you own the styles. Styling helpers live in [leaflet-assets](src/lib/leaflet-assets.ts:1).
+
+Example: external entrypoint in a bundler app
+
+```ts
+import "leaflet/dist/leaflet.css";
+import "leaflet-draw/dist/leaflet.draw.css";
+import "@florasync/leaflet-geokit/external";
+```
+
+Then mount your element as usual:
+
+```html
+<leaflet-geokit draw-polygon draw-marker></leaflet-geokit>
+```
+
+Why choose external?
+
+- Avoid double-loading Leaflet/Leaflet.draw when your host already ships them.
+- Keep bundle size smaller in hosts that vendor Leaflet themselves.
+- Control Leaflet/Draw versions and theming directly.
+
 ---
 
 ## Build and compilation
@@ -87,11 +124,28 @@ Scripts (see [package.json](package.json))
 
 - npm run dev — Vite dev server
 - npm run build — type declarations + Vite build
+- npm run build:analyze — generate per-target bundle reports in dist/stats/\*.html
 - npm run test:unit — Vitest (happy-dom)
 - npm run typecheck — TypeScript noEmit
 - npm run lint — ESLint (strict TS rules)
 - npm run format — Prettier write
 - npm run test:e2e — Playwright (currently a minimal smoke test under e2e/)
+
+Bundle analysis
+
+- The analyzer is opt-in and does not change normal production outputs.
+- Run `npm run build:analyze` to produce one report per target:
+  - dist/stats/main.html
+  - dist/stats/external.html
+  - dist/stats/django.html
+  - dist/stats/preact.html
+  - dist/stats/preact-bundled.html
+  - dist/stats/react.html
+  - dist/stats/react-bundled.html
+- Read report metrics as:
+  - Raw: uncompressed parsed bundle bytes
+  - Gzip: transfer cost with gzip compression
+  - Brotli: transfer cost with brotli compression
 
 Browser support
 
@@ -724,9 +778,97 @@ E. Framework integration (React/Preact/Vue/Svelte)
 
 ---
 
-## Shims and integrations
+## Framework Support
 
-- Django widget shim: [docs/shims/django.md](docs/shims/django.md)
+This section is the canonical place to discover first-class framework integrations for this project.
+
+Current framework support:
+
+- Django: [docs/shims/django.md](docs/shims/django.md)
+- Preact: [docs/shims/preact.md](docs/shims/preact.md)
+- React: [docs/shims/react.md](docs/shims/react.md)
+
+### Django
+
+Use the Django shim when your source of truth is a form field (`<textarea>`) and you want map edits synchronized to submitted GeoJSON.
+
+- Shim docs: [docs/shims/django.md](docs/shims/django.md)
+- Entrypoint: [src/django/index.ts](src/django/index.ts)
+
+Quick import path:
+
+```ts
+import { initDjangoGeokit } from "@florasync/leaflet-geokit/django";
+```
+
+### Preact
+
+Use the Preact wrappers when you want component-level integration in Preact apps.
+
+- Runtime dependency model: Preact is consumer-provided (peer dependency), so wrapper bundles stay thin.
+
+- Shim docs: [docs/shims/preact.md](docs/shims/preact.md)
+- Entrypoints: [src/preact/index.tsx](src/preact/index.tsx), [src/preact-bundled/index.tsx](src/preact-bundled/index.tsx)
+
+### Preact wrapper (additive Leaflet mode)
+
+If your Preact app already loads Leaflet + Leaflet.draw, use the Preact shim:
+
+```ts
+import { PreactLeafletGeoKit } from "@florasync/leaflet-geokit/preact";
+```
+
+It mounts `<leaflet-geokit>` in additive mode by default (`use-external-leaflet` + `skip-leaflet-styles`) and syncs GeoJSON via callbacks.
+
+```tsx
+<PreactLeafletGeoKit
+  style={{ width: "100%", height: "420px" }}
+  attributes={{
+    latitude: 39.7392,
+    longitude: -104.9903,
+    zoom: 11,
+    "draw-polygon": true,
+    "edit-features": true,
+  }}
+  onChangeText={(text) => {
+    // Persist serialized FeatureCollection
+    console.log(text);
+  }}
+/>
+```
+
+For apps that do **not** preload Leaflet/Leaflet.draw, use the bundled Preact entrypoint:
+
+```ts
+import { PreactLeafletGeoKit } from "@florasync/leaflet-geokit/preact-bundled";
+```
+
+See full Preact shim docs: [docs/shims/preact.md](docs/shims/preact.md)
+
+### React
+
+Use the React wrappers when you want component-level integration in React apps.
+
+- Runtime dependency model: React/ReactDOM are consumer-provided (peer dependencies), so wrapper bundles stay thin.
+
+- Shim docs: [docs/shims/react.md](docs/shims/react.md)
+- Entrypoints: [src/react/index.tsx](src/react/index.tsx), [src/react-bundled/index.tsx](src/react-bundled/index.tsx)
+
+### React wrapper (additive Leaflet mode)
+
+If your React app already loads Leaflet + Leaflet.draw, use the React shim:
+
+```ts
+import { ReactLeafletGeoKit } from "@florasync/leaflet-geokit/react";
+```
+
+For apps that do **not** preload Leaflet/Leaflet.draw, use the bundled React entrypoint:
+
+```ts
+import { ReactLeafletGeoKit } from "@florasync/leaflet-geokit/react-bundled";
+```
+
+See full React shim docs: [docs/shims/react.md](docs/shims/react.md)
 
 ## Recipes
 

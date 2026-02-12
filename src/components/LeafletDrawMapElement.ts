@@ -6,11 +6,9 @@ import type {
   MeasurementSystem,
 } from "@src/types/public";
 import { createLogger, type Logger, type LogLevel } from "@src/utils/logger";
-import {
-  injectLeafletStyles,
-  configureLeafletDefaultIcons,
-} from "@src/lib/leaflet-assets";
+import { applyLeafletStylingIfNeeded } from "@src/lib/leaflet-assets";
 import { MapController } from "@src/lib/MapController";
+import type * as LeafletNS from "leaflet";
 
 export class LeafletDrawMapElement
   extends HTMLElement
@@ -45,6 +43,11 @@ export class LeafletDrawMapElement
 
   // Controller
   private _controller: MapController | null = null;
+
+  // External Leaflet configuration
+  private _useExternalLeaflet = false;
+  private _skipLeafletStyles = false;
+  private _leafletInstance: typeof LeafletNS | undefined;
 
   constructor() {
     super();
@@ -110,19 +113,19 @@ export class LeafletDrawMapElement
       devOverlay: this._devOverlay,
       polygonAllowIntersection: this._polygonAllowIntersection,
       preferCanvas: this._preferCanvas,
+      useExternalLeaflet: this._useExternalLeaflet,
+      skipLeafletStyles: this._skipLeafletStyles,
     };
   }
 
   // Lifecycle
   async connectedCallback(): Promise<void> {
     this._logger.debug("connectedCallback", this._currentConfig());
-    // Inject Leaflet core and Draw CSS into Shadow DOM, and set default marker URLs
-    try {
-      injectLeafletStyles(this._root);
-      configureLeafletDefaultIcons();
-    } catch (err) {
-      this._logger.warn("leaflet-style-inject-failed", err as any);
-    }
+    // Inject Leaflet CSS/icons unless skipped
+    applyLeafletStylingIfNeeded({
+      root: this._root,
+      skipStyles: this._skipLeafletStyles,
+    });
 
     this._applyThemeStyles();
 
@@ -156,6 +159,8 @@ export class LeafletDrawMapElement
           this.dispatchEvent(new CustomEvent("leaflet-draw:error", { detail }));
         },
       },
+      leaflet: this._leafletInstance ?? undefined,
+      useExternalLeaflet: this._useExternalLeaflet,
     });
 
     await this._controller.init();
@@ -182,6 +187,8 @@ export class LeafletDrawMapElement
       "log-level",
       "dev-overlay",
       "prefer-canvas",
+      "use-external-leaflet",
+      "skip-leaflet-styles",
       "theme-url",
       // draw controls
       "draw-polygon",
@@ -248,6 +255,12 @@ export class LeafletDrawMapElement
       case "prefer-canvas":
         this._preferCanvas = value !== null;
         break;
+      case "use-external-leaflet":
+        this._useExternalLeaflet = value !== null;
+        break;
+      case "skip-leaflet-styles":
+        this._skipLeafletStyles = value !== null;
+        break;
       default:
         break;
     }
@@ -270,6 +283,8 @@ export class LeafletDrawMapElement
         name === "dev-overlay" ||
         name === "log-level" ||
         name === "prefer-canvas" ||
+        name === "use-external-leaflet" ||
+        name === "skip-leaflet-styles" ||
         name.startsWith("draw-") ||
         name === "edit-features" ||
         name === "delete-features"
@@ -368,6 +383,29 @@ export class LeafletDrawMapElement
   set preferCanvas(v: boolean) {
     this._preferCanvas = Boolean(v);
     this._booleanReflect("prefer-canvas", this._preferCanvas);
+  }
+
+  get useExternalLeaflet(): boolean {
+    return this._useExternalLeaflet;
+  }
+  set useExternalLeaflet(v: boolean) {
+    this._useExternalLeaflet = Boolean(v);
+    this._booleanReflect("use-external-leaflet", this._useExternalLeaflet);
+  }
+
+  get skipLeafletStyles(): boolean {
+    return this._skipLeafletStyles;
+  }
+  set skipLeafletStyles(v: boolean) {
+    this._skipLeafletStyles = Boolean(v);
+    this._booleanReflect("skip-leaflet-styles", this._skipLeafletStyles);
+  }
+
+  get leafletInstance(): typeof LeafletNS | undefined {
+    return this._leafletInstance;
+  }
+  set leafletInstance(v: typeof LeafletNS | undefined) {
+    this._leafletInstance = v;
   }
 
   get themeCss(): string {
@@ -566,6 +604,9 @@ export class LeafletDrawMapElement
       logLevel: this._logLevel,
       devOverlay: this._devOverlay,
       polygonAllowIntersection: this._polygonAllowIntersection,
+      preferCanvas: this._preferCanvas,
+      useExternalLeaflet: this._useExternalLeaflet,
+      skipLeafletStyles: this._skipLeafletStyles,
     };
   }
 

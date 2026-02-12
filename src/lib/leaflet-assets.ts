@@ -222,3 +222,20 @@ export function configureLeafletDefaultIcons(): void {
     shadowUrl,
   });
 }
+
+/**
+ * Conditional helper: apply styles and icon wiring only if not skipped.
+ */
+export function applyLeafletStylingIfNeeded(options: {
+  root: ShadowRoot;
+  skipStyles?: boolean;
+}): void {
+  const { root, skipStyles } = options;
+  if (skipStyles) return;
+  try {
+    injectLeafletStyles(root);
+    configureLeafletDefaultIcons();
+  } catch {
+    // Swallow styling errors; caller logs at higher level
+  }
+}
