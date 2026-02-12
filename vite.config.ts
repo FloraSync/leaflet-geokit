@@ -1,5 +1,4 @@
 import { defineConfig } from "vite";
-import preact from "@preact/preset-vite";
 import { visualizer } from "rollup-plugin-visualizer";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -12,7 +11,6 @@ const analyzeReport =
 
 export default defineConfig({
   plugins: [
-    preact(),
     ...(analyzeEnabled
       ? [
           visualizer({

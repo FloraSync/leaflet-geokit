@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { h } from "preact";
-import { render } from "@testing-library/preact";
+import { render, waitFor } from "@testing-library/preact";
 
 vi.mock("@src/lib/MapController", () => {
   class MapController {
@@ -32,7 +32,7 @@ describe("Preact bundled shim", () => {
     document.body.innerHTML = "";
   });
 
-  it("mounts without external/additive attributes by default", () => {
+  it("mounts without external/additive attributes by default", async () => {
     const { container } = render(
       h(PreactLeafletGeoKit, {
         style: { width: "100%", height: "420px" },
@@ -44,10 +44,12 @@ describe("Preact bundled shim", () => {
     );
 
     const element = container.querySelector("leaflet-geokit") as HTMLElement;
-    expect(element).toBeTruthy();
-    expect(element.getAttribute("zoom")).toBe("10");
-    expect(element.hasAttribute("draw-polygon")).toBe(true);
-    expect(element.hasAttribute("use-external-leaflet")).toBe(false);
-    expect(element.hasAttribute("skip-leaflet-styles")).toBe(false);
+    await waitFor(() => {
+      expect(element).toBeTruthy();
+      expect(element.getAttribute("zoom")).toBe("10");
+      expect(element.hasAttribute("draw-polygon")).toBe(true);
+      expect(element.hasAttribute("use-external-leaflet")).toBe(false);
+      expect(element.hasAttribute("skip-leaflet-styles")).toBe(false);
+    });
   });
 });

@@ -12,6 +12,8 @@ import { FeatureStore } from "@src/lib/FeatureStore";
 import { registerLayerCakeTool } from "@src/lib/draw/toolbar-patch";
 import { DrawCake, ensureDrawCakeRegistered } from "@src/lib/draw/L.Draw.Cake";
 import { LayerCakeManager } from "@src/lib/layer-cake/LayerCakeManager";
+import layerCakeIconUrl from "@src/assets/layer-cake.svg?url";
+import layerCakeIconSvg from "@src/assets/layer-cake.svg?raw";
 import {
   expandMultiGeometries,
   mergePolygons,
@@ -185,6 +187,7 @@ export class MapController {
       const DrawCtor = (Lns.Control as any).Draw; // tolerate type friction
       this.drawControl = new DrawCtor(drawOptions);
       this.map.addControl(this.drawControl);
+      this.applyLayerCakeToolbarIcon();
 
       if (this.options.controls.ruler) {
         this.logger.debug("init:ruler", {
@@ -534,6 +537,56 @@ export class MapController {
     }
 
     return { draw, edit } as any;
+  }
+
+  private applyLayerCakeToolbarIcon(): void {
+    if (!this.container) return;
+
+    const applyIcon = () => {
+      const button = this.container.querySelector(
+        "a.leaflet-draw-draw-cake",
+      ) as HTMLAnchorElement | null;
+      if (!button) return;
+
+      // Disable Leaflet.draw sprite sheet background for this button.
+      button.style.setProperty("background-image", "none", "important");
+      button.style.setProperty("background-color", "#fff", "important");
+
+      // Render our custom icon as an explicit child element so it cannot fall back to sprites.
+      button.style.setProperty("position", "relative", "important");
+      let icon = button.querySelector(
+        ".leaflet-geokit-cake-icon",
+      ) as HTMLSpanElement | null;
+      if (!icon) {
+        icon = document.createElement("span");
+        icon.className = "leaflet-geokit-cake-icon";
+        icon.setAttribute("aria-hidden", "true");
+        button.appendChild(icon);
+      }
+
+      icon.style.setProperty("position", "absolute", "important");
+      icon.style.setProperty("display", "block", "important");
+      icon.style.setProperty("left", "50%", "important");
+      icon.style.setProperty("top", "50%", "important");
+      icon.style.setProperty("width", "18px", "important");
+      icon.style.setProperty("height", "18px", "important");
+      icon.style.setProperty("transform", "translate(-50%, -50%)", "important");
+      icon.style.setProperty("pointer-events", "none", "important");
+
+      // Use inline SVG markup so rendering does not depend on URL asset resolution.
+      if (!icon.firstElementChild) {
+        icon.innerHTML = layerCakeIconSvg;
+      }
+      const svg = icon.firstElementChild as SVGElement | null;
+      if (svg) {
+        svg.style.setProperty("width", "100%", "important");
+        svg.style.setProperty("height", "100%", "important");
+        svg.style.setProperty("display", "block", "important");
+      }
+    };
+
+    applyIcon();
+    setTimeout(applyIcon, 0);
   }
 
   /* c8 ignore start */
