@@ -51,6 +51,19 @@ describe("Django shim", () => {
     expect(textarea.style.display).toBe("none");
   });
 
+  it("does not auto-mount before init is called", () => {
+    const textarea = document.createElement("textarea");
+    textarea.className = "geokit-editor-widget";
+    document.body.appendChild(textarea);
+
+    expect(document.querySelector("leaflet-geokit")).toBeNull();
+
+    const [handle] = initDjangoGeokit();
+
+    expect(handle).toBeTruthy();
+    expect(document.querySelector("leaflet-geokit")).toBe(handle!.element);
+  });
+
   it("syncs GeoJSON back to the textarea on change events", async () => {
     const textarea = document.createElement("textarea");
     textarea.className = "geokit-editor-widget";
@@ -114,6 +127,24 @@ describe("Django shim", () => {
     // These attributes should not be set because their values were "false" or "0"
     expect(handle!.element.hasAttribute("draw-polygon")).toBe(false);
     expect(handle!.element.hasAttribute("zoom")).toBe(false);
+  });
+
+  it("applies elementAttributes with precedence over data attributes", () => {
+    const textarea = document.createElement("textarea");
+    textarea.className = "geokit-editor-widget";
+    textarea.setAttribute("data-geokit-draw-polygon", "false");
+    textarea.setAttribute("data-geokit-zoom", "0");
+    document.body.appendChild(textarea);
+
+    const [handle] = initDjangoGeokit(undefined, {
+      elementAttributes: {
+        "draw-polygon": true,
+        zoom: 10,
+      },
+    });
+
+    expect(handle!.element.hasAttribute("draw-polygon")).toBe(true);
+    expect(handle!.element.getAttribute("zoom")).toBe("10");
   });
 
   it("handles non-Error objects in toError function", async () => {

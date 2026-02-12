@@ -1,4 +1,4 @@
-import * as L from "leaflet";
+import * as BundledL from "leaflet";
 import "leaflet-draw";
 import "leaflet-ruler";
 import type { Feature, FeatureCollection } from "geojson";
@@ -10,8 +10,10 @@ import type {
 import { createLogger, type Logger } from "@src/utils/logger";
 import { FeatureStore } from "@src/lib/FeatureStore";
 import { registerLayerCakeTool } from "@src/lib/draw/toolbar-patch";
-import { DrawCake } from "@src/lib/draw/L.Draw.Cake";
+import { DrawCake, ensureDrawCakeRegistered } from "@src/lib/draw/L.Draw.Cake";
 import { LayerCakeManager } from "@src/lib/layer-cake/LayerCakeManager";
+import layerCakeIconUrl from "@src/assets/layer-cake.svg?url";
+import layerCakeIconSvg from "@src/assets/layer-cake.svg?raw";
 import {
   expandMultiGeometries,
   mergePolygons,
@@ -23,6 +25,7 @@ import {
   getRulerOptions,
   measurementSystemDescriptions,
 } from "@src/utils/ruler";
+import { assertDrawPresent } from "@src/utils/leaflet-guards";
 
 let rulerPrecisionPatched = false;
 
@@ -45,6 +48,10 @@ export interface MapControllerOptions {
   readOnly?: boolean;
   logger?: Logger;
   callbacks?: MapControllerCallbacks;
+  /** Optional injected Leaflet namespace to use instead of bundled import. */
+  leaflet?: typeof BundledL;
+  /** Prefer external Leaflet if available (falls back to bundled if missing/invalid). */
+  useExternalLeaflet?: boolean;
 }
 
 /**
@@ -55,16 +62,19 @@ export class MapController {
   private logger: Logger;
   private options: MapControllerOptions;
 
+  // Active Leaflet namespace (injected or bundled fallback)
+  private L: typeof BundledL;
+
   // Data store (id-centric)
   private store: FeatureStore;
 
   // Leaflet entities
-  private map: L.Map | null = null;
-  private drawnItems: L.FeatureGroup | null = null;
+  private map: BundledL.Map | null = null;
+  private drawnItems: BundledL.FeatureGroup | null = null;
   // Keep 'any' here to avoid type friction across different @types/leaflet-draw versions
   private drawControl: any | null = null;
-  private rulerControl: L.Control.Ruler | null = null;
-  private measurementControl: L.Control | null = null;
+  private rulerControl: BundledL.Control.Ruler | null = null;
+  private measurementControl: BundledL.Control | null = null;
   private measurementSystem: MeasurementSystem = "metric";
   private measurementModalOverlay: HTMLDivElement | null = null;
   private measurementModalDialog: HTMLDivElement | null = null;
@@ -88,14 +98,41 @@ export class MapController {
     this.logger = (opts.logger ?? createLogger("controller", "debug")).child(
       "map",
     );
+    this.L = this.resolveLeaflet(opts);
     this.store = new FeatureStore(this.logger.child("store"));
     this.logger.debug("ctor", {
       config: opts.map,
       controls: opts.controls,
       readOnly: opts.readOnly,
+      useExternalLeaflet: opts.useExternalLeaflet,
     });
 
-    registerLayerCakeTool();
+    ensureDrawCakeRegistered(this.L);
+    registerLayerCakeTool(this.L);
+  }
+
+  private resolveLeaflet(opts: MapControllerOptions): typeof BundledL {
+    const preferExternal = opts.useExternalLeaflet;
+    if (!preferExternal) {
+      return BundledL;
+    }
+
+    if (opts.leaflet && assertDrawPresent(opts.leaflet)) {
+      this.logger.debug("leaflet-runtime:external-injected");
+      return opts.leaflet;
+    }
+
+    const globalL = (globalThis as any).L as typeof BundledL | undefined;
+    if (globalL && assertDrawPresent(globalL)) {
+      this.logger.debug("leaflet-runtime:external-global");
+      return globalL;
+    }
+
+    this.logger.warn("leaflet-runtime:external-fallback-bundled", {
+      message:
+        "External Leaflet requested but Draw APIs were missing; falling back to bundled Leaflet/Draw",
+    });
+    return BundledL;
   }
 
   // ---------------- Lifecycle ----------------
@@ -116,37 +153,47 @@ export class MapController {
         tileUrl,
         tileAttribution,
         preferCanvas = true, // Default to Canvas rendering for better performance
+        useExternalLeaflet,
       } = this.options.map;
       const center: [number, number] = [latitude, longitude];
-      this.map = L.map(this.container, {
+      const Lns = this.L;
+
+      if (useExternalLeaflet) {
+        assertDrawPresent(Lns, {
+          onError: (message: string) =>
+            this.logger.warn("external-leaflet-missing-draw", { message }),
+        });
+      }
+      this.map = Lns.map(this.container, {
         zoomControl: true,
         preferCanvas,
       }).setView(center, zoom);
 
       // Add tile layer
-      L.tileLayer(tileUrl, {
+      Lns.tileLayer(tileUrl, {
         attribution: tileAttribution,
         minZoom,
         maxZoom,
       }).addTo(this.map);
 
       // FeatureGroup for all drawn layers
-      this.drawnItems = L.featureGroup().addTo(this.map);
+      this.drawnItems = Lns.featureGroup().addTo(this.map);
 
       // Draw control
       const drawOptions = this.buildDrawOptions(
         this.options.controls,
         !!this.options.readOnly,
       );
-      const DrawCtor = (L.Control as any).Draw; // tolerate type friction
+      const DrawCtor = (Lns.Control as any).Draw; // tolerate type friction
       this.drawControl = new DrawCtor(drawOptions);
       this.map.addControl(this.drawControl);
+      this.applyLayerCakeToolbarIcon();
 
       if (this.options.controls.ruler) {
         this.logger.debug("init:ruler", {
-          available: typeof L.control.ruler === "function",
+          available: typeof Lns.control.ruler === "function",
         });
-        if (typeof L.control.ruler === "function") {
+        if (typeof Lns.control.ruler === "function") {
           this.addRulerControl();
           this.installMeasurementSettingsControl();
         } else {
@@ -246,7 +293,7 @@ export class MapController {
     // Add new features into store + map layers
     const normalized = expandMultiGeometries(fc);
     const ids = this.store.add(normalized);
-    const layers = L.geoJSON(normalized);
+    const layers = this.L.geoJSON(normalized);
     let i = 0;
     layers.eachLayer((layer: any) => {
       (layer as any)._fid = ids[i] ?? ids[ids.length - 1];
@@ -276,7 +323,7 @@ export class MapController {
     if (!this.map || !this.drawnItems) return [];
     const normalized = expandMultiGeometries(fc);
     const ids = this.store.add(normalized);
-    const layers = L.geoJSON(normalized);
+    const layers = this.L.geoJSON(normalized);
     let i = 0;
     layers.eachLayer((layer: any) => {
       (layer as any)._fid = ids[i] ?? ids[ids.length - 1];
@@ -311,17 +358,17 @@ export class MapController {
     if (!this.map) return;
     const b = this.store.bounds();
     if (!b) return;
-    const boundsLiteral = b as unknown as L.LatLngBoundsLiteral;
-    const bounds = L.latLngBounds(boundsLiteral);
+    const boundsLiteral = b as unknown as BundledL.LatLngBoundsLiteral;
+    const bounds = this.L.latLngBounds(boundsLiteral);
     // Compute padded bounds by interpolating
     if (paddingRatio > 0) {
       const sw = bounds.getSouthWest();
       const ne = bounds.getNorthEast();
       const latPad = (ne.lat - sw.lat) * paddingRatio;
       const lngPad = (ne.lng - sw.lng) * paddingRatio;
-      const padded = L.latLngBounds(
-        L.latLng(sw.lat - latPad, sw.lng - lngPad),
-        L.latLng(ne.lat + latPad, ne.lng + lngPad),
+      const padded = this.L.latLngBounds(
+        this.L.latLng(sw.lat - latPad, sw.lng - lngPad),
+        this.L.latLng(ne.lat + latPad, ne.lng + lngPad),
       );
       this.map.fitBounds(padded);
     } else {
@@ -334,15 +381,15 @@ export class MapController {
     paddingRatio: number = 0.05,
   ): Promise<void> {
     if (!this.map) return;
-    const bounds = (L as any).latLngBounds(boundsTuple as any);
+    const bounds = (this.L as any).latLngBounds(boundsTuple as any);
     if (paddingRatio > 0) {
       const sw = bounds.getSouthWest();
       const ne = bounds.getNorthEast();
       const latPad = (ne.lat - sw.lat) * paddingRatio;
       const lngPad = (ne.lng - sw.lng) * paddingRatio;
-      const padded = (L as any).latLngBounds(
-        (L as any).latLng(sw.lat - latPad, sw.lng - lngPad),
-        (L as any).latLng(ne.lat + latPad, ne.lng + lngPad),
+      const padded = (this.L as any).latLngBounds(
+        (this.L as any).latLng(sw.lat - latPad, sw.lng - lngPad),
+        (this.L as any).latLng(ne.lat + latPad, ne.lng + lngPad),
       );
       this.map.fitBounds(padded);
     } else {
@@ -424,7 +471,7 @@ export class MapController {
   private buildDrawOptions(
     controls: DrawControlsConfig,
     readOnly: boolean,
-  ): L.Control.DrawOptions {
+  ): BundledL.Control.DrawOptions {
     // Define explicit options for each tool to ensure consistent behavior.
     const draw: Record<string, any> = {
       polygon: controls.polygon
@@ -492,18 +539,68 @@ export class MapController {
     return { draw, edit } as any;
   }
 
+  private applyLayerCakeToolbarIcon(): void {
+    if (!this.container) return;
+
+    const applyIcon = () => {
+      const button = this.container.querySelector(
+        "a.leaflet-draw-draw-cake",
+      ) as HTMLAnchorElement | null;
+      if (!button) return;
+
+      // Disable Leaflet.draw sprite sheet background for this button.
+      button.style.setProperty("background-image", "none", "important");
+      button.style.setProperty("background-color", "#fff", "important");
+
+      // Render our custom icon as an explicit child element so it cannot fall back to sprites.
+      button.style.setProperty("position", "relative", "important");
+      let icon = button.querySelector(
+        ".leaflet-geokit-cake-icon",
+      ) as HTMLSpanElement | null;
+      if (!icon) {
+        icon = document.createElement("span");
+        icon.className = "leaflet-geokit-cake-icon";
+        icon.setAttribute("aria-hidden", "true");
+        button.appendChild(icon);
+      }
+
+      icon.style.setProperty("position", "absolute", "important");
+      icon.style.setProperty("display", "block", "important");
+      icon.style.setProperty("left", "50%", "important");
+      icon.style.setProperty("top", "50%", "important");
+      icon.style.setProperty("width", "18px", "important");
+      icon.style.setProperty("height", "18px", "important");
+      icon.style.setProperty("transform", "translate(-50%, -50%)", "important");
+      icon.style.setProperty("pointer-events", "none", "important");
+
+      // Use inline SVG markup so rendering does not depend on URL asset resolution.
+      if (!icon.firstElementChild) {
+        icon.innerHTML = layerCakeIconSvg;
+      }
+      const svg = icon.firstElementChild as SVGElement | null;
+      if (svg) {
+        svg.style.setProperty("width", "100%", "important");
+        svg.style.setProperty("height", "100%", "important");
+        svg.style.setProperty("display", "block", "important");
+      }
+    };
+
+    applyIcon();
+    setTimeout(applyIcon, 0);
+  }
+
   /* c8 ignore start */
   private addRulerControl(): void {
     if (!this.map) return;
     this.installRulerPrecisionPatch();
     const options = getRulerOptions(this.measurementSystem);
-    this.rulerControl = L.control.ruler(options);
+    this.rulerControl = this.L.control.ruler(options);
     this.map.addControl(this.rulerControl);
   }
 
   private installRulerPrecisionPatch(): void {
     if (rulerPrecisionPatched) return;
-    const RulerCtor = (L.Control as any).Ruler;
+    const RulerCtor = (this.L.Control as any).Ruler;
     if (!RulerCtor || typeof RulerCtor !== "function") return;
     const proto = RulerCtor.prototype;
     const original = proto._calculateBearingAndDistance;
@@ -560,14 +657,14 @@ export class MapController {
   private installMeasurementSettingsControl(): void {
     if (!this.map || this.measurementControl) return;
     const controller = this;
-    const SettingsControl = (L.Control as any).extend({
+    const SettingsControl = (this.L.Control as any).extend({
       options: { position: "topleft" },
       onAdd() {
-        const container = L.DomUtil.create(
+        const container = controller.L.DomUtil.create(
           "div",
           "leaflet-bar leaflet-ruler-settings-control",
         );
-        const button = L.DomUtil.create(
+        const button = controller.L.DomUtil.create(
           "button",
           "leaflet-ruler-settings-button",
           container,
@@ -580,11 +677,11 @@ export class MapController {
           event.stopPropagation();
           controller.toggleMeasurementModal(true);
         });
-        L.DomEvent.disableClickPropagation(container);
-        L.DomEvent.disableScrollPropagation(container);
+        controller.L.DomEvent.disableClickPropagation(container);
+        controller.L.DomEvent.disableScrollPropagation(container);
         return container;
       },
-    }) as typeof L.Control;
+    }) as typeof BundledL.Control;
     this.measurementControl = new SettingsControl();
     this.map.addControl(this.measurementControl);
   }
@@ -805,7 +902,7 @@ export class MapController {
 
   private patchLeafletDrawBugs(): void {
     try {
-      const anyL: any = L as any;
+      const anyL: any = this.L as any;
       const GU = anyL.GeometryUtil;
       if (!GU) return;
       // Replace readableArea with a strict-mode safe implementation
@@ -857,7 +954,7 @@ export class MapController {
     // Patch Leaflet.draw circle editing strict-mode bug:
     // L.Edit.Circle.prototype._resize assigns to an undeclared `radius` variable.
     try {
-      const anyL: any = L as any;
+      const anyL: any = this.L as any;
       const EditCircle = anyL.Edit?.Circle;
       const DrawEvent = anyL.Draw?.Event;
       const GU = anyL.GeometryUtil;
@@ -907,7 +1004,7 @@ export class MapController {
     if (!this.map || !this.drawnItems) return;
 
     // CREATED: single layer with layerType
-    this.map.on((L as any).Draw.Event.CREATED, (e: any) => {
+    this.map.on((this.L as any).Draw.Event.CREATED, (e: any) => {
       try {
         const { layer, layerType } = e;
 
@@ -920,11 +1017,11 @@ export class MapController {
 
           this.activeCakeSession = new LayerCakeManager(
             this.map!,
-            layer as L.Circle,
+            layer as BundledL.Circle,
             (featureCollection) => {
               if (!this.drawnItems) return;
               const ids = this.store.add(featureCollection);
-              const layers = L.geoJSON(featureCollection);
+              const layers = this.L.geoJSON(featureCollection);
 
               let i = 0;
               layers.eachLayer((createdLayer: any) => {
@@ -965,7 +1062,7 @@ export class MapController {
     });
 
     // EDITED: multiple layers in a LayerGroup
-    this.map.on((L as any).Draw.Event.EDITED, (e: any) => {
+    this.map.on((this.L as any).Draw.Event.EDITED, (e: any) => {
       try {
         const ids: string[] = [];
         const layers: any = e.layers;
@@ -996,7 +1093,7 @@ export class MapController {
     });
 
     // DELETED: multiple layers in a LayerGroup
-    this.map.on((L as any).Draw.Event.DELETED, (e: any) => {
+    this.map.on((this.L as any).Draw.Event.DELETED, (e: any) => {
       try {
         const ids: string[] = [];
         const layers: any = e.layers;
@@ -1056,8 +1153,8 @@ export class MapController {
       // Only for Polygon/Polyline-like layers
       const isPoly =
         typeof layer.getLatLngs === "function" &&
-        (layer instanceof (L as any).Polygon ||
-          layer instanceof (L as any).Polyline);
+        (layer instanceof (this.L as any).Polygon ||
+          layer instanceof (this.L as any).Polyline);
       if (!isPoly) return;
 
       // Only when editing is enabled on the layer (avoid accidental deletes)
@@ -1156,11 +1253,12 @@ export class MapController {
 
   private findNearestVertex(
     layer: any,
-    latlng: L.LatLng,
+    latlng: BundledL.LatLng,
     tolerancePx: number,
   ): { pathIndex: number; vertexIndex: number } | null {
     if (!this.map) return null;
-    const llToPoint = (ll: L.LatLng) => this.map!.latLngToContainerPoint(ll);
+    const llToPoint = (ll: BundledL.LatLng) =>
+      this.map!.latLngToContainerPoint(ll);
     const dist = (a: any, b: any) => Math.hypot(a.x - b.x, a.y - b.y);
     const targetPt = llToPoint(latlng);
 
@@ -1169,9 +1267,9 @@ export class MapController {
     let bestVertex = -1;
     const latlngs: any = layer.getLatLngs();
     // Normalize: Polyline -> LatLng[], Polygon -> LatLng[][] (rings)
-    const paths: L.LatLng[][] = Array.isArray(latlngs[0])
-      ? (latlngs as L.LatLng[][])
-      : [latlngs as L.LatLng[]];
+    const paths: BundledL.LatLng[][] = Array.isArray(latlngs[0])
+      ? (latlngs as BundledL.LatLng[][])
+      : [latlngs as BundledL.LatLng[]];
 
     paths.forEach((path, pathIndex) => {
       path.forEach((v, vertexIndex) => {
@@ -1198,19 +1296,19 @@ export class MapController {
       // Only for polygon/polyline
       const isPoly =
         typeof layer.getLatLngs === "function" &&
-        (layer instanceof (L as any).Polygon ||
-          layer instanceof (L as any).Polyline);
+        (layer instanceof (this.L as any).Polygon ||
+          layer instanceof (this.L as any).Polyline);
       if (!isPoly) return;
 
       const latlngs: any = layer.getLatLngs();
-      const paths: L.LatLng[][] = Array.isArray(latlngs[0])
-        ? (latlngs as L.LatLng[][])
-        : [latlngs as L.LatLng[]];
+      const paths: BundledL.LatLng[][] = Array.isArray(latlngs[0])
+        ? (latlngs as BundledL.LatLng[][])
+        : [latlngs as BundledL.LatLng[]];
       const path = paths[pathIndex];
       if (!path) return;
 
       // Enforce minimal vertices: polygon needs >= 3, polyline >= 2
-      const isPolygon = layer instanceof (L as any).Polygon;
+      const isPolygon = layer instanceof (this.L as any).Polygon;
       const minVerts = isPolygon ? 3 : 2;
       if (path.length <= minVerts) return;
 

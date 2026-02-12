@@ -137,6 +137,48 @@ describe("MapController", () => {
     controller.destroy();
   });
 
+  it("falls back to bundled Leaflet when external mode is requested but Draw is missing", async () => {
+    const logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      child: vi.fn(() => logger),
+      setLevel: vi.fn(),
+    } as any;
+
+    const originalGlobalL = (globalThis as any).L;
+    (globalThis as any).L = {
+      map: vi.fn(),
+      Control: {},
+      draw: undefined,
+    };
+
+    const controller = new MapController({
+      ...opts,
+      logger,
+      useExternalLeaflet: true,
+      leaflet: {
+        map: vi.fn(),
+        Control: {},
+        draw: undefined,
+      } as any,
+    });
+
+    try {
+      expect((controller as any).L).toBe(L);
+      expect(logger.warn).toHaveBeenCalledWith(
+        "leaflet-runtime:external-fallback-bundled",
+        expect.objectContaining({
+          message: expect.stringContaining("falling back to bundled"),
+        }),
+      );
+    } finally {
+      (globalThis as any).L = originalGlobalL;
+      controller.destroy();
+    }
+  });
+
   describe("mergeVisiblePolygons", () => {
     it("returns null when no polygons exist", async () => {
       const controller = new MapController(opts);

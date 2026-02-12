@@ -1,11 +1,10 @@
 import * as L from "leaflet";
-import { DrawCake } from "@src/lib/draw/L.Draw.Cake";
 
-let patched = false;
+const patchedNamespaces = new WeakSet<object>();
 
-export function registerLayerCakeTool(): void {
-  if (patched) return;
-  const DrawToolbarCtor = (L as any).DrawToolbar;
+export function registerLayerCakeTool(Lns: typeof L = L): void {
+  if (patchedNamespaces.has(Lns as object)) return;
+  const DrawToolbarCtor = (Lns as any).DrawToolbar;
   if (!DrawToolbarCtor?.prototype?.getModeHandlers) return;
 
   const originalGetModeHandlers = DrawToolbarCtor.prototype.getModeHandlers;
@@ -14,9 +13,11 @@ export function registerLayerCakeTool(): void {
     const modes = originalGetModeHandlers.call(this, map);
 
     if ((this as any).options?.cake) {
+      const CakeCtor = (Lns as any).Draw?.Cake;
+      if (!CakeCtor) return modes;
       modes.push({
         enabled: true,
-        handler: new DrawCake(map, (this as any).options.cake),
+        handler: new CakeCtor(map, (this as any).options.cake),
         title: "Draw Layer Cake (Subtractive Zones)",
       });
     }
@@ -24,5 +25,5 @@ export function registerLayerCakeTool(): void {
     return modes;
   };
 
-  patched = true;
+  patchedNamespaces.add(Lns as object);
 }

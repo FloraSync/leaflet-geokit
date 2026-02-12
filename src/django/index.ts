@@ -35,6 +35,11 @@ export interface DjangoShimOptions {
   attributePrefix?: string;
   onError?: (error: Error, context: DjangoShimErrorContext) => void;
   onInit?: (handle: DjangoShimHandle) => void;
+  /**
+   * Programmatic attributes to apply to the <leaflet-geokit> element.
+   * These take precedence over textarea data attributes.
+   */
+  elementAttributes?: Record<string, string | number | boolean>;
 }
 
 export function initDjangoGeokit(
@@ -103,6 +108,7 @@ function bindTextarea(
 
   const attributePrefix = options.attributePrefix ?? DEFAULT_ATTRIBUTE_PREFIX;
   copyDataAttributes(textarea, element, attributePrefix);
+  applyOptionAttributes(element, options.elementAttributes);
 
   parent.insertBefore(container, textarea);
   container.appendChild(element);
@@ -224,6 +230,25 @@ function applyAttribute(
   }
 
   element.setAttribute(name, value);
+}
+
+function applyOptionAttributes(
+  element: HTMLElement,
+  attributes: DjangoShimOptions["elementAttributes"],
+): void {
+  if (!attributes) return;
+  Object.entries(attributes).forEach(([name, raw]) => {
+    if (name === "height" || name === "bound") return;
+    if (typeof raw === "boolean") {
+      applyAttribute(element, name, raw ? "true" : "false");
+      return;
+    }
+    if (typeof raw === "number") {
+      applyAttribute(element, name, String(raw));
+      return;
+    }
+    applyAttribute(element, name, raw);
+  });
 }
 
 function toError(error: unknown): Error {

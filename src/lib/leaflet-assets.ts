@@ -160,11 +160,11 @@ ${leafletRulerCSS}
 }
 
 /* --- Layer Cake draw tool icon + manager UI --- */
-.leaflet-draw-draw-cake {
+.leaflet-draw-toolbar a.leaflet-draw-draw-cake {
   background-image: url(${layerCakeIconUrl}) !important;
-  background-size: 18px 18px;
-  background-position: center;
-  background-repeat: no-repeat;
+  background-size: 18px 18px !important;
+  background-position: 50% 50% !important;
+  background-repeat: no-repeat !important;
   background-color: #fff;
 }
 
@@ -211,6 +211,31 @@ ${leafletRulerCSS}
 }
 
 /**
+ * Inject only project-specific style overrides that must exist even when
+ * consumers provide external Leaflet CSS.
+ * Idempotent: does nothing if already injected for this root.
+ */
+export function injectLeafletCustomStyles(root: ShadowRoot): void {
+  const marker = "data-leaflet-custom-styles";
+  if (root.querySelector(`style[${marker}]`)) return;
+
+  const style = document.createElement("style");
+  style.setAttribute(marker, "true");
+  style.textContent = `
+/* Ensure Layer Cake toolbar icon uses project asset instead of draw sprite sheet */
+.leaflet-draw-toolbar a.leaflet-draw-draw-cake {
+  background-image: url(${layerCakeIconUrl}) !important;
+  background-size: 18px 18px !important;
+  background-position: 50% 50% !important;
+  background-repeat: no-repeat !important;
+  background-color: #fff;
+}
+`;
+
+  root.appendChild(style);
+}
+
+/**
  * Ensure Leaflet default marker icons resolve via the bundler.
  * Safe to call multiple times.
  */
@@ -221,4 +246,24 @@ export function configureLeafletDefaultIcons(): void {
     iconUrl,
     shadowUrl,
   });
+}
+
+/**
+ * Conditional helper: apply styles and icon wiring only if not skipped.
+ */
+export function applyLeafletStylingIfNeeded(options: {
+  root: ShadowRoot;
+  skipStyles?: boolean;
+}): void {
+  const { root, skipStyles } = options;
+  try {
+    if (!skipStyles) {
+      injectLeafletStyles(root);
+      configureLeafletDefaultIcons();
+    }
+    // Always apply project-specific draw icon overrides, including external mode.
+    injectLeafletCustomStyles(root);
+  } catch {
+    // Swallow styling errors; caller logs at higher level
+  }
 }

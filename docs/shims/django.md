@@ -35,14 +35,12 @@ class LeafletGeoKitWidget(forms.Textarea):
         super().__init__(default_attrs)
 ```
 
-Template snippet:
+Template snippet (explicit init):
 
 ```html
 {# widgets/geokit_map.html #} {% include "django/forms/widgets/textarea.html" %}
 <script type="module">
-  document.addEventListener("DOMContentLoaded", () => {
-    window.GeoKitDjango?.init(".geokit-editor-widget");
-  });
+  window.GeoKitDjango?.init(".geokit-editor-widget");
 </script>
 ```
 
@@ -76,6 +74,13 @@ import { initDjangoGeokit } from "@florasync/leaflet-geokit/django";
 
 const handles = initDjangoGeokit(".geokit-editor-widget", {
   height: 420,
+  elementAttributes: {
+    "draw-polygon": true,
+    "draw-rectangle": true,
+    "edit-features": true,
+    "delete-features": false,
+    zoom: 12,
+  },
   onError: (error, context) => {
     console.error("GeoKit Django shim error", error, context);
   },
