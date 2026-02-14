@@ -12,7 +12,6 @@ import { FeatureStore } from "@src/lib/FeatureStore";
 import { registerLayerCakeTool } from "@src/lib/draw/toolbar-patch";
 import { DrawCake, ensureDrawCakeRegistered } from "@src/lib/draw/L.Draw.Cake";
 import { LayerCakeManager } from "@src/lib/layer-cake/LayerCakeManager";
-import layerCakeIconUrl from "@src/assets/layer-cake.svg?url";
 import layerCakeIconSvg from "@src/assets/layer-cake.svg?raw";
 import {
   expandMultiGeometries,
