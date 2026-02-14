@@ -2,8 +2,20 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>@florasync/leaflet-geokit — Dev</title>
+    <title>@florasync/leaflet-geokit — External Dev</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- Leaflet CSS -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+    <!-- Leaflet Draw CSS -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css"
+    />
+
     <style>
       html,
       body {
@@ -204,8 +216,8 @@
   </head>
   <body>
     <nav class="harness-nav">
-      <a href="/" class="active">Bundled WC</a>
-      <a href="/external.html">External WC</a>
+      <a href="/">Bundled WC</a>
+      <a href="/external.html" class="active">External WC</a>
       <span class="nav-divider"></span>
       <a href="/preact.html">Preact</a>
       <a href="/react.html">React</a>
@@ -216,7 +228,7 @@
     <header>
       <div class="header-title">
         <strong>@florasync/leaflet-geokit</strong>
-        <span style="opacity: 0.6">dev harness</span>
+        <span style="opacity: 0.6">external dev harness</span>
       </div>
       <form id="geocodeForm" class="geocoder" autocomplete="off">
         <label for="geocodeQuery" class="sr-only">Search address</label>
@@ -308,9 +320,13 @@
       </div>
     </div>
 
-    <!-- For dev: import the component directly from source -->
+    <!-- Leaflet JS (loaded before component) -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+
+    <!-- Component (expects window.L to exist) -->
     <script type="module">
-      import "/src/index.ts";
+      import "/src/external.ts";
 
       const map = document.getElementById("map");
       const geocodeForm = document.getElementById("geocodeForm");
