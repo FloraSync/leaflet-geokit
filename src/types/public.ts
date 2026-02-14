@@ -1,5 +1,6 @@
 import type { Feature, FeatureCollection, Geometry } from "geojson";
 import type { LogLevel } from "@src/utils/logger";
+import type * as Leaflet from "leaflet";
 
 /**
  * Basic map configuration derived from element attributes.
@@ -72,7 +73,7 @@ export interface LeafletDrawMapElementAPI {
   skipLeafletStyles?: boolean;
 
   /** Optional injection of a pre-existing Leaflet namespace to use instead of bundled import. */
-  leafletInstance?: typeof import("leaflet");
+  leafletInstance?: typeof Leaflet;
 
   // Methods
   getGeoJSON(): Promise<FeatureCollection>;

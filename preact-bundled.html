@@ -2,8 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>@florasync/leaflet-geokit — Dev</title>
+    <title>@florasync/leaflet-geokit — Preact Bundled Dev</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- No Leaflet CDN - bundled with component -->
+
     <style>
       html,
       body {
@@ -72,12 +75,17 @@
         grid-template-columns: 1fr 360px;
         gap: 12px;
       }
-      leaflet-geokit {
-        display: block;
+      #map-container {
         height: 100%;
         width: 100%;
         border-radius: 8px;
         box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08) inset;
+        overflow: hidden;
+      }
+      leaflet-geokit {
+        display: block;
+        height: 100%;
+        width: 100%;
       }
       .panel {
         border: 1px solid #e5e5e5;
@@ -119,7 +127,6 @@
         background: #e0e0e0;
         color: #222;
       }
-      /* Toasts */
       .toast-container {
         position: fixed;
         top: 12px;
@@ -160,14 +167,6 @@
       .toast.error {
         border-left: 4px solid #da1e28;
       }
-      .toast .toast-title {
-        font-weight: 600;
-        margin-bottom: 2px;
-      }
-      .toast .toast-message {
-        line-height: 1.35;
-      }
-      /* Harness Navigation */
       .harness-nav {
         display: flex;
         flex-wrap: wrap;
@@ -204,19 +203,19 @@
   </head>
   <body>
     <nav class="harness-nav">
-      <a href="/" class="active">Bundled WC</a>
+      <a href="/">Bundled WC</a>
       <a href="/external.html">External WC</a>
       <span class="nav-divider"></span>
       <a href="/preact.html">Preact</a>
       <a href="/react.html">React</a>
       <span class="nav-divider"></span>
-      <a href="/preact-bundled.html">Preact (Bundled)</a>
+      <a href="/preact-bundled.html" class="active">Preact (Bundled)</a>
       <a href="/react-bundled.html">React (Bundled)</a>
     </nav>
     <header>
       <div class="header-title">
         <strong>@florasync/leaflet-geokit</strong>
-        <span style="opacity: 0.6">dev harness</span>
+        <span style="opacity: 0.6">preact bundled dev harness</span>
       </div>
       <form id="geocodeForm" class="geocoder" autocomplete="off">
         <label for="geocodeQuery" class="sr-only">Search address</label>
@@ -249,23 +248,7 @@
       ></div>
     </header>
     <div class="wrap">
-      <leaflet-geokit
-        id="map"
-        latitude="39.7392"
-        longitude="-104.9903"
-        zoom="11"
-        tile-url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        draw-polygon
-        draw-polyline
-        draw-rectangle
-        draw-circle
-        draw-layer-cake
-        draw-marker
-        draw-ruler
-        edit-features
-        delete-features
-        log-level="debug"
-      ></leaflet-geokit>
+      <div id="map-container"></div>
 
       <div class="panel">
         <div class="row">
@@ -308,26 +291,65 @@
       </div>
     </div>
 
-    <!-- For dev: import the component directly from source -->
+    <!-- Component (bundled Leaflet) -->
     <script type="module">
       import "/src/index.ts";
+      import { h, render } from "https://esm.sh/preact@10.25.4";
 
-      const map = document.getElementById("map");
+      let mapElement = null;
+
+      // Simple Preact wrapper that renders the web component
+      function MapApp() {
+        return h("leaflet-geokit", {
+          ref: (el) => {
+            if (el) setupMap(el);
+          },
+          style: { display: "block", height: "100%", width: "100%" },
+          latitude: "39.7392",
+          longitude: "-104.9903",
+          zoom: "11",
+          "tile-url": "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+          "draw-polygon": true,
+          "draw-polyline": true,
+          "draw-rectangle": true,
+          "draw-circle": true,
+          "draw-layer-cake": true,
+          "draw-marker": true,
+          "draw-ruler": true,
+          "edit-features": true,
+          "delete-features": true,
+          "log-level": "debug",
+        });
+      }
+
+      render(h(MapApp), document.getElementById("map-container"));
+
+      function setupMap(el) {
+        mapElement = el;
+        setupMapEventListeners(el);
+      }
+
+      function getMap() {
+        return mapElement;
+      }
+
+      const waitForMapReady = () =>
+        mapElement
+          ? Promise.resolve()
+          : new Promise((resolve) => {
+              const check = () => {
+                if (mapElement) resolve();
+                else setTimeout(check, 50);
+              };
+              check();
+            });
+
+      // UI handlers
       const geocodeForm = document.getElementById("geocodeForm");
       const geocodeInput = document.getElementById("geocodeQuery");
       const geocodeStatus = document.getElementById("geocodeStatus");
       const replaceToggle = document.getElementById("replaceMode");
       const geocodeButton = geocodeForm?.querySelector('button[type="submit"]');
-      let mapReady = false;
-
-      const waitForMapReady = () =>
-        mapReady
-          ? Promise.resolve()
-          : new Promise((resolve) => {
-              map.addEventListener("leaflet-draw:ready", resolve, {
-                once: true,
-              });
-            });
 
       function setGeocodeStatus(message, isError = false) {
         if (!geocodeStatus) return;
@@ -341,7 +363,6 @@
         console.log(obj);
       }
 
-      // Toasts
       function showToast(message, type = "info", opts = {}) {
         const { title, timeout = 4000 } = opts;
         let container = document.getElementById("toasts");
@@ -356,107 +377,74 @@
         const t = document.createElement("div");
         t.className = `toast ${type}`;
         t.setAttribute("role", type === "error" ? "alert" : "status");
-        t.innerHTML = `
-          ${title ? `<div class="toast-title">${title}</div>` : ""}
-          <div class="toast-message"></div>
-        `;
+        t.innerHTML = `${title ? `<div class="toast-title">${title}</div>` : ""}<div class="toast-message"></div>`;
         t.querySelector(".toast-message").textContent = message;
         container.appendChild(t);
-        // Force paint then show
         requestAnimationFrame(() => t.classList.add("show"));
         const remove = () => {
           t.classList.remove("show");
           setTimeout(() => t.remove(), 200);
         };
-        if (timeout > 0) {
-          setTimeout(remove, timeout);
-        }
-        // Close on click
+        if (timeout > 0) setTimeout(remove, timeout);
         t.addEventListener("click", remove);
         return remove;
       }
 
-      function toFeatureCollection(input) {
-        if (!input) return null;
-        if (input.type === "FeatureCollection") return input;
-        if (input.type === "Feature")
-          return { type: "FeatureCollection", features: [input] };
-        if (input.type && input.coordinates) {
-          return {
-            type: "FeatureCollection",
-            features: [{ type: "Feature", properties: {}, geometry: input }],
-          };
-        }
-        return null;
+      function tag(msg) {
+        document.getElementById("evtTag").textContent = msg;
       }
 
-      function isValidGeometry(geom) {
-        if (!geom || typeof geom !== "object") return false;
-        const allowed = new Set([
-          "Point",
-          "MultiPoint",
-          "LineString",
-          "MultiLineString",
-          "Polygon",
-          "MultiPolygon",
-          "GeometryCollection",
-        ]);
-        if (!allowed.has(geom.type)) return false;
-        if (geom.type === "GeometryCollection") {
-          return (
-            Array.isArray(geom.geometries) &&
-            geom.geometries.every((g) => isValidGeometry(g))
-          );
-        }
-        if (!Array.isArray(geom.coordinates)) return false;
-        if (geom.type === "Point") {
-          const [x, y] = geom.coordinates;
-          return Number.isFinite(x) && Number.isFinite(y);
-        }
-        // For non-point, basic structural check: ensure at least one finite number exists
-        const hasNumber = (arr) =>
-          Array.isArray(arr) &&
-          (arr.some((v) => Number.isFinite(v)) || arr.some(hasNumber));
-        return hasNumber(geom.coordinates);
-      }
-
-      function validateAndNormalizeGeoJSON(input) {
-        const fc = toFeatureCollection(input);
-        if (
-          !fc ||
-          fc.type !== "FeatureCollection" ||
-          !Array.isArray(fc.features)
-        ) {
-          throw new Error(
-            "Not a valid GeoJSON Feature/FeatureCollection/Geometry",
-          );
-        }
-        const filtered = [];
-        const errors = [];
-        for (const f of fc.features) {
-          if (!f || f.type !== "Feature") continue;
-          const geom = f.geometry;
-          if (!geom) continue; // skip null geometry
-          if (!isValidGeometry(geom)) {
-            errors.push(
-              `Unsupported or invalid geometry: ${geom?.type ?? "unknown"}`,
-            );
-            continue;
+      function setupMapEventListeners(map) {
+        map.addEventListener("leaflet-draw:ready", (e) => {
+          tag("ready");
+          log({ event: "ready", detail: e.detail });
+        });
+        map.addEventListener("leaflet-draw:created", (e) => {
+          tag("created");
+          log({ event: "created", detail: e.detail });
+        });
+        map.addEventListener("leaflet-draw:edited", (e) => {
+          tag("edited");
+          log({ event: "edited", detail: e.detail });
+        });
+        map.addEventListener("leaflet-draw:deleted", (e) => {
+          tag("deleted");
+          log({ event: "deleted", detail: e.detail });
+        });
+        map.addEventListener("leaflet-draw:export", (e) => {
+          const { geoJSON, featureCount } = e.detail || {};
+          try {
+            const text = JSON.stringify(geoJSON, null, 2);
+            const blob = new Blob([text], { type: "application/geo+json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            const ts = new Date();
+            const pad = (n) => String(n).padStart(2, "0");
+            const stamp = `${ts.getFullYear()}${pad(ts.getMonth() + 1)}${pad(ts.getDate())}-${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}`;
+            a.href = url;
+            a.download = `leaflet-draw-export-${stamp}.geojson`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+            showToast(`Exported ${featureCount ?? 0} feature(s)`, "success");
+            log({ event: "export", featureCount, file: a.download });
+          } catch (err) {
+            console.error(err);
+            showToast("Export failed", "error");
           }
-          filtered.push(f);
-        }
-        if (filtered.length === 0) {
-          throw new Error(
-            "No valid features with supported geometry types found",
-          );
-        }
-        return {
-          fc: { type: "FeatureCollection", features: filtered },
-          errors,
-        };
+        });
+        map.addEventListener("leaflet-draw:ingest", (e) => {
+          try {
+            const incoming = e.detail?.fc;
+            if (!incoming || incoming.type !== "FeatureCollection") return;
+            e.detail.fc = flattenMultiGeometries(incoming);
+          } catch (err) {
+            console.warn("ingest flatten failed", err);
+          }
+        });
       }
 
-      // Flatten Multi* geometries into simple features (for editability)
       function flattenMultiGeometries(fc) {
         const out = [];
         for (const f of fc.features || []) {
@@ -502,64 +490,12 @@
               break;
             default:
               out.push(f);
-              break;
           }
         }
         return { type: "FeatureCollection", features: out };
       }
 
-      function tag(msg) {
-        document.getElementById("evtTag").textContent = msg;
-      }
-
-      // Wire events
-      map.addEventListener("leaflet-draw:ready", (e) => {
-        mapReady = true;
-        tag("ready");
-        log({ event: "ready", detail: e.detail });
-      });
-      map.addEventListener("leaflet-draw:created", (e) => {
-        tag("created");
-        log({ event: "created", detail: e.detail });
-      });
-      map.addEventListener("leaflet-draw:edited", (e) => {
-        tag("edited");
-        log({ event: "edited", detail: e.detail });
-      });
-      map.addEventListener("leaflet-draw:deleted", (e) => {
-        tag("deleted");
-        log({ event: "deleted", detail: e.detail });
-      });
-      map.addEventListener("leaflet-draw:error", (e) => {
-        tag("error");
-        log({ event: "error", detail: e.detail });
-      });
-
-      // Export event: download as .geojson with timestamp
-      map.addEventListener("leaflet-draw:export", (e) => {
-        const { geoJSON, featureCount } = e.detail || {};
-        try {
-          const text = JSON.stringify(geoJSON, null, 2);
-          const blob = new Blob([text], { type: "application/geo+json" });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          const ts = new Date();
-          const pad = (n) => String(n).padStart(2, "0");
-          const stamp = `${ts.getFullYear()}${pad(ts.getMonth() + 1)}${pad(ts.getDate())}-${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}`;
-          a.href = url;
-          a.download = `leaflet-draw-export-${stamp}.geojson`;
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-          URL.revokeObjectURL(url);
-          showToast(`Exported ${featureCount ?? 0} feature(s)`, "success");
-          log({ event: "export", featureCount, file: a.download });
-        } catch (err) {
-          console.error(err);
-          showToast("Export failed", "error");
-        }
-      });
-
+      // Geocode
       if (geocodeForm && geocodeInput) {
         geocodeForm.addEventListener("submit", async (event) => {
           event.preventDefault();
@@ -568,13 +504,11 @@
             setGeocodeStatus("Enter a search term");
             return;
           }
-
           setGeocodeStatus("Searching…");
           geocodeButton?.setAttribute("disabled", "disabled");
-
           try {
             await waitForMapReady();
-
+            const map = getMap();
             const params = new URLSearchParams({
               format: "jsonv2",
               q: query,
@@ -582,38 +516,24 @@
               limit: "1",
               polygon_geojson: "1",
             });
-
             const response = await fetch(
               `https://nominatim.openstreetmap.org/search?${params.toString()}`,
-              {
-                headers: {
-                  Accept: "application/json",
-                },
-              },
+              { headers: { Accept: "application/json" } },
             );
-
-            if (!response.ok) {
+            if (!response.ok)
               throw new Error(`Geocoder request failed: ${response.status}`);
-            }
-
             const results = await response.json();
-
             if (!Array.isArray(results) || results.length === 0) {
               setGeocodeStatus("No results found");
               showToast("No results found", "info");
-              log({ event: "geocode", query, result: null });
               return;
             }
-
             const match = results[0];
             const replace = !!(replaceToggle && replaceToggle.checked);
-
-            // Try to fit to returned bounding box if present
             const bb =
               Array.isArray(match.boundingbox) && match.boundingbox.length === 4
                 ? match.boundingbox.map(Number)
                 : null;
-
             if (bb && bb.every(Number.isFinite)) {
               const [south, north, west, east] = bb;
               await map.fitBounds(
@@ -624,15 +544,11 @@
                 0.05,
               );
             } else {
-              // Fallback to centering on lat/lon
               const lat = Number(match.lat);
               const lon = Number(match.lon);
-              if (Number.isFinite(lat) && Number.isFinite(lon)) {
+              if (Number.isFinite(lat) && Number.isFinite(lon))
                 await map.setView(lat, lon);
-              }
             }
-
-            // If GeoJSON geometry is included, add it to the map via hooks
             if (match.geojson && typeof match.geojson === "object") {
               const featureCollection = {
                 type: "FeatureCollection",
@@ -663,7 +579,6 @@
                 );
               }
             }
-
             tag("geocode");
             log({ event: "geocode", query, result: match });
             setGeocodeStatus(match.display_name ?? "Moved to location");
@@ -677,20 +592,21 @@
         });
       }
 
-      // Demo buttons
+      // Buttons
       document.getElementById("btnGet").addEventListener("click", async () => {
-        const fc = await map.getGeoJSON();
+        await waitForMapReady();
+        const fc = await getMap().getGeoJSON();
         log({ method: "getGeoJSON", featureCount: fc.features.length, fc });
       });
-
       document
         .getElementById("btnClear")
         .addEventListener("click", async () => {
-          await map.clearLayers();
+          await waitForMapReady();
+          await getMap().clearLayers();
           log({ method: "clearLayers", ok: true });
         });
-
       document.getElementById("btnLoad").addEventListener("click", async () => {
+        await waitForMapReady();
         const demo = {
           type: "FeatureCollection",
           features: [
@@ -703,10 +619,10 @@
         };
         const replace = !!(replaceToggle && replaceToggle.checked);
         if (replace) {
-          await map.loadGeoJSON(demo);
-          await map.fitBoundsToData(0.05);
+          await getMap().loadGeoJSON(demo);
+          await getMap().fitBoundsToData(0.05);
         } else {
-          await map.addFeatures(demo);
+          await getMap().addFeatures(demo);
         }
         log({
           method: "loadGeoJSON",
@@ -714,8 +630,6 @@
           featureCount: demo.features.length,
         });
       });
-
-      // Upload GeoJSON
       const fileInput = document.getElementById("fileInput");
       const btnUpload = document.getElementById("btnUpload");
       if (btnUpload && fileInput) {
@@ -734,25 +648,19 @@
               showToast("Invalid JSON in file", "error");
               return;
             }
-
-            let validated;
-            try {
-              validated = validateAndNormalizeGeoJSON(json);
-            } catch (e) {
-              const msg = e?.message || "Not a valid GeoJSON/FeatureCollection";
-              setGeocodeStatus(msg, true);
-              showToast(msg, "error");
+            const fc =
+              json.type === "FeatureCollection"
+                ? json
+                : json.type === "Feature"
+                  ? { type: "FeatureCollection", features: [json] }
+                  : null;
+            if (!fc) {
+              setGeocodeStatus("Not a valid GeoJSON file", true);
+              showToast("Not a valid GeoJSON file", "error");
               return;
             }
-            const { fc, errors } = validated;
-            if (errors.length) {
-              showToast(
-                `${errors.length} feature(s) skipped due to invalid geometry`,
-                "info",
-              );
-            }
-
             await waitForMapReady();
+            const map = getMap();
             const replace = !!(replaceToggle && replaceToggle.checked);
             if (replace) {
               await map.loadGeoJSON(fc);
@@ -775,53 +683,34 @@
             setGeocodeStatus("Upload failed", true);
             showToast("Upload failed", "error");
           } finally {
-            // reset input so selecting the same file again triggers change
             fileInput.value = "";
           }
         });
       }
-
-      // Ingest hook: flatten Multi* geometries to ensure editability
-      map.addEventListener("leaflet-draw:ingest", (e) => {
-        try {
-          const incoming = e.detail?.fc;
-          if (!incoming || incoming.type !== "FeatureCollection") return;
-          const flattened = flattenMultiGeometries(incoming);
-          e.detail.fc = flattened;
-        } catch (err) {
-          console.warn("ingest flatten failed", err);
-        }
-      });
-
-      // Export button
       const btnExport = document.getElementById("btnExport");
       if (btnExport) {
         btnExport.addEventListener("click", async () => {
           try {
-            await map.exportGeoJSON();
+            await waitForMapReady();
+            await getMap().exportGeoJSON();
           } catch (err) {
             console.error(err);
             showToast("Export failed", "error");
           }
         });
       }
-
-      // Merge Polygons button
       const btnMergePolygons = document.getElementById("btnMergePolygons");
       if (btnMergePolygons) {
         btnMergePolygons.addEventListener("click", async () => {
           try {
-            // Get current feature count before merging
+            await waitForMapReady();
+            const map = getMap();
             const beforeFC = await map.getGeoJSON();
             const beforeCount = beforeFC.features.length;
-
-            // No need to merge if 0-1 features
             if (beforeCount <= 1) {
               showToast("Need at least 2 polygon layers to merge", "info");
               return;
             }
-
-            // Perform the merge
             const newId = await map.mergePolygons({
               properties: {
                 merged: true,
@@ -829,11 +718,9 @@
                 timestamp: new Date().toISOString(),
               },
             });
-
             if (newId) {
               const afterFC = await map.getGeoJSON();
               const mergedCount = beforeCount - afterFC.features.length + 1;
-
               tag("merged");
               showToast(`Merged ${mergedCount} polygon layers`, "success", {
                 title: "Polygons Merged",
@@ -854,8 +741,6 @@
           }
         });
       }
-
-      // Keyboard shortcuts: Ctrl/Cmd+S export, Ctrl/Cmd+O upload
       window.addEventListener("keydown", async (e) => {
         const mod = e.metaKey || e.ctrlKey;
         if (!mod || e.shiftKey || e.altKey) return;
@@ -863,17 +748,14 @@
         if (k === "s") {
           e.preventDefault();
           try {
-            await map.exportGeoJSON();
+            await waitForMapReady();
+            await getMap().exportGeoJSON();
           } catch (err) {
-            console.error(err);
             showToast("Export failed", "error");
           }
         } else if (k === "o") {
           e.preventDefault();
-          const fileInput = document.getElementById("fileInput");
-          if (fileInput && "click" in fileInput) {
-            fileInput.click();
-          }
+          if (fileInput && "click" in fileInput) fileInput.click();
         }
       });
     </script>
