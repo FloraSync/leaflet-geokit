@@ -2,24 +2,42 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as L from "leaflet";
 import { LayerCakeManager } from "@src/lib/layer-cake/LayerCakeManager";
 
-// Ensure Leaflet.draw events exist for testing
-const anyL = L as any;
-if (typeof anyL.Draw === "undefined") {
-  // If we can't assign to L.Draw directly, we might need to mock the import
-  // But let's try to just define it on the prototype or similar if it's a class
+// Ensure Leaflet.draw events exist for tests in a descriptor-safe way.
+// Some environments expose `L.Draw` as a non-configurable property.
+function ensureDrawEvents(): boolean {
+  const anyL = L as any;
+
   try {
-    anyL.Draw = {
-      Event: {
-        EDITMOVE: "draw:editmove",
-        EDITRESIZE: "draw:editresize",
-        EDITSTART: "draw:editstart",
-        EDITSTOP: "draw:editstop",
-      },
-    };
-  } catch (e) {
-    console.warn("Could not mock L.Draw directly", e);
+    // Do not blindly reassign `L.Draw` — that can throw in CI depending on descriptors.
+    if (typeof anyL.Draw === "undefined") {
+      Object.defineProperty(anyL, "Draw", {
+        value: {},
+        configurable: true,
+        enumerable: true,
+        writable: true,
+      });
+    }
+
+    if (!anyL.Draw || typeof anyL.Draw !== "object") {
+      return false;
+    }
+
+    if (!anyL.Draw.Event || typeof anyL.Draw.Event !== "object") {
+      anyL.Draw.Event = {};
+    }
+
+    anyL.Draw.Event.EDITMOVE ??= "draw:editmove";
+    anyL.Draw.Event.EDITRESIZE ??= "draw:editresize";
+    anyL.Draw.Event.EDITSTART ??= "draw:editstart";
+    anyL.Draw.Event.EDITSTOP ??= "draw:editstop";
+
+    return Boolean(anyL.Draw.Event.EDITMOVE && anyL.Draw.Event.EDITRESIZE);
+  } catch {
+    return false;
   }
 }
+
+const hasDrawEvents = ensureDrawEvents();
 
 describe("LayerCakeManager", () => {
   let map: L.Map;
@@ -242,17 +260,20 @@ describe("LayerCakeManager", () => {
     manager.destroy();
   });
 
-  it("tests event listener detachment with existing L.Draw setup", () => {
-    // Since L.Draw is already set up from the top of the file,
-    // this should create listeners that need to be detached
-    const manager = new LayerCakeManager(map, initialCircle, onSave);
+  it.runIf(hasDrawEvents)(
+    "tests event listener detachment with existing L.Draw setup",
+    () => {
+      // Since L.Draw is already set up from the top of the file,
+      // this should create listeners that need to be detached
+      const manager = new LayerCakeManager(map, initialCircle, onSave);
 
-    // The constructor should have set up event listeners if L.Draw.Event exists
-    // This covers the listener setup including line 124 (the EDITRESIZE detachment)
-    expect(() => {
-      manager.destroy();
-    }).not.toThrow();
-  });
+      // The constructor should have set up event listeners if L.Draw.Event exists
+      // This covers the listener setup including line 124 (the EDITRESIZE detachment)
+      expect(() => {
+        manager.destroy();
+      }).not.toThrow();
+    },
+  );
 
   it("uses setTimeout fallback when requestAnimationFrame is not available", async () => {
     // Mock requestAnimationFrame to be undefined to trigger line 134
