@@ -22,7 +22,7 @@ Dev container
 ## Getting Started
 
 - Install: `npm install`
-- Dev harness: `npm run dev` then open the page Vite prints.
+- Dev harness: `npm run dev` then open the page Vite prints. This launches the multi-page harness where you can test standard, external, Preact, and React variants.
 - Unit tests: `npm run test:unit`
 - Type check: `npm run typecheck`
 - Lint/format: `npm run lint` and `npm run format`

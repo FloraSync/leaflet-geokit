@@ -8,21 +8,24 @@ This document specifies the end-to-end architecture for a framework-agnostic, Ty
   - Package name: @florasync/leaflet-geokit
   - Location: repo root
 - Bundling
-  - Bundle leaflet and leaflet-draw JS/CSS into the library (no peer deps)
-  - Inject styling into Shadow DOM
+  - **Bundled (Default)**: Bundle leaflet and leaflet-draw JS/CSS into the library (no peer deps).
+  - **External**: Provide an entrypoint that externalizes the Leaflet stack for hosts that already provide it.
+  - Inject styling into Shadow DOM (with opt-out for external mode).
 - Target and compatibility
   - Build target: ES2019, evergreen browsers (Chromium, Firefox, Safari modern)
 - Developer ergonomics
   - Default log level: debug
   - Allow custom logger injection
+  - Multi-page dev harness for live prototyping across all integration variants.
 - Tests
-  - Vitest (unit/basic integration) included
-  - Playwright e2e planned (not present in this repo)
+  - Vitest (unit/basic integration) included.
+  - Playwright e2e included for cross-browser smoke testing.
 
 ## High-level design
 
-- Public API remains framework-agnostic (Custom Element + DOM events + methods)
-- Internals leverage TypeScript to enforce contracts; a dev overlay UI is planned
+- Public API remains framework-agnostic (Custom Element + DOM events + methods).
+- First-class wrappers provided for **Preact** and **React** to simplify framework integration.
+- Internals leverage TypeScript to enforce contracts; a dev overlay UI is planned.
 - Separation of concerns:
   - Custom Element host [LeafletDrawMapElement](src/components/LeafletDrawMapElement.ts:1)
   - Map lifecycle + Leaflet.draw bridge [MapController](src/lib/MapController.ts:1)

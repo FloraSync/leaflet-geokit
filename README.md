@@ -60,8 +60,18 @@ Documentation quick-links
 Inside this package directory:
 
 - npm install
-- npm run dev — starts Vite dev server
-- Open http://localhost:5173 in the browser (or whatever port VITE is using
+- npm run dev — starts the multi-page dev harness (Vite)
+- Open http://localhost:5173 to access the interactive test suite.
+
+### Dev Harness & Prototyping
+
+The dev harness is a multi-page environment that allows you to prototype and test the component in various scenarios:
+
+- **Bundled WC**: Standard web component with all dependencies included.
+- **External WC**: Web component using external Leaflet/Draw from a CDN.
+- **Preact / React**: First-class wrappers for Preact and React, testing both bundled and external dependency models.
+
+Use the navigation bar at the top of the harness to switch between these environments. This is the best way to verify changes across different framework integrations and dependency models.
 
 For consumption from another app:
 
@@ -803,14 +813,13 @@ import { initDjangoGeokit } from "@florasync/leaflet-geokit/django";
 
 ### Preact
 
-Use the Preact wrappers when you want component-level integration in Preact apps.
+Use the Preact wrappers when you want component-level integration in Preact apps. We provide pre-baked wrappers that handle the custom element lifecycle and event synchronization.
 
-- Runtime dependency model: Preact is consumer-provided (peer dependency), so wrapper bundles stay thin.
+- **Runtime dependency model**: Preact is consumer-provided (peer dependency), so wrapper bundles stay thin.
+- **Shim docs**: [docs/shims/preact.md](docs/shims/preact.md)
+- **Entrypoints**: [src/preact/index.tsx](src/preact/index.tsx), [src/preact-bundled/index.tsx](src/preact-bundled/index.tsx)
 
-- Shim docs: [docs/shims/preact.md](docs/shims/preact.md)
-- Entrypoints: [src/preact/index.tsx](src/preact/index.tsx), [src/preact-bundled/index.tsx](src/preact-bundled/index.tsx)
-
-### Preact wrapper (additive Leaflet mode)
+#### Preact wrapper (additive Leaflet mode)
 
 If your Preact app already loads Leaflet + Leaflet.draw, use the Preact shim:
 
@@ -847,14 +856,13 @@ See full Preact shim docs: [docs/shims/preact.md](docs/shims/preact.md)
 
 ### React
 
-Use the React wrappers when you want component-level integration in React apps.
+Use the React wrappers when you want component-level integration in React apps. These wrappers provide a first-class React experience for the web component.
 
-- Runtime dependency model: React/ReactDOM are consumer-provided (peer dependencies), so wrapper bundles stay thin.
+- **Runtime dependency model**: React/ReactDOM are consumer-provided (peer dependencies), so wrapper bundles stay thin.
+- **Shim docs**: [docs/shims/react.md](docs/shims/react.md)
+- **Entrypoints**: [src/react/index.tsx](src/react/index.tsx), [src/react-bundled/index.tsx](src/react-bundled/index.tsx)
 
-- Shim docs: [docs/shims/react.md](docs/shims/react.md)
-- Entrypoints: [src/react/index.tsx](src/react/index.tsx), [src/react-bundled/index.tsx](src/react-bundled/index.tsx)
-
-### React wrapper (additive Leaflet mode)
+#### React wrapper (additive Leaflet mode)
 
 If your React app already loads Leaflet + Leaflet.draw, use the React shim:
 
