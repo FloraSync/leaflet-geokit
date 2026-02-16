@@ -71,6 +71,74 @@ import "@florasync/leaflet-geokit";
 
 ---
 
+## Automated Docker Image Publishing (Docker Hub)
+
+The project includes automated Docker image publishing to Docker Hub via GitHub Actions. The workflow builds and publishes three Docker images whenever their corresponding Dockerfiles (or related scripts) are modified in the `main` branch.
+
+### Images Published
+
+1. **CI Image** (`{DOCKERHUB_REPO_PREFIX}-ci`)
+   - Built from: `docker/Dockerfile.CI`
+   - Purpose: Automated CI/CD testing environment
+   - Triggers on changes to: `docker/Dockerfile.CI`, `scripts/ci-entry.sh`
+
+2. **Devcontainer Image** (`{DOCKERHUB_REPO_PREFIX}-devcontainer`)
+   - Built from: `docker/Dockerfile.devcontainer`
+   - Purpose: VS Code development container
+   - Triggers on changes to: `docker/Dockerfile.devcontainer`
+
+3. **Publisher Image** (`{DOCKERHUB_REPO_PREFIX}-publisher`)
+   - Built from: `docker/Dockerfile.publisher`
+   - Purpose: Automated package publishing
+   - Triggers on changes to: `docker/Dockerfile.publisher`, `scripts/publisher-entry.sh`
+
+### Required GitHub Secrets
+
+Configure these secrets in your repository settings (Settings → Secrets and variables → Actions):
+
+- `DOCKERHUB_USERNAME`: Your Docker Hub username
+- `DOCKERHUB_TOKEN`: Docker Hub Personal Access Token (PAT) with read/write permissions
+  - Create at: https://hub.docker.com/settings/security
+- `DOCKERHUB_REPO_PREFIX`: Base name for your Docker repositories (e.g., `florasync/leaflet-geokit`)
+
+### Tagging Strategy
+
+Each published image receives three tags:
+- `latest` - Always points to the most recent build
+- `{version}` - Semantic version from `package.json` (e.g., `0.4.0`)
+- `{branch}-{sha}` - Git commit SHA for traceability (e.g., `main-abc1234`)
+
+### Example Usage
+
+After the workflow runs, pull images with:
+
+```bash
+# Latest CI image
+docker pull florasync/leaflet-geokit-ci:latest
+
+# Specific version
+docker pull florasync/leaflet-geokit-ci:0.4.0
+
+# Specific commit
+docker pull florasync/leaflet-geokit-ci:main-abc1234
+```
+
+### Manual Trigger
+
+You can manually trigger the workflow from GitHub:
+1. Go to Actions → Docker Publish
+2. Click "Run workflow"
+3. Select the branch and run
+
+### Workflow Behavior
+
+- **Smart Builds**: Only builds images when their specific files change
+- **Parallel Execution**: Multiple images can build simultaneously if multiple Dockerfiles change
+- **Automatic Cancellation**: New pushes cancel in-progress builds
+- **Build Caching**: Uses Docker registry cache for faster builds
+
+---
+
 ## Optional: Publish via Docker sidecar
 
 Build the publisher image once:
