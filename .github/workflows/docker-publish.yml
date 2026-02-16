@@ -8,6 +8,10 @@ on:
       - 'docker/**'
   workflow_dispatch: # Allow manual triggers
 
+# Limit GITHUB_TOKEN permissions
+permissions:
+  contents: read
+
 # Cancel in-progress runs of this workflow on the same branch
 concurrency:
   group: docker-publish-${{ github.ref }}
