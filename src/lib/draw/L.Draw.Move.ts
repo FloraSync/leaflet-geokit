@@ -10,6 +10,7 @@ export class DrawMove extends (L as any).Draw.Feature {
   private _featureGroup: L.FeatureGroup;
   private _selectedLayer: L.Layer | null = null;
   private _originalLatLngs: any = null;
+  private _dragStartLatLng: L.LatLng | null = null;
   private _isDragging = false;
   private _pendingMove: {
     layer: L.Layer;
@@ -126,6 +127,7 @@ export class DrawMove extends (L as any).Draw.Feature {
     const selectedLayer = e.target;
     this._selectedLayer = selectedLayer;
     this._isDragging = true;
+    this._dragStartLatLng = e.latlng;
 
     // Store original position
     this._storeOriginalLatLngs(selectedLayer);
@@ -166,27 +168,13 @@ export class DrawMove extends (L as any).Draw.Feature {
   }
 
   private _onMouseMove(e: L.LeafletMouseEvent): void {
-    if (!this._isDragging || !this._selectedLayer) return;
-
-    const latlng = e.latlng;
-    const layer = this._selectedLayer;
-
-    // Calculate offset from the original position
-    let originalLatlng: L.LatLng;
-    if ((layer as any).getLatLng) {
-      originalLatlng = (layer as any).getLatLng();
-    } else if ((layer as any).getLatLngs) {
-      // For polygons/polylines, use the first coordinate as reference
-      const latLngs = (layer as any).getLatLngs();
-      originalLatlng =
-        latLngs[0] instanceof L.LatLng ? latLngs[0] : latLngs[0][0];
-    } else {
+    if (!this._isDragging || !this._selectedLayer || !this._dragStartLatLng)
       return;
-    }
 
+    const layer = this._selectedLayer;
     const offset = {
-      lat: latlng.lat - originalLatlng.lat,
-      lng: latlng.lng - originalLatlng.lng,
+      lat: e.latlng.lat - this._dragStartLatLng.lat,
+      lng: e.latlng.lng - this._dragStartLatLng.lng,
     };
 
     // Apply offset to move the layer
@@ -273,6 +261,7 @@ export class DrawMove extends (L as any).Draw.Feature {
 
     this._selectedLayer = null;
     this._originalLatLngs = null;
+    this._dragStartLatLng = null;
     this._isDragging = false;
     this._pendingMove = null;
   }
@@ -334,6 +323,7 @@ export function ensureDrawMoveRegistered(Lns: typeof L): void {
     private _featureGroup: L.FeatureGroup;
     private _selectedLayer: L.Layer | null = null;
     private _originalLatLngs: any = null;
+    private _dragStartLatLng: L.LatLng | null = null;
     private _isDragging = false;
     private _pendingMove: {
       layer: L.Layer;
@@ -434,6 +424,7 @@ export function ensureDrawMoveRegistered(Lns: typeof L): void {
       const selectedLayer = e.target;
       this._selectedLayer = selectedLayer;
       this._isDragging = true;
+      this._dragStartLatLng = e.latlng;
       this._storeOriginalLatLngs(selectedLayer);
 
       if ((selectedLayer as any).getElement) {
@@ -465,25 +456,13 @@ export function ensureDrawMoveRegistered(Lns: typeof L): void {
     }
 
     private _onMouseMove(e: L.LeafletMouseEvent): void {
-      if (!this._isDragging || !this._selectedLayer) return;
-
-      const latlng = e.latlng;
-      const layer = this._selectedLayer;
-
-      let originalLatlng: L.LatLng;
-      if ((layer as any).getLatLng) {
-        originalLatlng = (layer as any).getLatLng();
-      } else if ((layer as any).getLatLngs) {
-        const latLngs = (layer as any).getLatLngs();
-        originalLatlng =
-          latLngs[0] instanceof Lns.LatLng ? latLngs[0] : latLngs[0][0];
-      } else {
+      if (!this._isDragging || !this._selectedLayer || !this._dragStartLatLng)
         return;
-      }
 
+      const layer = this._selectedLayer;
       const offset = {
-        lat: latlng.lat - originalLatlng.lat,
-        lng: latlng.lng - originalLatlng.lng,
+        lat: e.latlng.lat - this._dragStartLatLng.lat,
+        lng: e.latlng.lng - this._dragStartLatLng.lng,
       };
 
       if ((layer as any).setLatLng) {
@@ -557,6 +536,7 @@ export function ensureDrawMoveRegistered(Lns: typeof L): void {
 
       this._selectedLayer = null;
       this._originalLatLngs = null;
+      this._dragStartLatLng = null;
       this._isDragging = false;
       this._pendingMove = null;
     }

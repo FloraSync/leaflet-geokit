@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Added `draw-move` support to all dev harness variants so the Move/Translate toolbar tool is visible in Bundled WC, External WC, React, React (Bundled), Preact, and Preact (Bundled) demos.
+- Improved Move tool drag stability by anchoring translation to the initial drag-start pointer location, reducing jitter while repositioning GeoJSON features.
+- Kept Move confirmation workflow (`Save`/`Cancel`) and ensured docs/examples now include `draw-move` in supported draw attributes.
+- Expanded move-related test coverage for draw option wiring in `MapController`.
+
 ## 0.4.0
 
 - Added multi-page dev harness for live prototyping across all integration variants (Bundled WC, External WC, Preact, React).

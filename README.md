@@ -231,6 +231,7 @@ Enable specific drawing tools by adding boolean attributes (presence = enabled):
 - **`draw-circle`**: Enable circle drawing tool
 - **`draw-layer-cake`**: Enable Layer Cake tool for creating concentric donut polygons
 - **`draw-marker`**: Enable point marker drawing tool
+- **`draw-move`**: Enable move/translate tool for repositioning existing features (with Save/Cancel confirmation)
 - **`draw-ruler`**: Enable measurement/ruler tool for distances and areas
 
 ```html
@@ -241,6 +242,7 @@ Enable specific drawing tools by adding boolean attributes (presence = enabled):
   draw-circle
   draw-layer-cake
   draw-marker
+  draw-move
   draw-ruler
 ></leaflet-geokit>
 ```
@@ -717,6 +719,7 @@ A. Basic HTML, served by Vite (development)
   draw-circle
   draw-layer-cake
   draw-marker
+  draw-move
   edit-features
   delete-features
   log-level="debug"
