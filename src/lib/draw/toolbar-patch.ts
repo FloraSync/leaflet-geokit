@@ -22,6 +22,16 @@ export function registerLayerCakeTool(Lns: typeof L = L): void {
       });
     }
 
+    if ((this as any).options?.move) {
+      const MoveCtor = (Lns as any).Draw?.Move;
+      if (!MoveCtor) return modes;
+      modes.push({
+        enabled: true,
+        handler: new MoveCtor(map, (this as any).options.move),
+        title: "Move/Translate Features",
+      });
+    }
+
     return modes;
   };
 
