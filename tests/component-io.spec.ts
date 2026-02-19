@@ -3,10 +3,12 @@ import "@src/index";
 
 const TAG = "leaflet-geokit";
 
-const originalFetch = globalThis.fetch;
+function mockFetch(impl: () => Promise<unknown>): void {
+  vi.stubGlobal("fetch", vi.fn(impl));
+}
 
 afterEach(() => {
-  (globalThis as any).fetch = originalFetch;
+  vi.unstubAllGlobals();
 });
 
 describe("LeafletDrawMapElement — IO helpers", () => {
@@ -27,10 +29,10 @@ describe("LeafletDrawMapElement — IO helpers", () => {
     el._controller = { loadGeoJSON: loadSpy };
 
     const mockFc = { type: "FeatureCollection", features: [] };
-    (globalThis as any).fetch = vi.fn(async () => ({
+    mockFetch(async () => ({
       ok: true,
       json: async () => mockFc,
-    })) as any;
+    }));
     await el.loadGeoJSONFromUrl("/foo.json");
     expect(loadSpy).toHaveBeenCalledWith(mockFc, true);
   });
@@ -40,11 +42,11 @@ describe("LeafletDrawMapElement — IO helpers", () => {
     el._controller = { loadGeoJSON: vi.fn() };
     const errSpy = vi.fn();
     el.addEventListener("leaflet-draw:error", errSpy);
-    (globalThis as any).fetch = vi.fn(async () => ({
+    mockFetch(async () => ({
       ok: false,
       status: 500,
       statusText: "ERR",
-    })) as any;
+    }));
     await expect(el.loadGeoJSONFromUrl("/bad.json")).rejects.toBeInstanceOf(
       Error,
     );
@@ -67,10 +69,10 @@ describe("LeafletDrawMapElement — IO helpers", () => {
     const sourceFc = { type: "FeatureCollection", features: [] };
     const replacement = { type: "NotFeatureCollection", features: [1] } as any;
 
-    (globalThis as any).fetch = vi.fn(async () => ({
+    mockFetch(async () => ({
       ok: true,
       json: async () => sourceFc,
-    })) as any;
+    }));
 
     el.addEventListener("leaflet-draw:ingest", (e: any) => {
       e.detail.fc = replacement;

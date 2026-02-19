@@ -93,7 +93,6 @@ function vincentyDistance(
   let sinSigma = 0;
   let cosSigma = 0;
   let sigma = 0;
-  let sinAlpha = 0;
   let cosSqAlpha = 0;
   let cos2SigmaM = 0;
 
@@ -118,7 +117,7 @@ function vincentyDistance(
     cosSigma = sinU1 * sinU2 + cosU1 * cosU2 * cosLambda;
     sigma = Math.atan2(sinSigma, cosSigma);
 
-    sinAlpha = (cosU1 * cosU2 * sinLambda) / sinSigma;
+    const sinAlpha = (cosU1 * cosU2 * sinLambda) / sinSigma;
     cosSqAlpha = 1 - sinAlpha ** 2;
 
     cos2SigmaM =
