@@ -11,8 +11,11 @@ import { createLogger, type Logger } from "@src/utils/logger";
 import { FeatureStore } from "@src/lib/FeatureStore";
 import { registerLayerCakeTool } from "@src/lib/draw/toolbar-patch";
 import { DrawCake, ensureDrawCakeRegistered } from "@src/lib/draw/L.Draw.Cake";
+import { ensureDrawMoveRegistered } from "@src/lib/draw/L.Draw.Move";
+import type { DrawMove } from "@src/lib/draw/L.Draw.Move";
 import { LayerCakeManager } from "@src/lib/layer-cake/LayerCakeManager";
 import layerCakeIconSvg from "@src/assets/layer-cake.svg?raw";
+import moveToolIconSvg from "@src/assets/move-tool.svg?raw";
 import {
   expandMultiGeometries,
   mergePolygons,
@@ -91,6 +94,10 @@ export class MapController {
   private vertexMenuCleanup: (() => void) | null = null;
   private activeCakeSession: LayerCakeManager | null = null;
 
+  // Move tool UI elements
+  private moveConfirmationUI: HTMLDivElement | null = null;
+  private activeMoveHandler: DrawMove | null = null;
+
   constructor(opts: MapControllerOptions) {
     this.options = opts;
     this.container = opts.container;
@@ -107,6 +114,7 @@ export class MapController {
     });
 
     ensureDrawCakeRegistered(this.L);
+    ensureDrawMoveRegistered(this.L);
     registerLayerCakeTool(this.L);
   }
 
@@ -187,6 +195,7 @@ export class MapController {
       this.drawControl = new DrawCtor(drawOptions);
       this.map.addControl(this.drawControl);
       this.applyLayerCakeToolbarIcon();
+      this.applyMoveToolbarIcon();
 
       if (this.options.controls.ruler) {
         this.logger.debug("init:ruler", {
@@ -258,6 +267,13 @@ export class MapController {
     }
     this.vertexMenuEl = null;
     this.vertexMenuCleanup = null;
+
+    // Cleanup move confirmation UI if present
+    try {
+      this.hideMoveConfirmationUI();
+    } catch {
+      // Ignore errors when cleaning up move confirmation UI during destruction
+    }
 
     this.drawControl = null;
     this.rulerControl = null;
@@ -513,6 +529,11 @@ export class MapController {
           }
         : false,
       marker: controls.marker ? {} : false,
+      move: controls.move
+        ? {
+            featureGroup: this.drawnItems as any,
+          }
+        : false,
     };
 
     // Edit toolbar
@@ -575,6 +596,56 @@ export class MapController {
       // Use inline SVG markup so rendering does not depend on URL asset resolution.
       if (!icon.firstElementChild) {
         icon.innerHTML = layerCakeIconSvg;
+      }
+      const svg = icon.firstElementChild as SVGElement | null;
+      if (svg) {
+        svg.style.setProperty("width", "100%", "important");
+        svg.style.setProperty("height", "100%", "important");
+        svg.style.setProperty("display", "block", "important");
+      }
+    };
+
+    applyIcon();
+    setTimeout(applyIcon, 0);
+  }
+
+  private applyMoveToolbarIcon(): void {
+    if (!this.container) return;
+
+    const applyIcon = () => {
+      const button = this.container.querySelector(
+        "a.leaflet-draw-draw-move",
+      ) as HTMLAnchorElement | null;
+      if (!button) return;
+
+      // Disable Leaflet.draw sprite sheet background for this button.
+      button.style.setProperty("background-image", "none", "important");
+      button.style.setProperty("background-color", "#fff", "important");
+
+      // Render our custom icon as an explicit child element so it cannot fall back to sprites.
+      button.style.setProperty("position", "relative", "important");
+      let icon = button.querySelector(
+        ".leaflet-geokit-move-icon",
+      ) as HTMLSpanElement | null;
+      if (!icon) {
+        icon = document.createElement("span");
+        icon.className = "leaflet-geokit-move-icon";
+        icon.setAttribute("aria-hidden", "true");
+        button.appendChild(icon);
+      }
+
+      icon.style.setProperty("position", "absolute", "important");
+      icon.style.setProperty("display", "block", "important");
+      icon.style.setProperty("left", "50%", "important");
+      icon.style.setProperty("top", "50%", "important");
+      icon.style.setProperty("width", "18px", "important");
+      icon.style.setProperty("height", "18px", "important");
+      icon.style.setProperty("transform", "translate(-50%, -50%)", "important");
+      icon.style.setProperty("pointer-events", "none", "important");
+
+      // Use inline SVG markup so rendering does not depend on URL asset resolution.
+      if (!icon.firstElementChild) {
+        icon.innerHTML = moveToolIconSvg;
       }
       const svg = icon.firstElementChild as SVGElement | null;
       if (svg) {
@@ -1112,6 +1183,37 @@ export class MapController {
         this._error("onDeleted handler failed", err);
       }
     });
+
+    // MOVEEND: user has finished dragging a feature, show Save/Cancel UI
+    this.map.on("draw:moveend", (e: any) => {
+      try {
+        this.showMoveConfirmationUI(e.layer, e.originalGeoJSON, e.newGeoJSON);
+      } catch (err) {
+        this._error("draw:moveend handler failed", err);
+      }
+    });
+
+    // MOVECONFIRMED: user clicked Save, update the store and emit event
+    this.map.on("draw:moveconfirmed", (e: any) => {
+      try {
+        const layer = e.layer;
+        const id = (layer as any)._fid as string | undefined;
+        if (id) {
+          const feat = layer.toGeoJSON() as Feature;
+          this.store.update(id, feat);
+
+          // Emit custom event for move confirmed
+          this.options.callbacks?.onEdited?.({
+            ids: [id],
+            geoJSON: this.store.toFeatureCollection(),
+          });
+        }
+
+        this.hideMoveConfirmationUI();
+      } catch (err) {
+        this._error("draw:moveconfirmed handler failed", err);
+      }
+    });
   }
 
   private _error(message: string, cause: unknown): void {
@@ -1333,6 +1435,119 @@ export class MapController {
       }
     } catch (err) {
       this._error("deleteVertex", err);
+    }
+  }
+
+  // -------- Move tool Save/Cancel UI --------
+
+  private showMoveConfirmationUI(
+    layer: any,
+    originalGeoJSON: GeoJSON.Feature,
+    newGeoJSON: GeoJSON.Feature,
+  ): void {
+    try {
+      // Clean up any existing UI
+      this.hideMoveConfirmationUI();
+
+      if (!this.container || !this.map) return;
+
+      // Get the move handler from the draw control
+      const drawControl = this.drawControl;
+      if (!drawControl) return;
+
+      const drawToolbar = (drawControl as any)?._toolbars?.draw;
+      if (!drawToolbar) return;
+
+      // Find the move handler
+      const handlers = drawToolbar._modes || {};
+      let moveHandler: any = null;
+      for (const key in handlers) {
+        const mode = handlers[key];
+        if (mode?.handler?.type === "move") {
+          moveHandler = mode.handler;
+          break;
+        }
+      }
+
+      this.activeMoveHandler = moveHandler;
+
+      // Create a floating UI with Save and Cancel buttons
+      const ui = document.createElement("div");
+      ui.style.position = "absolute";
+      ui.style.bottom = "60px";
+      ui.style.left = "50%";
+      ui.style.transform = "translateX(-50%)";
+      ui.style.display = "flex";
+      ui.style.gap = "8px";
+      ui.style.background = "#fff";
+      ui.style.border = "2px solid #3388ff";
+      ui.style.borderRadius = "8px";
+      ui.style.padding = "12px 16px";
+      ui.style.boxShadow = "0 4px 12px rgba(0,0,0,0.2)";
+      ui.style.zIndex = "10000";
+      ui.style.fontSize = "14px";
+      ui.style.fontFamily = "system-ui, sans-serif";
+
+      const saveBtn = document.createElement("button");
+      saveBtn.textContent = "✓ Save";
+      saveBtn.style.padding = "8px 16px";
+      saveBtn.style.border = "none";
+      saveBtn.style.background = "#28a745";
+      saveBtn.style.color = "#fff";
+      saveBtn.style.borderRadius = "4px";
+      saveBtn.style.cursor = "pointer";
+      saveBtn.style.fontWeight = "600";
+      saveBtn.style.fontSize = "14px";
+      saveBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (moveHandler?.confirmMove) {
+          moveHandler.confirmMove();
+        }
+      });
+
+      const cancelBtn = document.createElement("button");
+      cancelBtn.textContent = "✕ Cancel";
+      cancelBtn.style.padding = "8px 16px";
+      cancelBtn.style.border = "1px solid #ccc";
+      cancelBtn.style.background = "#fff";
+      cancelBtn.style.color = "#333";
+      cancelBtn.style.borderRadius = "4px";
+      cancelBtn.style.cursor = "pointer";
+      cancelBtn.style.fontWeight = "600";
+      cancelBtn.style.fontSize = "14px";
+      cancelBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (moveHandler?.cancelMove) {
+          moveHandler.cancelMove();
+        }
+        this.hideMoveConfirmationUI();
+      });
+
+      ui.appendChild(saveBtn);
+      ui.appendChild(cancelBtn);
+
+      this.container.appendChild(ui);
+      this.moveConfirmationUI = ui;
+
+      this.logger.debug("showMoveConfirmationUI", {
+        layerId: (layer as any)._fid,
+      });
+    } catch (err) {
+      this._error("showMoveConfirmationUI", err);
+    }
+  }
+
+  private hideMoveConfirmationUI(): void {
+    try {
+      if (this.moveConfirmationUI) {
+        this.moveConfirmationUI.remove();
+        this.moveConfirmationUI = null;
+      }
+      this.activeMoveHandler = null;
+    } catch (err) {
+      this._error("hideMoveConfirmationUI", err);
     }
   }
 }

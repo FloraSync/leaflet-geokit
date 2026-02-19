@@ -141,6 +141,13 @@ Scripts (see [package.json](package.json))
 - npm run format — Prettier write
 - npm run test:e2e — Playwright (currently a minimal smoke test under e2e/)
 
+Optional workflow tooling
+
+- Spec Kitty is pre-wired as an optional, non-blocking workflow bootstrap.
+- `npm run spec-kitty:init` — initialize Spec Kitty in-place (requires `spec-kitty` CLI installed on your machine).
+- `npm run spec-kitty:doctor` — validate local Spec Kitty setup (requires `spec-kitty` CLI).
+- Build/test/publish scripts do **not** depend on Spec Kitty.
+
 Bundle analysis
 
 - The analyzer is opt-in and does not change normal production outputs.
@@ -231,6 +238,7 @@ Enable specific drawing tools by adding boolean attributes (presence = enabled):
 - **`draw-circle`**: Enable circle drawing tool
 - **`draw-layer-cake`**: Enable Layer Cake tool for creating concentric donut polygons
 - **`draw-marker`**: Enable point marker drawing tool
+- **`draw-move`**: Enable move/translate tool for repositioning existing features (with Save/Cancel confirmation)
 - **`draw-ruler`**: Enable measurement/ruler tool for distances and areas
 
 ```html
@@ -241,6 +249,7 @@ Enable specific drawing tools by adding boolean attributes (presence = enabled):
   draw-circle
   draw-layer-cake
   draw-marker
+  draw-move
   draw-ruler
 ></leaflet-geokit>
 ```
@@ -717,6 +726,7 @@ A. Basic HTML, served by Vite (development)
   draw-circle
   draw-layer-cake
   draw-marker
+  draw-move
   edit-features
   delete-features
   log-level="debug"

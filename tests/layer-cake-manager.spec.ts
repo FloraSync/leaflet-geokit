@@ -275,6 +275,80 @@ describe("LayerCakeManager", () => {
     },
   );
 
+  it.runIf(hasDrawEvents)("reacts to EDITMOVE only for managed layers", () => {
+    const manager = new LayerCakeManager(map, initialCircle, onSave);
+    manager.addRing();
+
+    const syncSpy = vi.spyOn(manager as any, "syncCenters");
+    const outsideLayer = L.circle([5, 5], { radius: 75 }).addTo(map);
+
+    map.fire((L as any).Draw.Event.EDITMOVE, { layer: outsideLayer });
+    expect(syncSpy).not.toHaveBeenCalled();
+
+    map.fire((L as any).Draw.Event.EDITMOVE, { layer: initialCircle });
+    expect(syncSpy).toHaveBeenCalledWith(initialCircle);
+
+    map.removeLayer(outsideLayer);
+    manager.destroy();
+  });
+
+  it.runIf(hasDrawEvents)(
+    "reacts to EDITRESIZE for managed layers and schedules controls render",
+    () => {
+      const manager = new LayerCakeManager(map, initialCircle, onSave);
+      manager.addRing();
+
+      const labelsSpy = vi.spyOn(manager as any, "updateLabels");
+      const renderSpy = vi.spyOn(manager as any, "requestRenderControls");
+      const outsideLayer = L.circle([6, 6], { radius: 90 }).addTo(map);
+
+      map.fire((L as any).Draw.Event.EDITRESIZE, { layer: outsideLayer });
+      expect(labelsSpy).not.toHaveBeenCalled();
+      expect(renderSpy).not.toHaveBeenCalled();
+
+      map.fire((L as any).Draw.Event.EDITRESIZE, { layer: initialCircle });
+      expect(labelsSpy).toHaveBeenCalledWith(initialCircle);
+      expect(renderSpy).toHaveBeenCalled();
+
+      map.removeLayer(outsideLayer);
+      manager.destroy();
+    },
+  );
+
+  it.runIf(hasDrawEvents)(
+    "reacts to EDITSTART and EDITSTOP by updating and resetting tooltip state",
+    () => {
+      const manager = new LayerCakeManager(map, initialCircle, onSave);
+      manager.addRing();
+
+      const updateLabelsSpy = vi.spyOn(manager as any, "updateLabels");
+      const circles: L.Circle[] = [];
+      map.eachLayer((layer) => {
+        if (layer instanceof L.Circle) circles.push(layer as L.Circle);
+      });
+
+      const active = circles[1] ?? initialCircle;
+      map.fire((L as any).Draw.Event.EDITSTART, { layer: active });
+      expect(updateLabelsSpy).toHaveBeenCalledWith(active);
+
+      // Move tooltip state away from defaults so EDITSTOP reset is observable.
+      const tooltip = active.getTooltip() as any;
+      tooltip.options.direction = "left";
+      tooltip.options.offset = [-10, 0];
+
+      map.fire((L as any).Draw.Event.EDITSTOP);
+
+      circles.forEach((circle) => {
+        const circleTooltip = circle.getTooltip() as any;
+        expect(circleTooltip.options.direction).toBe("right");
+        expect(circleTooltip.options.offset).toEqual([10, 0]);
+        expect(circle.getTooltip()?.getContent()).toContain("m");
+      });
+
+      manager.destroy();
+    },
+  );
+
   it("uses setTimeout fallback when requestAnimationFrame is not available", async () => {
     // Mock requestAnimationFrame to be undefined to trigger line 134
     const originalRAF = global.requestAnimationFrame;

@@ -40,6 +40,7 @@ describe("MapController", () => {
         circle: true,
         cake: true,
         marker: true,
+        move: true,
         edit: true,
         delete: true,
         ruler: true,
@@ -80,6 +81,26 @@ describe("MapController", () => {
     const options = (controller as any).buildDrawOptions(opts.controls, false);
 
     expect(options.edit.remove).toBe(false);
+    controller.destroy();
+  });
+
+  it("enables move tool draw options when requested", () => {
+    const controller = new MapController(opts);
+    const options = (controller as any).buildDrawOptions(opts.controls, false);
+
+    expect(options.draw.move).toBeTruthy();
+    expect(options.draw.move.featureGroup).toBe((controller as any).drawnItems);
+
+    controller.destroy();
+  });
+
+  it("disables move tool draw options when not requested", () => {
+    opts.controls.move = false;
+    const controller = new MapController(opts);
+    const options = (controller as any).buildDrawOptions(opts.controls, false);
+
+    expect(options.draw.move).toBe(false);
+
     controller.destroy();
   });
 

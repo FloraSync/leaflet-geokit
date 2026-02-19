@@ -206,6 +206,19 @@ ${leafletRulerCSS}
 .cake-label::before {
   border-right-color: #8A2BE2 !important;
 }
+
+/* --- Move tool mode cursor styles --- */
+.leaflet-draw-move-mode {
+  cursor: default !important;
+}
+
+.leaflet-draw-move-mode .leaflet-interactive {
+  cursor: grab !important;
+}
+
+.leaflet-draw-move-mode .leaflet-interactive:active {
+  cursor: grabbing !important;
+}
 `;
   root.appendChild(style);
 }
