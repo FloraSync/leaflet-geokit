@@ -78,6 +78,28 @@ describe("LeafletDrawMapElement (scaffold)", () => {
     expect(el.devOverlay).toBe(true);
   });
 
+  it("reflects external Leaflet-related properties", () => {
+    el.useExternalLeaflet = true;
+    expect(el.useExternalLeaflet).toBe(true);
+    expect(el.hasAttribute("use-external-leaflet")).toBe(true);
+
+    el.skipLeafletStyles = true;
+    expect(el.skipLeafletStyles).toBe(true);
+    expect(el.hasAttribute("skip-leaflet-styles")).toBe(true);
+
+    const fakeLeaflet = { marker: () => null } as any;
+    el.leafletInstance = fakeLeaflet;
+    expect(el.leafletInstance).toBe(fakeLeaflet);
+  });
+
+  it("exposes themeCss getter and normalizes non-string values", () => {
+    el.themeCss = ".leaflet-container { color: blue; }";
+    expect(el.themeCss).toContain("color: blue");
+
+    (el as any).themeCss = 42;
+    expect(el.themeCss).toBe("");
+  });
+
   it("exposes minimal public API methods", async () => {
     const fc = await el.getGeoJSON();
     expect(fc).toEqual({ type: "FeatureCollection", features: [] });

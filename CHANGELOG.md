@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Added optional Spec Kitty bootstrap scaffolding via [`.kittify/README.md`](.kittify/README.md) for future spec-driven workflows.
+- Added non-blocking Spec Kitty helper scripts in [`package.json`](package.json) (`spec-kitty:init`, `spec-kitty:doctor`) with no impact on existing CI/release steps.
+- Updated [`.gitignore`](.gitignore) to exclude Spec Kitty/agent runtime state while keeping source artifacts commit-friendly.
 - Added `draw-move` support to all dev harness variants so the Move/Translate toolbar tool is visible in Bundled WC, External WC, React, React (Bundled), Preact, and Preact (Bundled) demos.
 - Improved Move tool drag stability by anchoring translation to the initial drag-start pointer location, reducing jitter while repositioning GeoJSON features.
 - Kept Move confirmation workflow (`Save`/`Cancel`) and ensured docs/examples now include `draw-move` in supported draw attributes.

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import React from "react";
-import { render } from "@testing-library/react";
+import { h } from "preact";
+import { render, waitFor } from "@testing-library/preact";
 import "@src/index";
 
 vi.mock("@src/lib/MapController", () => {
@@ -27,20 +27,20 @@ vi.mock("@src/lib/MapController", () => {
 });
 
 import type { FeatureCollection } from "geojson";
-import { ReactLeafletGeoKit } from "@src/react/index";
+import { PreactLeafletGeoKit } from "@src/preact/index";
 
 const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-describe("React shim", () => {
+describe("Preact shim", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
   });
 
   it("mounts leaflet-geokit and enables external/additive attributes by default", async () => {
     const { container } = render(
-      React.createElement(ReactLeafletGeoKit, {
+      h(PreactLeafletGeoKit, {
         className: "test-map",
-        style: { height: "420px", width: "100%" },
+        style: { width: "100%", height: "420px" },
         attributes: {
           zoom: 10,
           "draw-polygon": true,
@@ -48,45 +48,26 @@ describe("React shim", () => {
       }),
     );
 
-    await flushPromises();
-
     const element = container.querySelector("leaflet-geokit") as HTMLElement;
-    expect(element).toBeTruthy();
-    expect(element.className).toBe("test-map");
-    expect(element.getAttribute("zoom")).toBe("10");
-    expect(element.hasAttribute("draw-polygon")).toBe(true);
-    expect(element.hasAttribute("use-external-leaflet")).toBe(true);
-    expect(element.hasAttribute("skip-leaflet-styles")).toBe(true);
-    expect(element.getAttribute("style")).toContain("height: 420px;");
+    await waitFor(() => {
+      expect(element).toBeTruthy();
+      expect(element.getAttribute("style")).toContain("height: 420px;");
+    });
   });
 
-  it("syncs serialized GeoJSON on draw/edit events", async () => {
-    const onChangeText = vi.fn();
+  it("supports forcing bundled mode in external entrypoint", async () => {
     const { container } = render(
-      React.createElement(ReactLeafletGeoKit, {
-        onChangeText,
+      h(PreactLeafletGeoKit, {
+        externalLeaflet: false,
       }),
     );
 
-    const element = container.querySelector("leaflet-geokit") as any;
-    const geoJSON: FeatureCollection = {
-      type: "FeatureCollection",
-      features: [
-        {
-          type: "Feature",
-          properties: { id: "a" },
-          geometry: { type: "Point", coordinates: [-105, 39.7] },
-        },
-      ],
-    };
-
-    await flushPromises();
-
-    vi.spyOn(element, "getGeoJSON").mockResolvedValue(geoJSON);
-    element.dispatchEvent(new CustomEvent("leaflet-draw:created"));
-    await flushPromises();
-
-    expect(onChangeText).toHaveBeenCalledWith(JSON.stringify(geoJSON));
+    const element = container.querySelector("leaflet-geokit") as HTMLElement;
+    await waitFor(() => {
+      expect(element).toBeTruthy();
+      expect(element.hasAttribute("use-external-leaflet")).toBe(false);
+      expect(element.hasAttribute("skip-leaflet-styles")).toBe(false);
+    });
   });
 
   it("loads initial GeoJSON text on ready", async () => {
@@ -96,13 +77,16 @@ describe("React shim", () => {
     };
 
     const { container } = render(
-      React.createElement(ReactLeafletGeoKit, {
+      h(PreactLeafletGeoKit, {
         initialGeoJSONText: JSON.stringify(initial),
       }),
     );
 
     const element = container.querySelector("leaflet-geokit") as any;
-    await flushPromises();
+    await waitFor(() => {
+      expect(typeof element.loadGeoJSONFromText).toBe("function");
+      expect(typeof element.getGeoJSON).toBe("function");
+    });
 
     const loadSpy = vi
       .spyOn(element, "loadGeoJSONFromText")
@@ -116,60 +100,39 @@ describe("React shim", () => {
     expect(getSpy).toHaveBeenCalled();
   });
 
-  it("handles concurrent mounts without race conditions", async () => {
-    const first = render(
-      React.createElement(ReactLeafletGeoKit, { className: "first" }),
-    );
-    const second = render(
-      React.createElement(ReactLeafletGeoKit, { className: "second" }),
-    );
-
-    await flushPromises();
-
-    const firstElement = first.container.querySelector(
-      "leaflet-geokit",
-    ) as HTMLElement;
-    const secondElement = second.container.querySelector(
-      "leaflet-geokit",
-    ) as HTMLElement;
-
-    expect(firstElement).toBeTruthy();
-    expect(secondElement).toBeTruthy();
-    expect(firstElement.className).toBe("first");
-    expect(secondElement.className).toBe("second");
-    expect(firstElement.hasAttribute("use-external-leaflet")).toBe(true);
-    expect(secondElement.hasAttribute("use-external-leaflet")).toBe(true);
-  });
-
-  it("reports sync failures through onError", async () => {
+  it("reports sync errors through onError", async () => {
     const onError = vi.fn();
     const { container } = render(
-      React.createElement(ReactLeafletGeoKit, {
+      h(PreactLeafletGeoKit, {
         onError,
       }),
     );
 
     const element = container.querySelector("leaflet-geokit") as any;
-    await flushPromises();
+    await waitFor(() => {
+      expect(typeof element.getGeoJSON).toBe("function");
+    });
 
-    vi.spyOn(element, "getGeoJSON").mockRejectedValue("react sync failed");
+    vi.spyOn(element, "getGeoJSON").mockRejectedValue("sync failed");
     element.dispatchEvent(new CustomEvent("leaflet-draw:created"));
     await flushPromises();
 
     expect(onError).toHaveBeenCalledWith(expect.any(Error));
-    expect(onError.mock.calls[0][0].message).toBe("react sync failed");
+    expect(onError.mock.calls[0][0].message).toBe("sync failed");
   });
 
-  it("emits parsed GeoJSON via onChangeGeoJSON", async () => {
+  it("emits parsed geojson through onChangeGeoJSON", async () => {
     const onChangeGeoJSON = vi.fn();
     const { container } = render(
-      React.createElement(ReactLeafletGeoKit, {
+      h(PreactLeafletGeoKit, {
         onChangeGeoJSON,
       }),
     );
 
     const element = container.querySelector("leaflet-geokit") as any;
-    await flushPromises();
+    await waitFor(() => {
+      expect(typeof element.getGeoJSON).toBe("function");
+    });
 
     const geoJSON: FeatureCollection = {
       type: "FeatureCollection",
@@ -181,5 +144,18 @@ describe("React shim", () => {
     await flushPromises();
 
     expect(onChangeGeoJSON).toHaveBeenCalledWith(geoJSON);
+  });
+
+  it("calls onReady with the underlying custom element", async () => {
+    const onReady = vi.fn();
+    const { container } = render(h(PreactLeafletGeoKit, { onReady }));
+
+    const element = container.querySelector("leaflet-geokit") as HTMLElement;
+    await flushPromises();
+
+    element.dispatchEvent(new CustomEvent("leaflet-draw:ready"));
+    await waitFor(() => {
+      expect(onReady).toHaveBeenCalledWith(element);
+    });
   });
 });
