@@ -80,6 +80,8 @@
     "test:e2e": "playwright test",
     "e2e:install": "playwright install --with-deps",
     "prepare": "husky",
+    "spec-kitty:init": "spec-kitty init . --ai claude",
+    "spec-kitty:doctor": "spec-kitty doctor",
     "prepack": "npm run build",
     "pack:dry": "npm pack --dry-run",
     "release:dry": "npm run typecheck && npm run test:unit && npm run build && npm pack --dry-run"

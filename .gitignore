@@ -35,3 +35,16 @@ yarn-error.log*
 
 # Internal
 docs/roadmap/*
+
+# Spec Kitty / AI agent runtime directories (non-source artifacts)
+.claude/
+.cursor/
+.gemini/
+.windsurf/
+.opencode/
+.qwen/
+.github/prompts/
+
+# Spec Kitty generated runtime state
+.kittify/workspaces/
+.kittify/state/

@@ -141,6 +141,13 @@ Scripts (see [package.json](package.json))
 - npm run format — Prettier write
 - npm run test:e2e — Playwright (currently a minimal smoke test under e2e/)
 
+Optional workflow tooling
+
+- Spec Kitty is pre-wired as an optional, non-blocking workflow bootstrap.
+- `npm run spec-kitty:init` — initialize Spec Kitty in-place (requires `spec-kitty` CLI installed on your machine).
+- `npm run spec-kitty:doctor` — validate local Spec Kitty setup (requires `spec-kitty` CLI).
+- Build/test/publish scripts do **not** depend on Spec Kitty.
+
 Bundle analysis
 
 - The analyzer is opt-in and does not change normal production outputs.
