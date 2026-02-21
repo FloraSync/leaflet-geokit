@@ -1,26 +1,29 @@
 ---
-work_package_id: "WP01"
-subtasks:
-  - "T001"
-  - "T002"
-  - "T003"
-  - "T004"
-  - "T005"
-title: "Foundation – TileProviderFactory"
-phase: "Phase 0 - Foundation"
-lane: "planned"
+work_package_id: WP01
+title: Foundation – TileProviderFactory
+lane: "doing"
 dependencies: []
+base_branch: main
+base_commit: adc17e96cb3c379188d76129f106b8d0bf1765b7
+created_at: "2026-02-21T07:04:03.252289+00:00"
+subtasks:
+  - T001
+  - T002
+  - T003
+  - T004
+  - T005
+phase: Phase 0 - Foundation
 assignee: ""
 agent: ""
-shell_pid: ""
+shell_pid: "16416"
 review_status: ""
 reviewed_by: ""
 history:
   - timestamp: "2026-02-20T00:00:00Z"
-    lane: "planned"
-    agent: "system"
+    lane: planned
+    agent: system
     shell_pid: ""
-    action: "Prompt generated via /spec-kitty.tasks"
+    action: Prompt generated via /spec-kitty.tasks
 ---
 
 # Work Package Prompt: WP01 – Foundation – TileProviderFactory
