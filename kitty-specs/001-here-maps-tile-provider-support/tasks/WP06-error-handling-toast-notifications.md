@@ -1,7 +1,7 @@
 ---
 work_package_id: WP06
 title: Error Handling & Toast Notifications
-lane: "for_review"
+lane: "doing"
 dependencies: [WP05]
 base_branch: 001-here-maps-tile-provider-support-WP05
 base_commit: 9a2571d20c0423ad6902eaf1836bcec7e995e708
@@ -9,8 +9,8 @@ created_at: "2026-02-21T08:16:25.852106+00:00"
 subtasks: [T032, T033, T034, T035, T036, T037]
 phase: Phase 2 - Enhancement
 assignee: ""
-agent: "guille"
-shell_pid: "16416"
+agent: "GeminiCLI"
+shell_pid: "20706"
 review_status: ""
 reviewed_by: ""
 history:
@@ -155,3 +155,4 @@ apiKeyInput.addEventListener("input", () => {
 - 2026-02-20T00:00:00Z – system – lane=planned – Prompt generated.
 - 2026-02-21T08:16:46Z – guille – shell_pid=16416 – lane=doing – Assigned agent via workflow command
 - 2026-02-21T08:20:54Z – guille – shell_pid=16416 – lane=for_review – Ready for review: added tile-provider error/success toasts and HERE option recovery
+- 2026-02-21T08:23:00Z – GeminiCLI – shell_pid=20706 – lane=doing – Started review via workflow command
