@@ -1,27 +1,30 @@
 ---
-work_package_id: "WP02"
+work_package_id: WP02
+title: Type System Updates
+lane: "doing"
+dependencies: [WP01]
+base_branch: 001-here-maps-tile-provider-support-WP01
+base_commit: f6879baa2e2689ce39448ef20b6ea43ba54bec57
+created_at: "2026-02-21T07:28:54.181214+00:00"
 subtasks:
-  - "T006"
-  - "T007"
-  - "T008"
-  - "T009"
-  - "T010"
-  - "T011"
-title: "Type System Updates"
-phase: "Phase 0 - Foundation"
-lane: "planned"
-dependencies: ["WP01"]
+  - T006
+  - T007
+  - T008
+  - T009
+  - T010
+  - T011
+phase: Phase 0 - Foundation
 assignee: ""
 agent: ""
-shell_pid: ""
+shell_pid: "16416"
 review_status: ""
 reviewed_by: ""
 history:
   - timestamp: "2026-02-20T00:00:00Z"
-    lane: "planned"
-    agent: "system"
+    lane: planned
+    agent: system
     shell_pid: ""
-    action: "Prompt generated via /spec-kitty.tasks"
+    action: Prompt generated via /spec-kitty.tasks
 ---
 
 # Work Package Prompt: WP02 – Type System Updates
