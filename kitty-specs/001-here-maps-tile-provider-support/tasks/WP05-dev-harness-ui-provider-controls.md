@@ -9,7 +9,7 @@ created_at: "2026-02-21T08:09:27.330820+00:00"
 subtasks: [T025, T026, T027, T028, T029, T030, T031]
 phase: Phase 1 - Core Implementation
 assignee: ""
-agent: ""
+agent: "guille"
 shell_pid: "16416"
 review_status: ""
 reviewed_by: ""
@@ -227,3 +227,4 @@ apiKeyInput.addEventListener("blur", applyTileProvider);
 ## Activity Log
 
 - 2026-02-20T00:00:00Z – system – lane=planned – Prompt generated.
+- 2026-02-21T08:09:48Z – guille – shell_pid=16416 – lane=doing – Assigned agent via workflow command
