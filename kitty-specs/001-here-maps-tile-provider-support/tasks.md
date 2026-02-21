@@ -175,13 +175,13 @@
 
 ### Included Subtasks
 
-- [ ] T025 Add provider dropdown HTML to `index.html` (OSM, HERE options)
-- [ ] T026 Add style dropdown HTML (lite.day, normal.day, satellite.day) - hidden by default
-- [ ] T027 Add API key input field HTML - hidden by default
-- [ ] T028 Implement `toggleHEREControls()` JavaScript function for show/hide logic
-- [ ] T029 Implement `applyTileProvider()` function to update web component attributes
-- [ ] T030 Add localStorage persistence logic (save/restore provider, style, API key)
-- [ ] T031 Wire up event listeners (provider change, style change, API key blur)
+- [x] T025 Add provider dropdown HTML to `index.html` (OSM, HERE options)
+- [x] T026 Add style dropdown HTML (lite.day, normal.day, satellite.day) - hidden by default
+- [x] T027 Add API key input field HTML - hidden by default
+- [x] T028 Implement `toggleHEREControls()` JavaScript function for show/hide logic
+- [x] T029 Implement `applyTileProvider()` function to update web component attributes
+- [x] T030 Add localStorage persistence logic (save/restore provider, style, API key)
+- [x] T031 Wire up event listeners (provider change, style change, API key blur)
 
 ### Implementation Notes
 
