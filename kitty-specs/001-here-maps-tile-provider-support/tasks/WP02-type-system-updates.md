@@ -1,7 +1,7 @@
 ---
 work_package_id: WP02
 title: Type System Updates
-lane: "for_review"
+lane: "doing"
 dependencies: [WP01]
 base_branch: 001-here-maps-tile-provider-support-WP01
 base_commit: f6879baa2e2689ce39448ef20b6ea43ba54bec57
@@ -15,8 +15,8 @@ subtasks:
   - T011
 phase: Phase 0 - Foundation
 assignee: ""
-agent: "guille"
-shell_pid: "16416"
+agent: "GeminiCLI"
+shell_pid: "88931"
 review_status: ""
 reviewed_by: ""
 history:
@@ -398,3 +398,4 @@ This task can start as soon as T006-T010 are complete.
 - 2026-02-20T00:00:00Z – system – lane=planned – Prompt generated.
 - 2026-02-21T07:29:15Z – guille – shell_pid=16416 – lane=doing – Assigned agent via workflow command
 - 2026-02-21T07:34:53Z – guille – shell_pid=16416 – lane=for_review – Ready for review: extended public tile provider and event detail types
+- 2026-02-21T07:41:38Z – GeminiCLI – shell_pid=88931 – lane=doing – Started review via workflow command
