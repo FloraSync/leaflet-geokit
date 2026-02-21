@@ -1,21 +1,24 @@
 ---
-work_package_id: "WP05"
-subtasks: ["T025", "T026", "T027", "T028", "T029", "T030", "T031"]
-title: "Dev Harness UI – Provider Controls"
-phase: "Phase 1 - Core Implementation"
-lane: "planned"
-dependencies: ["WP03", "WP04"]
+work_package_id: WP05
+title: Dev Harness UI – Provider Controls
+lane: "doing"
+dependencies: [WP03, WP04]
+base_branch: 001-here-maps-tile-provider-support-WP05-merge-base
+base_commit: 7c3496e6e1b86fa19ace5403c39180194029b6c1
+created_at: "2026-02-21T08:09:27.330820+00:00"
+subtasks: [T025, T026, T027, T028, T029, T030, T031]
+phase: Phase 1 - Core Implementation
 assignee: ""
 agent: ""
-shell_pid: ""
+shell_pid: "16416"
 review_status: ""
 reviewed_by: ""
 history:
   - timestamp: "2026-02-20T00:00:00Z"
-    lane: "planned"
-    agent: "system"
+    lane: planned
+    agent: system
     shell_pid: ""
-    action: "Prompt generated via /spec-kitty.tasks"
+    action: Prompt generated via /spec-kitty.tasks
 ---
 
 # Work Package Prompt: WP05 – Dev Harness UI Provider Controls
