@@ -588,6 +588,11 @@
         }
       }
 
+      function getHereOption() {
+        if (!providerSelect) return null;
+        return providerSelect.querySelector('option[value="here"]');
+      }
+
       if (providerSelect && styleSelect && apiKeyInput) {
         const savedProvider =
           localStorage.getItem(STORAGE_KEYS.TILE_PROVIDER) || "osm";
@@ -630,6 +635,38 @@
         tag("error");
         log({ event: "error", detail: e.detail });
       });
+
+      map.addEventListener("tile-provider-error", (event) => {
+        const { code, message } = event.detail || {};
+        showToast(`Error: ${message ?? "Unknown provider error"}`, "error");
+        tag("tile-provider-error");
+        log({ event: "tile-provider-error", detail: event.detail });
+
+        if (code === "missing_api_key" || code === "invalid_api_key") {
+          const hereOption = getHereOption();
+          if (hereOption) {
+            hereOption.disabled = true;
+          }
+        }
+      });
+
+      map.addEventListener("tile-provider-changed", (event) => {
+        const { provider, style } = event.detail || {};
+        const styleName = style ? ` (${style})` : "";
+        showToast(`Switched to ${provider}${styleName}`, "success");
+        tag("tile-provider-changed");
+        log({ event: "tile-provider-changed", detail: event.detail });
+      });
+
+      if (apiKeyInput) {
+        apiKeyInput.addEventListener("input", () => {
+          const hereOption = getHereOption();
+          if (!hereOption) return;
+          if (apiKeyInput.value.trim()) {
+            hereOption.disabled = false;
+          }
+        });
+      }
 
       // Export event: download as .geojson with timestamp
       map.addEventListener("leaflet-draw:export", (e) => {
