@@ -15,7 +15,7 @@ subtasks:
   - T011
 phase: Phase 0 - Foundation
 assignee: ""
-agent: ""
+agent: "guille"
 shell_pid: "16416"
 review_status: ""
 reviewed_by: ""
@@ -396,3 +396,4 @@ This task can start as soon as T006-T010 are complete.
 **Initial entry**:
 
 - 2026-02-20T00:00:00Z – system – lane=planned – Prompt generated.
+- 2026-02-21T07:29:15Z – guille – shell_pid=16416 – lane=doing – Assigned agent via workflow command
