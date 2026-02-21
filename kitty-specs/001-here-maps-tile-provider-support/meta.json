@@ -1,0 +1,9 @@
+{
+  "feature_number": "001",
+  "slug": "001-here-maps-tile-provider-support",
+  "feature_slug": "001-here-maps-tile-provider-support",
+  "friendly_name": "here maps tile provider support",
+  "mission": "software-dev",
+  "target_branch": "main",
+  "created_at": "2026-02-21T01:16:56.587728+00:00"
+}
