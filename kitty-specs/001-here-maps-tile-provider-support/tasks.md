@@ -252,12 +252,12 @@
 
 ### Included Subtasks
 
-- [ ] T038 [P] Update `preact.html` with tile provider controls (copy from index.html)
-- [ ] T039 [P] Update `react.html` with tile provider controls (copy from index.html)
-- [ ] T040 [P] Update `external.html` with tile provider controls (copy from index.html)
-- [ ] T041 [P] Test preact.html variant for functionality parity
-- [ ] T042 [P] Test react.html variant for functionality parity
-- [ ] T043 [P] Test external.html variant for functionality parity
+- [x] T038 [P] Update `preact.html` with tile provider controls (copy from index.html)
+- [x] T039 [P] Update `react.html` with tile provider controls (copy from index.html)
+- [x] T040 [P] Update `external.html` with tile provider controls (copy from index.html)
+- [x] T041 [P] Test preact.html variant for functionality parity
+- [x] T042 [P] Test react.html variant for functionality parity
+- [x] T043 [P] Test external.html variant for functionality parity
 
 ### Implementation Notes
 
