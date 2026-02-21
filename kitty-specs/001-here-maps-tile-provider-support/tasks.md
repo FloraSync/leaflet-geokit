@@ -19,11 +19,11 @@
 
 ### Included Subtasks
 
-- [ ] T001 Create `src/lib/TileProviderFactory.ts` with type interfaces
-- [ ] T002 Implement `buildTileURL()` function for OSM provider
-- [ ] T003 Implement `buildTileURL()` function for HERE provider with styles
-- [ ] T004 Implement `validateProviderConfig()` function
-- [ ] T005 Add provider configuration constants (OSM/HERE URLs, attributions, defaults)
+- [x] T001 Create `src/lib/TileProviderFactory.ts` with type interfaces
+- [x] T002 Implement `buildTileURL()` function for OSM provider
+- [x] T003 Implement `buildTileURL()` function for HERE provider with styles
+- [x] T004 Implement `validateProviderConfig()` function
+- [x] T005 Add provider configuration constants (OSM/HERE URLs, attributions, defaults)
 
 ### Implementation Notes
 
@@ -56,12 +56,12 @@
 
 ### Included Subtasks
 
-- [ ] T006 Add `TileProviderConfig` interface to `src/types/public.ts`
-- [ ] T007 Add `TileURLTemplate` interface to `src/types/public.ts`
-- [ ] T008 Add `TileProviderErrorDetail` interface to `src/types/public.ts`
-- [ ] T009 Add `TileProviderChangedDetail` interface to `src/types/public.ts`
-- [ ] T010 Extend `LeafletDrawMapElementAPI` with new tile provider properties
-- [ ] T011 [P] Verify backward compatibility (no breaking changes to existing types)
+- [x] T006 Add `TileProviderConfig` interface to `src/types/public.ts`
+- [x] T007 Add `TileURLTemplate` interface to `src/types/public.ts`
+- [x] T008 Add `TileProviderErrorDetail` interface to `src/types/public.ts`
+- [x] T009 Add `TileProviderChangedDetail` interface to `src/types/public.ts`
+- [x] T010 Extend `LeafletDrawMapElementAPI` with new tile provider properties
+- [x] T011 [P] Verify backward compatibility (no breaking changes to existing types)
 
 ### Implementation Notes
 
@@ -94,13 +94,13 @@
 
 ### Included Subtasks
 
-- [ ] T012 Add private properties (`_tileProvider`, `_tileStyle`, `_apiKey`) to `LeafletDrawMapElement.ts`
-- [ ] T013 Update `observedAttributes` static getter with new attributes
-- [ ] T014 Update `attributeChangedCallback` to handle `tile-provider`, `tile-style`, `api-key`
-- [ ] T015 Add getter/setter properties for `tileProvider`, `tileStyle`, `apiKey`
-- [ ] T016 Implement `_updateTileLayer()` private method with provider factory integration
-- [ ] T017 Implement `_handleTileProviderError()` private method with fallback logic
-- [ ] T018 Implement `_emitTileProviderChanged()` private method for success events
+- [x] T012 Add private properties (`_tileProvider`, `_tileStyle`, `_apiKey`) to `LeafletDrawMapElement.ts`
+- [x] T013 Update `observedAttributes` static getter with new attributes
+- [x] T014 Update `attributeChangedCallback` to handle `tile-provider`, `tile-style`, `api-key`
+- [x] T015 Add getter/setter properties for `tileProvider`, `tileStyle`, `apiKey`
+- [x] T016 Implement `_updateTileLayer()` private method with provider factory integration
+- [x] T017 Implement `_handleTileProviderError()` private method with fallback logic
+- [x] T018 Implement `_emitTileProviderChanged()` private method for success events
 
 ### Implementation Notes
 
@@ -133,12 +133,12 @@
 
 ### Included Subtasks
 
-- [ ] T019 Add import for `TileURLTemplate` type in `src/lib/MapController.ts`
-- [ ] T020 Implement `setTileLayer(config: TileURLTemplate)` public method
-- [ ] T021 Add tile layer cleanup logic (remove existing layer before adding new)
-- [ ] T022 Add Leaflet tile error event listener (`tileerror`)
-- [ ] T023 Integrate `setTileLayer` with existing map initialization flow
-- [ ] T024 Add logging for tile layer changes and errors
+- [x] T019 Add import for `TileURLTemplate` type in `src/lib/MapController.ts`
+- [x] T020 Implement `setTileLayer(config: TileURLTemplate)` public method
+- [x] T021 Add tile layer cleanup logic (remove existing layer before adding new)
+- [x] T022 Add Leaflet tile error event listener (`tileerror`)
+- [x] T023 Integrate `setTileLayer` with existing map initialization flow
+- [x] T024 Add logging for tile layer changes and errors
 
 ### Implementation Notes
 
@@ -175,13 +175,13 @@
 
 ### Included Subtasks
 
-- [ ] T025 Add provider dropdown HTML to `index.html` (OSM, HERE options)
-- [ ] T026 Add style dropdown HTML (lite.day, normal.day, satellite.day) - hidden by default
-- [ ] T027 Add API key input field HTML - hidden by default
-- [ ] T028 Implement `toggleHEREControls()` JavaScript function for show/hide logic
-- [ ] T029 Implement `applyTileProvider()` function to update web component attributes
-- [ ] T030 Add localStorage persistence logic (save/restore provider, style, API key)
-- [ ] T031 Wire up event listeners (provider change, style change, API key blur)
+- [x] T025 Add provider dropdown HTML to `index.html` (OSM, HERE options)
+- [x] T026 Add style dropdown HTML (lite.day, normal.day, satellite.day) - hidden by default
+- [x] T027 Add API key input field HTML - hidden by default
+- [x] T028 Implement `toggleHEREControls()` JavaScript function for show/hide logic
+- [x] T029 Implement `applyTileProvider()` function to update web component attributes
+- [x] T030 Add localStorage persistence logic (save/restore provider, style, API key)
+- [x] T031 Wire up event listeners (provider change, style change, API key blur)
 
 ### Implementation Notes
 
@@ -214,12 +214,12 @@
 
 ### Included Subtasks
 
-- [ ] T032 Add event listener for `tile-provider-error` in `index.html`
-- [ ] T033 Add event listener for `tile-provider-changed` in `index.html`
-- [ ] T034 Implement `showToast()` function (or integrate with existing toast system)
-- [ ] T035 Add error handling: disable HERE option on invalid API key
-- [ ] T036 Add success feedback: show toast on successful provider switch
-- [ ] T037 [P] Add error recovery: re-enable HERE when valid API key added
+- [x] T032 Add event listener for `tile-provider-error` in `index.html`
+- [x] T033 Add event listener for `tile-provider-changed` in `index.html`
+- [x] T034 Implement `showToast()` function (or integrate with existing toast system)
+- [x] T035 Add error handling: disable HERE option on invalid API key
+- [x] T036 Add success feedback: show toast on successful provider switch
+- [x] T037 [P] Add error recovery: re-enable HERE when valid API key added
 
 ### Implementation Notes
 
@@ -252,12 +252,12 @@
 
 ### Included Subtasks
 
-- [ ] T038 [P] Update `preact.html` with tile provider controls (copy from index.html)
-- [ ] T039 [P] Update `react.html` with tile provider controls (copy from index.html)
-- [ ] T040 [P] Update `external.html` with tile provider controls (copy from index.html)
-- [ ] T041 [P] Test preact.html variant for functionality parity
-- [ ] T042 [P] Test react.html variant for functionality parity
-- [ ] T043 [P] Test external.html variant for functionality parity
+- [x] T038 [P] Update `preact.html` with tile provider controls (copy from index.html)
+- [x] T039 [P] Update `react.html` with tile provider controls (copy from index.html)
+- [x] T040 [P] Update `external.html` with tile provider controls (copy from index.html)
+- [x] T041 [P] Test preact.html variant for functionality parity
+- [x] T042 [P] Test react.html variant for functionality parity
+- [x] T043 [P] Test external.html variant for functionality parity
 
 ### Implementation Notes
 

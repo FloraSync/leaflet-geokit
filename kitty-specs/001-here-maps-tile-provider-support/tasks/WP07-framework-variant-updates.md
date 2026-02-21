@@ -1,21 +1,24 @@
 ---
-work_package_id: "WP07"
-subtasks: ["T038", "T039", "T040", "T041", "T042", "T043"]
-title: "Framework Variant Updates"
-phase: "Phase 2 - Enhancement"
-lane: "planned"
-dependencies: ["WP06"]
+work_package_id: WP07
+title: Framework Variant Updates
+lane: "done"
+dependencies: [WP06]
+base_branch: 001-here-maps-tile-provider-support-WP06
+base_commit: 3edbb4ac0fcd66bf68cd396bbac57bae74ea11ae
+created_at: "2026-02-21T08:26:20.300336+00:00"
+subtasks: [T038, T039, T040, T041, T042, T043]
+phase: Phase 2 - Enhancement
 assignee: ""
-agent: ""
-shell_pid: ""
-review_status: ""
-reviewed_by: ""
+agent: "GeminiCLI"
+shell_pid: "28296"
+review_status: "approved"
+reviewed_by: "Schuyler Ankele"
 history:
   - timestamp: "2026-02-20T00:00:00Z"
-    lane: "planned"
-    agent: "system"
+    lane: planned
+    agent: system
     shell_pid: ""
-    action: "Prompt generated via /spec-kitty.tasks"
+    action: Prompt generated via /spec-kitty.tasks
 ---
 
 # Work Package Prompt: WP07 – Framework Variant Updates
@@ -101,3 +104,7 @@ Test each variant manually in browser. Use diff to compare with index.html.
 ## Activity Log
 
 - 2026-02-20T00:00:00Z – system – lane=planned – Prompt generated.
+- 2026-02-21T08:26:39Z – guille – shell_pid=16416 – lane=doing – Assigned agent via workflow command
+- 2026-02-21T08:32:18Z – guille – shell_pid=16416 – lane=for_review – Ready for review: propagated tile provider UI and toast logic to preact/react/external harnesses
+- 2026-02-21T08:32:57Z – GeminiCLI – shell_pid=28296 – lane=doing – Started review via workflow command
+- 2026-02-21T08:36:19Z – GeminiCLI – shell_pid=28296 – lane=done – Review passed: Tile provider controls and error handling logic propagated to all framework variant harnesses (preact.html, react.html, external.html). All variants are functionally identical to index.html with localStorage persistence and reactive updates.

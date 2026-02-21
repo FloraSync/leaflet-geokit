@@ -1,21 +1,24 @@
 ---
-work_package_id: "WP05"
-subtasks: ["T025", "T026", "T027", "T028", "T029", "T030", "T031"]
-title: "Dev Harness UI – Provider Controls"
-phase: "Phase 1 - Core Implementation"
-lane: "planned"
-dependencies: ["WP03", "WP04"]
+work_package_id: WP05
+title: Dev Harness UI – Provider Controls
+lane: "done"
+dependencies: [WP03, WP04]
+base_branch: 001-here-maps-tile-provider-support-WP05-merge-base
+base_commit: 7c3496e6e1b86fa19ace5403c39180194029b6c1
+created_at: "2026-02-21T08:09:27.330820+00:00"
+subtasks: [T025, T026, T027, T028, T029, T030, T031]
+phase: Phase 1 - Core Implementation
 assignee: ""
-agent: ""
-shell_pid: ""
-review_status: ""
-reviewed_by: ""
+agent: "GeminiCLI"
+shell_pid: "13398"
+review_status: "approved"
+reviewed_by: "Schuyler Ankele"
 history:
   - timestamp: "2026-02-20T00:00:00Z"
-    lane: "planned"
-    agent: "system"
+    lane: planned
+    agent: system
     shell_pid: ""
-    action: "Prompt generated via /spec-kitty.tasks"
+    action: Prompt generated via /spec-kitty.tasks
 ---
 
 # Work Package Prompt: WP05 – Dev Harness UI Provider Controls
@@ -224,3 +227,7 @@ apiKeyInput.addEventListener("blur", applyTileProvider);
 ## Activity Log
 
 - 2026-02-20T00:00:00Z – system – lane=planned – Prompt generated.
+- 2026-02-21T08:09:48Z – guille – shell_pid=16416 – lane=doing – Assigned agent via workflow command
+- 2026-02-21T08:13:02Z – guille – shell_pid=16416 – lane=for_review – Ready for review: added provider/style/api-key controls with localStorage persistence
+- 2026-02-21T08:13:37Z – GeminiCLI – shell_pid=13398 – lane=doing – Started review via workflow command
+- 2026-02-21T08:17:09Z – GeminiCLI – shell_pid=13398 – lane=done – Review passed: Tile provider selection UI added to dev harness (index.html). Supports OSM/HERE with style selection and API key input. Includes localStorage persistence and reactive attribute updates for the map component.

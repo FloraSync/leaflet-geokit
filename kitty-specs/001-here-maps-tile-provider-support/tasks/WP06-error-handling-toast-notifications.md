@@ -1,21 +1,24 @@
 ---
-work_package_id: "WP06"
-subtasks: ["T032", "T033", "T034", "T035", "T036", "T037"]
-title: "Error Handling & Toast Notifications"
-phase: "Phase 2 - Enhancement"
-lane: "planned"
-dependencies: ["WP05"]
+work_package_id: WP06
+title: Error Handling & Toast Notifications
+lane: "done"
+dependencies: [WP05]
+base_branch: 001-here-maps-tile-provider-support-WP05
+base_commit: 9a2571d20c0423ad6902eaf1836bcec7e995e708
+created_at: "2026-02-21T08:16:25.852106+00:00"
+subtasks: [T032, T033, T034, T035, T036, T037]
+phase: Phase 2 - Enhancement
 assignee: ""
-agent: ""
-shell_pid: ""
-review_status: ""
-reviewed_by: ""
+agent: "GeminiCLI"
+shell_pid: "20706"
+review_status: "approved"
+reviewed_by: "Schuyler Ankele"
 history:
   - timestamp: "2026-02-20T00:00:00Z"
-    lane: "planned"
-    agent: "system"
+    lane: planned
+    agent: system
     shell_pid: ""
-    action: "Prompt generated via /spec-kitty.tasks"
+    action: Prompt generated via /spec-kitty.tasks
 ---
 
 # Work Package Prompt: WP06 – Error Handling & Toast Notifications
@@ -150,3 +153,7 @@ apiKeyInput.addEventListener("input", () => {
 ## Activity Log
 
 - 2026-02-20T00:00:00Z – system – lane=planned – Prompt generated.
+- 2026-02-21T08:16:46Z – guille – shell_pid=16416 – lane=doing – Assigned agent via workflow command
+- 2026-02-21T08:20:54Z – guille – shell_pid=16416 – lane=for_review – Ready for review: added tile-provider error/success toasts and HERE option recovery
+- 2026-02-21T08:23:00Z – GeminiCLI – shell_pid=20706 – lane=doing – Started review via workflow command
+- 2026-02-21T08:24:51Z – GeminiCLI – shell_pid=20706 – lane=done – Review passed: Error handling and toast notifications implemented in dev harness. Emits error/success toasts for tile provider events and manages HERE option availability based on API key validity.
