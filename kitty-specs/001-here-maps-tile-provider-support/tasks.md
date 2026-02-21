@@ -56,12 +56,12 @@
 
 ### Included Subtasks
 
-- [ ] T006 Add `TileProviderConfig` interface to `src/types/public.ts`
-- [ ] T007 Add `TileURLTemplate` interface to `src/types/public.ts`
-- [ ] T008 Add `TileProviderErrorDetail` interface to `src/types/public.ts`
-- [ ] T009 Add `TileProviderChangedDetail` interface to `src/types/public.ts`
-- [ ] T010 Extend `LeafletDrawMapElementAPI` with new tile provider properties
-- [ ] T011 [P] Verify backward compatibility (no breaking changes to existing types)
+- [x] T006 Add `TileProviderConfig` interface to `src/types/public.ts`
+- [x] T007 Add `TileURLTemplate` interface to `src/types/public.ts`
+- [x] T008 Add `TileProviderErrorDetail` interface to `src/types/public.ts`
+- [x] T009 Add `TileProviderChangedDetail` interface to `src/types/public.ts`
+- [x] T010 Extend `LeafletDrawMapElementAPI` with new tile provider properties
+- [x] T011 [P] Verify backward compatibility (no breaking changes to existing types)
 
 ### Implementation Notes
 
