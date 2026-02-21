@@ -1,27 +1,30 @@
 ---
-work_package_id: "WP04"
+work_package_id: WP04
+title: MapController Tile Layer Management
+lane: "doing"
+dependencies: [WP02]
+base_branch: 001-here-maps-tile-provider-support-WP02
+base_commit: e77873405ea6f489aeb3d05e3630c7cf1aec7551
+created_at: "2026-02-21T08:00:40.165407+00:00"
 subtasks:
-  - "T019"
-  - "T020"
-  - "T021"
-  - "T022"
-  - "T023"
-  - "T024"
-title: "MapController Tile Layer Management"
-phase: "Phase 1 - Core Implementation"
-lane: "planned"
-dependencies: ["WP02"]
+  - T019
+  - T020
+  - T021
+  - T022
+  - T023
+  - T024
+phase: Phase 1 - Core Implementation
 assignee: ""
 agent: ""
-shell_pid: ""
+shell_pid: "16416"
 review_status: ""
 reviewed_by: ""
 history:
   - timestamp: "2026-02-20T00:00:00Z"
-    lane: "planned"
-    agent: "system"
+    lane: planned
+    agent: system
     shell_pid: ""
-    action: "Prompt generated via /spec-kitty.tasks"
+    action: Prompt generated via /spec-kitty.tasks
 ---
 
 # Work Package Prompt: WP04 – MapController Tile Layer Management
