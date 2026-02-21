@@ -1,21 +1,24 @@
 ---
-work_package_id: "WP07"
-subtasks: ["T038", "T039", "T040", "T041", "T042", "T043"]
-title: "Framework Variant Updates"
-phase: "Phase 2 - Enhancement"
-lane: "planned"
-dependencies: ["WP06"]
+work_package_id: WP07
+title: Framework Variant Updates
+lane: "doing"
+dependencies: [WP06]
+base_branch: 001-here-maps-tile-provider-support-WP06
+base_commit: 3edbb4ac0fcd66bf68cd396bbac57bae74ea11ae
+created_at: "2026-02-21T08:26:20.300336+00:00"
+subtasks: [T038, T039, T040, T041, T042, T043]
+phase: Phase 2 - Enhancement
 assignee: ""
 agent: ""
-shell_pid: ""
+shell_pid: "16416"
 review_status: ""
 reviewed_by: ""
 history:
   - timestamp: "2026-02-20T00:00:00Z"
-    lane: "planned"
-    agent: "system"
+    lane: planned
+    agent: system
     shell_pid: ""
-    action: "Prompt generated via /spec-kitty.tasks"
+    action: Prompt generated via /spec-kitty.tasks
 ---
 
 # Work Package Prompt: WP07 – Framework Variant Updates
