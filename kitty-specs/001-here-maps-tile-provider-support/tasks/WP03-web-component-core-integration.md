@@ -1,7 +1,7 @@
 ---
 work_package_id: WP03
 title: Web Component Core Integration
-lane: "for_review"
+lane: "doing"
 dependencies: [WP01, WP02]
 base_branch: 001-here-maps-tile-provider-support-WP03-merge-base
 base_commit: e77873405ea6f489aeb3d05e3630c7cf1aec7551
@@ -16,8 +16,8 @@ subtasks:
   - T018
 phase: Phase 1 - Core Implementation
 assignee: ""
-agent: "guille"
-shell_pid: "16416"
+agent: "GeminiCLI"
+shell_pid: "99928"
 review_status: ""
 reviewed_by: ""
 history:
@@ -587,3 +587,4 @@ Should complete without TypeScript errors.
 - 2026-02-20T00:00:00Z – system – lane=planned – Prompt generated.
 - 2026-02-21T07:49:20Z – guille – shell_pid=16416 – lane=doing – Assigned agent via workflow command
 - 2026-02-21T07:56:28Z – guille – shell_pid=16416 – lane=for_review – Ready for review: integrated tile-provider attributes/properties, reactive tile updates, and provider events
+- 2026-02-21T07:58:28Z – GeminiCLI – shell_pid=99928 – lane=doing – Started review via workflow command
