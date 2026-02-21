@@ -15,7 +15,7 @@ subtasks:
   - T024
 phase: Phase 1 - Core Implementation
 assignee: ""
-agent: ""
+agent: "guille"
 shell_pid: "16416"
 review_status: ""
 reviewed_by: ""
@@ -207,3 +207,4 @@ this._logger?.info("Tile layer changed:", config.urlTemplate);
 ## Activity Log
 
 - 2026-02-20T00:00:00Z – system – lane=planned – Prompt generated.
+- 2026-02-21T08:01:02Z – guille – shell_pid=16416 – lane=doing – Assigned agent via workflow command
