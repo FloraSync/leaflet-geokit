@@ -1,7 +1,7 @@
 ---
 work_package_id: WP07
 title: Framework Variant Updates
-lane: "doing"
+lane: "for_review"
 dependencies: [WP06]
 base_branch: 001-here-maps-tile-provider-support-WP06
 base_commit: 3edbb4ac0fcd66bf68cd396bbac57bae74ea11ae
@@ -105,3 +105,4 @@ Test each variant manually in browser. Use diff to compare with index.html.
 
 - 2026-02-20T00:00:00Z – system – lane=planned – Prompt generated.
 - 2026-02-21T08:26:39Z – guille – shell_pid=16416 – lane=doing – Assigned agent via workflow command
+- 2026-02-21T08:32:18Z – guille – shell_pid=16416 – lane=for_review – Ready for review: propagated tile provider UI and toast logic to preact/react/external harnesses
