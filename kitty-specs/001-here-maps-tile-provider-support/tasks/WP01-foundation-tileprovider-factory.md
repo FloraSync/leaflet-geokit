@@ -14,7 +14,7 @@ subtasks:
   - T005
 phase: Phase 0 - Foundation
 assignee: ""
-agent: ""
+agent: "guille"
 shell_pid: "16416"
 review_status: ""
 reviewed_by: ""
@@ -425,3 +425,4 @@ npm run type-check
 **Initial entry**:
 
 - 2026-02-20T00:00:00Z – system – lane=planned – Prompt generated.
+- 2026-02-21T07:04:32Z – guille – shell_pid=16416 – lane=doing – Assigned agent via workflow command
