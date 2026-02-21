@@ -1,0 +1,11 @@
+{
+  "feature_number": "001",
+  "slug": "001-here-maps-tile-provider-support",
+  "feature_slug": "001-here-maps-tile-provider-support",
+  "friendly_name": "HERE Maps Tile Provider Support",
+  "mission": "software-dev",
+  "source_description": "Add HERE maps as a tile provider option for leaflet-geokit web component, with configuration and testing in dev harness",
+  "target_branch": "main",
+  "vcs": "git",
+  "created_at": "2026-02-21T01:16:56.587728+00:00"
+}
