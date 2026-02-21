@@ -1,7 +1,7 @@
 ---
 work_package_id: WP07
 title: Framework Variant Updates
-lane: "doing"
+lane: "done"
 dependencies: [WP06]
 base_branch: 001-here-maps-tile-provider-support-WP06
 base_commit: 3edbb4ac0fcd66bf68cd396bbac57bae74ea11ae
@@ -11,8 +11,8 @@ phase: Phase 2 - Enhancement
 assignee: ""
 agent: "GeminiCLI"
 shell_pid: "28296"
-review_status: ""
-reviewed_by: ""
+review_status: "approved"
+reviewed_by: "Schuyler Ankele"
 history:
   - timestamp: "2026-02-20T00:00:00Z"
     lane: planned
@@ -107,3 +107,4 @@ Test each variant manually in browser. Use diff to compare with index.html.
 - 2026-02-21T08:26:39Z – guille – shell_pid=16416 – lane=doing – Assigned agent via workflow command
 - 2026-02-21T08:32:18Z – guille – shell_pid=16416 – lane=for_review – Ready for review: propagated tile provider UI and toast logic to preact/react/external harnesses
 - 2026-02-21T08:32:57Z – GeminiCLI – shell_pid=28296 – lane=doing – Started review via workflow command
+- 2026-02-21T08:36:19Z – GeminiCLI – shell_pid=28296 – lane=done – Review passed: Tile provider controls and error handling logic propagated to all framework variant harnesses (preact.html, react.html, external.html). All variants are functionally identical to index.html with localStorage persistence and reactive updates.
