@@ -214,12 +214,12 @@
 
 ### Included Subtasks
 
-- [ ] T032 Add event listener for `tile-provider-error` in `index.html`
-- [ ] T033 Add event listener for `tile-provider-changed` in `index.html`
-- [ ] T034 Implement `showToast()` function (or integrate with existing toast system)
-- [ ] T035 Add error handling: disable HERE option on invalid API key
-- [ ] T036 Add success feedback: show toast on successful provider switch
-- [ ] T037 [P] Add error recovery: re-enable HERE when valid API key added
+- [x] T032 Add event listener for `tile-provider-error` in `index.html`
+- [x] T033 Add event listener for `tile-provider-changed` in `index.html`
+- [x] T034 Implement `showToast()` function (or integrate with existing toast system)
+- [x] T035 Add error handling: disable HERE option on invalid API key
+- [x] T036 Add success feedback: show toast on successful provider switch
+- [x] T037 [P] Add error recovery: re-enable HERE when valid API key added
 
 ### Implementation Notes
 
