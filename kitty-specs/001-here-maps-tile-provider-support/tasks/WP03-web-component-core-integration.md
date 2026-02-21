@@ -1,28 +1,31 @@
 ---
-work_package_id: "WP03"
+work_package_id: WP03
+title: Web Component Core Integration
+lane: "doing"
+dependencies: [WP01, WP02]
+base_branch: 001-here-maps-tile-provider-support-WP03-merge-base
+base_commit: e77873405ea6f489aeb3d05e3630c7cf1aec7551
+created_at: "2026-02-21T07:48:59.517397+00:00"
 subtasks:
-  - "T012"
-  - "T013"
-  - "T014"
-  - "T015"
-  - "T016"
-  - "T017"
-  - "T018"
-title: "Web Component Core Integration"
-phase: "Phase 1 - Core Implementation"
-lane: "planned"
-dependencies: ["WP01", "WP02"]
+  - T012
+  - T013
+  - T014
+  - T015
+  - T016
+  - T017
+  - T018
+phase: Phase 1 - Core Implementation
 assignee: ""
 agent: ""
-shell_pid: ""
+shell_pid: "16416"
 review_status: ""
 reviewed_by: ""
 history:
   - timestamp: "2026-02-20T00:00:00Z"
-    lane: "planned"
-    agent: "system"
+    lane: planned
+    agent: system
     shell_pid: ""
-    action: "Prompt generated via /spec-kitty.tasks"
+    action: Prompt generated via /spec-kitty.tasks
 ---
 
 # Work Package Prompt: WP03 – Web Component Core Integration
