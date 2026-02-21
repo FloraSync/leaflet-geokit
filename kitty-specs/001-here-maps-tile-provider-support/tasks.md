@@ -19,11 +19,11 @@
 
 ### Included Subtasks
 
-- [ ] T001 Create `src/lib/TileProviderFactory.ts` with type interfaces
-- [ ] T002 Implement `buildTileURL()` function for OSM provider
-- [ ] T003 Implement `buildTileURL()` function for HERE provider with styles
-- [ ] T004 Implement `validateProviderConfig()` function
-- [ ] T005 Add provider configuration constants (OSM/HERE URLs, attributions, defaults)
+- [x] T001 Create `src/lib/TileProviderFactory.ts` with type interfaces
+- [x] T002 Implement `buildTileURL()` function for OSM provider
+- [x] T003 Implement `buildTileURL()` function for HERE provider with styles
+- [x] T004 Implement `validateProviderConfig()` function
+- [x] T005 Add provider configuration constants (OSM/HERE URLs, attributions, defaults)
 
 ### Implementation Notes
 
