@@ -94,13 +94,13 @@
 
 ### Included Subtasks
 
-- [ ] T012 Add private properties (`_tileProvider`, `_tileStyle`, `_apiKey`) to `LeafletDrawMapElement.ts`
-- [ ] T013 Update `observedAttributes` static getter with new attributes
-- [ ] T014 Update `attributeChangedCallback` to handle `tile-provider`, `tile-style`, `api-key`
-- [ ] T015 Add getter/setter properties for `tileProvider`, `tileStyle`, `apiKey`
-- [ ] T016 Implement `_updateTileLayer()` private method with provider factory integration
-- [ ] T017 Implement `_handleTileProviderError()` private method with fallback logic
-- [ ] T018 Implement `_emitTileProviderChanged()` private method for success events
+- [x] T012 Add private properties (`_tileProvider`, `_tileStyle`, `_apiKey`) to `LeafletDrawMapElement.ts`
+- [x] T013 Update `observedAttributes` static getter with new attributes
+- [x] T014 Update `attributeChangedCallback` to handle `tile-provider`, `tile-style`, `api-key`
+- [x] T015 Add getter/setter properties for `tileProvider`, `tileStyle`, `apiKey`
+- [x] T016 Implement `_updateTileLayer()` private method with provider factory integration
+- [x] T017 Implement `_handleTileProviderError()` private method with fallback logic
+- [x] T018 Implement `_emitTileProviderChanged()` private method for success events
 
 ### Implementation Notes
 
