@@ -1,7 +1,7 @@
 ---
 work_package_id: WP01
 title: Foundation – TileProviderFactory
-lane: "for_review"
+lane: "doing"
 dependencies: []
 base_branch: main
 base_commit: adc17e96cb3c379188d76129f106b8d0bf1765b7
@@ -14,8 +14,8 @@ subtasks:
   - T005
 phase: Phase 0 - Foundation
 assignee: ""
-agent: "guille"
-shell_pid: "16416"
+agent: "GeminiCLI"
+shell_pid: "86506"
 review_status: ""
 reviewed_by: ""
 history:
@@ -427,3 +427,4 @@ npm run type-check
 - 2026-02-20T00:00:00Z – system – lane=planned – Prompt generated.
 - 2026-02-21T07:04:32Z – guille – shell_pid=16416 – lane=doing – Assigned agent via workflow command
 - 2026-02-21T07:18:46Z – guille – shell_pid=16416 – lane=for_review – Ready for review: implemented TileProviderFactory with OSM/HERE URL building and config validation
+- 2026-02-21T07:38:39Z – GeminiCLI – shell_pid=86506 – lane=doing – Started review via workflow command
