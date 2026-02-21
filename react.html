@@ -248,6 +248,32 @@
         <input type="checkbox" id="replaceMode" />
         Replace existing layers
       </label>
+      <div class="row" style="margin-bottom: 0">
+        <label for="tile-provider-select">Tile Provider:</label>
+        <select id="tile-provider-select">
+          <option value="osm">OpenStreetMap</option>
+          <option value="here">HERE Maps</option>
+        </select>
+
+        <label for="tile-style-select" id="style-label" style="display: none"
+          >Style:</label
+        >
+        <select id="tile-style-select" style="display: none">
+          <option value="lite.day">Lite Day</option>
+          <option value="normal.day">Normal Day</option>
+          <option value="satellite.day">Satellite Day</option>
+        </select>
+
+        <label for="api-key-input" id="api-key-label" style="display: none"
+          >HERE API Key:</label
+        >
+        <input
+          type="text"
+          id="api-key-input"
+          placeholder="Enter HERE API key"
+          style="display: none"
+        />
+      </div>
       <div
         id="geocodeStatus"
         class="geocode-status"
@@ -342,6 +368,7 @@
       function setupMap(el) {
         mapElement = el;
         setupMapEventListeners(el);
+        applyTileProvider();
       }
 
       function getMap() {
@@ -365,6 +392,15 @@
       const geocodeStatus = document.getElementById("geocodeStatus");
       const replaceToggle = document.getElementById("replaceMode");
       const geocodeButton = geocodeForm?.querySelector('button[type="submit"]');
+      const providerSelect = document.getElementById("tile-provider-select");
+      const styleSelect = document.getElementById("tile-style-select");
+      const apiKeyInput = document.getElementById("api-key-input");
+
+      const STORAGE_KEYS = {
+        TILE_PROVIDER: "leaflet-geokit:tile-provider",
+        TILE_STYLE: "leaflet-geokit:tile-style",
+        HERE_API_KEY: "leaflet-geokit:here-api-key",
+      };
 
       function setGeocodeStatus(message, isError = false) {
         if (!geocodeStatus) return;
@@ -407,6 +443,52 @@
 
       function tag(msg) {
         document.getElementById("evtTag").textContent = msg;
+      }
+
+      function toggleHEREControls(show) {
+        const styleLabel = document.getElementById("style-label");
+        const apiKeyLabel = document.getElementById("api-key-label");
+        const display = show ? "inline-block" : "none";
+        if (styleSelect) styleSelect.style.display = display;
+        if (styleLabel) styleLabel.style.display = display;
+        if (apiKeyInput) apiKeyInput.style.display = display;
+        if (apiKeyLabel) apiKeyLabel.style.display = display;
+      }
+
+      function applyTileProvider() {
+        if (!providerSelect || !styleSelect || !apiKeyInput) {
+          return;
+        }
+
+        const provider = providerSelect.value;
+        const style = styleSelect.value;
+        const apiKey = apiKeyInput.value;
+        const map = getMap();
+
+        if (map) {
+          map.setAttribute("tile-provider", provider);
+          if (provider === "here") {
+            map.setAttribute("tile-style", style);
+            map.setAttribute("api-key", apiKey);
+          } else {
+            map.removeAttribute("tile-style");
+            map.removeAttribute("api-key");
+          }
+        }
+
+        toggleHEREControls(provider === "here");
+        localStorage.setItem(STORAGE_KEYS.TILE_PROVIDER, provider);
+        localStorage.setItem(STORAGE_KEYS.TILE_STYLE, style);
+        if (apiKey) {
+          localStorage.setItem(STORAGE_KEYS.HERE_API_KEY, apiKey);
+        } else {
+          localStorage.removeItem(STORAGE_KEYS.HERE_API_KEY);
+        }
+      }
+
+      function getHereOption() {
+        if (!providerSelect) return null;
+        return providerSelect.querySelector('option[value="here"]');
       }
 
       function setupMapEventListeners(map) {
@@ -456,6 +538,53 @@
             e.detail.fc = flattenMultiGeometries(incoming);
           } catch (err) {
             console.warn("ingest flatten failed", err);
+          }
+        });
+
+        map.addEventListener("tile-provider-error", (event) => {
+          const { code, message } = event.detail || {};
+          showToast(`Error: ${message ?? "Unknown provider error"}`, "error");
+          tag("tile-provider-error");
+          log({ event: "tile-provider-error", detail: event.detail });
+
+          if (code === "missing_api_key" || code === "invalid_api_key") {
+            const hereOption = getHereOption();
+            if (hereOption) {
+              hereOption.disabled = true;
+            }
+          }
+        });
+
+        map.addEventListener("tile-provider-changed", (event) => {
+          const { provider, style } = event.detail || {};
+          const styleName = style ? ` (${style})` : "";
+          showToast(`Switched to ${provider}${styleName}`, "success");
+          tag("tile-provider-changed");
+          log({ event: "tile-provider-changed", detail: event.detail });
+        });
+      }
+
+      if (providerSelect && styleSelect && apiKeyInput) {
+        const savedProvider =
+          localStorage.getItem(STORAGE_KEYS.TILE_PROVIDER) || "osm";
+        const savedStyle =
+          localStorage.getItem(STORAGE_KEYS.TILE_STYLE) || "lite.day";
+        const savedApiKey =
+          localStorage.getItem(STORAGE_KEYS.HERE_API_KEY) || "";
+
+        providerSelect.value = savedProvider;
+        styleSelect.value = savedStyle;
+        apiKeyInput.value = savedApiKey;
+        toggleHEREControls(savedProvider === "here");
+
+        providerSelect.addEventListener("change", applyTileProvider);
+        styleSelect.addEventListener("change", applyTileProvider);
+        apiKeyInput.addEventListener("blur", applyTileProvider);
+        apiKeyInput.addEventListener("input", () => {
+          const hereOption = getHereOption();
+          if (!hereOption) return;
+          if (apiKeyInput.value.trim()) {
+            hereOption.disabled = false;
           }
         });
       }
