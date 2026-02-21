@@ -1,7 +1,7 @@
 ---
 work_package_id: WP04
 title: MapController Tile Layer Management
-lane: "doing"
+lane: "for_review"
 dependencies: [WP02]
 base_branch: 001-here-maps-tile-provider-support-WP02
 base_commit: e77873405ea6f489aeb3d05e3630c7cf1aec7551
@@ -208,3 +208,4 @@ this._logger?.info("Tile layer changed:", config.urlTemplate);
 
 - 2026-02-20T00:00:00Z – system – lane=planned – Prompt generated.
 - 2026-02-21T08:01:02Z – guille – shell_pid=16416 – lane=doing – Assigned agent via workflow command
+- 2026-02-21T08:05:13Z – guille – shell_pid=16416 – lane=for_review – Ready for review: implemented setTileLayer with replacement, cleanup, and tileerror logging
