@@ -9,7 +9,7 @@ created_at: "2026-02-21T08:26:20.300336+00:00"
 subtasks: [T038, T039, T040, T041, T042, T043]
 phase: Phase 2 - Enhancement
 assignee: ""
-agent: ""
+agent: "guille"
 shell_pid: "16416"
 review_status: ""
 reviewed_by: ""
@@ -104,3 +104,4 @@ Test each variant manually in browser. Use diff to compare with index.html.
 ## Activity Log
 
 - 2026-02-20T00:00:00Z – system – lane=planned – Prompt generated.
+- 2026-02-21T08:26:39Z – guille – shell_pid=16416 – lane=doing – Assigned agent via workflow command
