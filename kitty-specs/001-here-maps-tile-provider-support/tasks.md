@@ -133,12 +133,12 @@
 
 ### Included Subtasks
 
-- [ ] T019 Add import for `TileURLTemplate` type in `src/lib/MapController.ts`
-- [ ] T020 Implement `setTileLayer(config: TileURLTemplate)` public method
-- [ ] T021 Add tile layer cleanup logic (remove existing layer before adding new)
-- [ ] T022 Add Leaflet tile error event listener (`tileerror`)
-- [ ] T023 Integrate `setTileLayer` with existing map initialization flow
-- [ ] T024 Add logging for tile layer changes and errors
+- [x] T019 Add import for `TileURLTemplate` type in `src/lib/MapController.ts`
+- [x] T020 Implement `setTileLayer(config: TileURLTemplate)` public method
+- [x] T021 Add tile layer cleanup logic (remove existing layer before adding new)
+- [x] T022 Add Leaflet tile error event listener (`tileerror`)
+- [x] T023 Integrate `setTileLayer` with existing map initialization flow
+- [x] T024 Add logging for tile layer changes and errors
 
 ### Implementation Notes
 
