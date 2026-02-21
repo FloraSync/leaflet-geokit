@@ -1,7 +1,7 @@
 ---
 work_package_id: WP05
 title: Dev Harness UI – Provider Controls
-lane: "doing"
+lane: "for_review"
 dependencies: [WP03, WP04]
 base_branch: 001-here-maps-tile-provider-support-WP05-merge-base
 base_commit: 7c3496e6e1b86fa19ace5403c39180194029b6c1
@@ -228,3 +228,4 @@ apiKeyInput.addEventListener("blur", applyTileProvider);
 
 - 2026-02-20T00:00:00Z – system – lane=planned – Prompt generated.
 - 2026-02-21T08:09:48Z – guille – shell_pid=16416 – lane=doing – Assigned agent via workflow command
+- 2026-02-21T08:13:02Z – guille – shell_pid=16416 – lane=for_review – Ready for review: added provider/style/api-key controls with localStorage persistence
