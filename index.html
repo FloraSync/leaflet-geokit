@@ -241,6 +241,32 @@
         <input type="checkbox" id="replaceMode" />
         Replace existing layers
       </label>
+      <div class="row" style="margin-bottom: 0">
+        <label for="tile-provider-select">Tile Provider:</label>
+        <select id="tile-provider-select">
+          <option value="osm">OpenStreetMap</option>
+          <option value="here">HERE Maps</option>
+        </select>
+
+        <label for="tile-style-select" id="style-label" style="display: none"
+          >Style:</label
+        >
+        <select id="tile-style-select" style="display: none">
+          <option value="lite.day">Lite Day</option>
+          <option value="normal.day">Normal Day</option>
+          <option value="satellite.day">Satellite Day</option>
+        </select>
+
+        <label for="api-key-input" id="api-key-label" style="display: none"
+          >HERE API Key:</label
+        >
+        <input
+          type="text"
+          id="api-key-input"
+          placeholder="Enter HERE API key"
+          style="display: none"
+        />
+      </div>
       <div
         id="geocodeStatus"
         class="geocode-status"
@@ -319,7 +345,16 @@
       const geocodeStatus = document.getElementById("geocodeStatus");
       const replaceToggle = document.getElementById("replaceMode");
       const geocodeButton = geocodeForm?.querySelector('button[type="submit"]');
+      const providerSelect = document.getElementById("tile-provider-select");
+      const styleSelect = document.getElementById("tile-style-select");
+      const apiKeyInput = document.getElementById("api-key-input");
       let mapReady = false;
+
+      const STORAGE_KEYS = {
+        TILE_PROVIDER: "leaflet-geokit:tile-provider",
+        TILE_STYLE: "leaflet-geokit:tile-style",
+        HERE_API_KEY: "leaflet-geokit:here-api-key",
+      };
 
       const waitForMapReady = () =>
         mapReady
@@ -511,6 +546,66 @@
 
       function tag(msg) {
         document.getElementById("evtTag").textContent = msg;
+      }
+
+      function toggleHEREControls(show) {
+        const styleLabel = document.getElementById("style-label");
+        const apiKeyLabel = document.getElementById("api-key-label");
+        const display = show ? "inline-block" : "none";
+        if (styleSelect) styleSelect.style.display = display;
+        if (styleLabel) styleLabel.style.display = display;
+        if (apiKeyInput) apiKeyInput.style.display = display;
+        if (apiKeyLabel) apiKeyLabel.style.display = display;
+      }
+
+      function applyTileProvider() {
+        if (!providerSelect || !styleSelect || !apiKeyInput) {
+          return;
+        }
+
+        const provider = providerSelect.value;
+        const style = styleSelect.value;
+        const apiKey = apiKeyInput.value;
+
+        map.setAttribute("tile-provider", provider);
+
+        if (provider === "here") {
+          map.setAttribute("tile-style", style);
+          map.setAttribute("api-key", apiKey);
+          toggleHEREControls(true);
+        } else {
+          map.removeAttribute("tile-style");
+          map.removeAttribute("api-key");
+          toggleHEREControls(false);
+        }
+
+        localStorage.setItem(STORAGE_KEYS.TILE_PROVIDER, provider);
+        localStorage.setItem(STORAGE_KEYS.TILE_STYLE, style);
+        if (apiKey) {
+          localStorage.setItem(STORAGE_KEYS.HERE_API_KEY, apiKey);
+        } else {
+          localStorage.removeItem(STORAGE_KEYS.HERE_API_KEY);
+        }
+      }
+
+      if (providerSelect && styleSelect && apiKeyInput) {
+        const savedProvider =
+          localStorage.getItem(STORAGE_KEYS.TILE_PROVIDER) || "osm";
+        const savedStyle =
+          localStorage.getItem(STORAGE_KEYS.TILE_STYLE) || "lite.day";
+        const savedApiKey =
+          localStorage.getItem(STORAGE_KEYS.HERE_API_KEY) || "";
+
+        providerSelect.value = savedProvider;
+        styleSelect.value = savedStyle;
+        apiKeyInput.value = savedApiKey;
+
+        toggleHEREControls(savedProvider === "here");
+        applyTileProvider();
+
+        providerSelect.addEventListener("change", applyTileProvider);
+        styleSelect.addEventListener("change", applyTileProvider);
+        apiKeyInput.addEventListener("blur", applyTileProvider);
       }
 
       // Wire events
