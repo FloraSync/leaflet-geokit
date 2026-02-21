@@ -1,7 +1,7 @@
 ---
 work_package_id: WP05
 title: Dev Harness UI – Provider Controls
-lane: "for_review"
+lane: "doing"
 dependencies: [WP03, WP04]
 base_branch: 001-here-maps-tile-provider-support-WP05-merge-base
 base_commit: 7c3496e6e1b86fa19ace5403c39180194029b6c1
@@ -9,8 +9,8 @@ created_at: "2026-02-21T08:09:27.330820+00:00"
 subtasks: [T025, T026, T027, T028, T029, T030, T031]
 phase: Phase 1 - Core Implementation
 assignee: ""
-agent: "guille"
-shell_pid: "16416"
+agent: "GeminiCLI"
+shell_pid: "13398"
 review_status: ""
 reviewed_by: ""
 history:
@@ -229,3 +229,4 @@ apiKeyInput.addEventListener("blur", applyTileProvider);
 - 2026-02-20T00:00:00Z – system – lane=planned – Prompt generated.
 - 2026-02-21T08:09:48Z – guille – shell_pid=16416 – lane=doing – Assigned agent via workflow command
 - 2026-02-21T08:13:02Z – guille – shell_pid=16416 – lane=for_review – Ready for review: added provider/style/api-key controls with localStorage persistence
+- 2026-02-21T08:13:37Z – GeminiCLI – shell_pid=13398 – lane=doing – Started review via workflow command
