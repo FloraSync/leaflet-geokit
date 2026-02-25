@@ -120,9 +120,18 @@ test.describe("Dev harness tool parity smoke", () => {
       const map = page.locator("leaflet-geokit").first();
       await expect(map).toBeVisible();
 
-      await expect(page.locator("#evtTag")).toContainText(/ready/i, {
-        timeout: 30_000,
-      });
+      const startupEventTag = page.locator("#evtTag");
+      await expect
+        .poll(
+          async () =>
+            (await startupEventTag.textContent())?.trim().toLowerCase() ?? "",
+          {
+            timeout: 30_000,
+            message:
+              "Expected startup event tag to indicate map readiness or initial tile provider selection",
+          },
+        )
+        .toMatch(/^(ready|tile-provider-changed)$/);
 
       await page.evaluate(() => {
         const mapElement = document.querySelector("leaflet-geokit");

@@ -26,6 +26,7 @@ Documentation quick-links
 
 - What you get
 - Install
+- Tile Providers
 - Build and compilation
 - Runtime and architecture overview
 - Public API (attributes, properties, methods, events)
@@ -115,6 +116,52 @@ Why choose external?
 - Avoid double-loading Leaflet/Leaflet.draw when your host already ships them.
 - Keep bundle size smaller in hosts that vendor Leaflet themselves.
 - Control Leaflet/Draw versions and theming directly.
+
+---
+
+## Tile Providers
+
+The `<leaflet-geokit>` web component supports multiple tile provider modes.
+
+### OpenStreetMap (Default)
+
+```html
+<leaflet-geokit tile-provider="osm"></leaflet-geokit>
+```
+
+### HERE Maps
+
+Requires a HERE API key ([get one here](https://developer.here.com/)):
+
+```html
+<leaflet-geokit
+  tile-provider="here"
+  tile-style="lite.day"
+  api-key="YOUR_HERE_API_KEY"
+></leaflet-geokit>
+```
+
+`api-key` is the canonical attribute. `here-api-key` is also accepted as a legacy alias.
+
+**Available HERE Styles**:
+
+- `lite.day` - Lightweight basemap (default)
+- `normal.day` - Standard street map
+- `satellite.day` - Satellite imagery
+
+### Custom Tile Server (Backward Compatible)
+
+You can still use custom tile URLs:
+
+```html
+<leaflet-geokit
+  tile-url="https://example.com/tiles/{z}/{x}/{y}.png"
+></leaflet-geokit>
+```
+
+### Security Note
+
+⚠️ For production use, **do not** expose API keys client-side. Use a server-side proxy to request tiles.
 
 ---
 

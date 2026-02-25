@@ -28,6 +28,7 @@ import {
   measurementSystemDescriptions,
 } from "@src/utils/ruler";
 import { assertDrawPresent } from "@src/utils/leaflet-guards";
+import type { TileURLTemplate } from "@src/lib/TileProviderFactory";
 
 let rulerPrecisionPatched = false;
 
@@ -56,6 +57,10 @@ export interface MapControllerOptions {
   useExternalLeaflet?: boolean;
 }
 
+interface TileLayerCallbacks {
+  onTileError?: (error: unknown) => void;
+}
+
 /**
  * MapController: initializes Leaflet map + Draw, bridges events, and manages data via FeatureStore.
  */
@@ -72,6 +77,7 @@ export class MapController {
 
   // Leaflet entities
   private map: BundledL.Map | null = null;
+  private tileLayer: BundledL.TileLayer | null = null;
   private drawnItems: BundledL.FeatureGroup | null = null;
   // Keep 'any' here to avoid type friction across different @types/leaflet-draw versions
   private drawControl: any | null = null;
@@ -177,11 +183,11 @@ export class MapController {
       }).setView(center, zoom);
 
       // Add tile layer
-      Lns.tileLayer(tileUrl, {
-        attribution: tileAttribution,
-        minZoom,
+      this.setTileLayer({
+        urlTemplate: tileUrl,
+        attribution: tileAttribution ?? "",
         maxZoom,
-      }).addTo(this.map);
+      });
 
       // FeatureGroup for all drawn layers
       this.drawnItems = Lns.featureGroup().addTo(this.map);
@@ -280,6 +286,7 @@ export class MapController {
     this.measurementControl = null;
     this.removeMeasurementModal();
     this.drawnItems = null;
+    this.tileLayer = null;
 
     try {
       this.activeCakeSession?.destroy();
@@ -415,6 +422,56 @@ export class MapController {
   async setView(lat: number, lng: number, zoom?: number): Promise<void> {
     if (!this.map) return;
     this.map.setView([lat, lng], zoom ?? this.map.getZoom());
+  }
+
+  setTileLayer(config: TileURLTemplate, callbacks?: TileLayerCallbacks): void {
+    if (!this.map) {
+      this.logger.warn("setTileLayer called before map initialization", {
+        urlTemplate: config.urlTemplate,
+      });
+      return;
+    }
+
+    this.logger.debug("tile-layer:switch", {
+      urlTemplate: config.urlTemplate,
+      attribution: config.attribution,
+      maxZoom: config.maxZoom,
+      subdomains: config.subdomains,
+    });
+
+    if (this.tileLayer) {
+      this.map.removeLayer(this.tileLayer);
+      this.tileLayer = null;
+    }
+
+    const tileLayerOptions: BundledL.TileLayerOptions = {
+      attribution: config.attribution,
+      minZoom: this.options.map.minZoom,
+      maxZoom: config.maxZoom,
+    };
+
+    if (config.subdomains !== undefined) {
+      tileLayerOptions.subdomains = config.subdomains;
+    } else if (config.urlTemplate.includes("{s}")) {
+      tileLayerOptions.subdomains = ["a", "b", "c"];
+    }
+
+    const nextTileLayer = this.L.tileLayer(
+      config.urlTemplate,
+      tileLayerOptions,
+    );
+
+    let tileErrorReported = false;
+    nextTileLayer.on("tileerror", (error: unknown) => {
+      this.logger.error("tile-layer:error", { error });
+      if (!tileErrorReported) {
+        tileErrorReported = true;
+        callbacks?.onTileError?.(error);
+      }
+    });
+
+    nextTileLayer.addTo(this.map);
+    this.tileLayer = nextTileLayer;
   }
 
   /**

@@ -53,6 +53,79 @@ export interface DrawControlsConfig {
 }
 
 /**
+ * Configuration for tile provider selection and styling
+ */
+export interface TileProviderConfig {
+  /** Tile provider identifier (e.g., "osm", "here") */
+  provider: "osm" | "here" | string;
+
+  /** Provider-specific style (e.g., "lite.day" for HERE) */
+  style?: string;
+
+  /** API key for authenticated providers */
+  apiKey?: string;
+
+  /** Optional override for tile attribution text */
+  attribution?: string;
+}
+
+/**
+ * Tile layer configuration with URL template and provider settings
+ */
+export interface TileURLTemplate {
+  /** Leaflet tile URL template (e.g., "https://{s}.domain.com/{z}/{x}/{y}.png") */
+  urlTemplate: string;
+
+  /** Attribution text displayed on the map */
+  attribution: string;
+
+  /** Maximum zoom level supported */
+  maxZoom?: number;
+
+  /** Tile subdomains for load balancing */
+  subdomains?: string[];
+}
+
+/**
+ * Event detail for tile provider errors
+ */
+export interface TileProviderErrorDetail {
+  /** Error code identifying the failure type */
+  code:
+    | "missing_api_key"
+    | "invalid_api_key"
+    | "permission_denied"
+    | "tile_load_failed"
+    | "unknown_provider";
+
+  /** Human-readable error message */
+  message: string;
+
+  /** Provider identifier where the error occurred */
+  provider: string;
+
+  /** Unix timestamp when error occurred */
+  timestamp: number;
+}
+
+/**
+ * Event detail for successful tile provider changes
+ */
+export interface TileProviderChangedDetail {
+  /** New active provider */
+  provider: string;
+
+  /** New active style (if applicable) */
+  style?: string;
+
+  /** Previously active provider */
+  previousProvider: string;
+
+  /** Unix timestamp when change occurred */
+  timestamp: number;
+}
+
+/**
  * Public API that the custom element exposes (methods/properties).
  * This is provided for typing in TS consumers who may cast the element.
  */
@@ -76,6 +149,15 @@ export interface LeafletDrawMapElementAPI {
 
   /** Optional injection of a pre-existing Leaflet namespace to use instead of bundled import. */
   leafletInstance?: typeof Leaflet;
+
+  /** Tile provider identifier (e.g., "osm", "here") */
+  tileProvider?: "osm" | "here" | string;
+
+  /** Provider-specific style (e.g., "lite.day" for HERE) */
+  tileStyle?: string;
+
+  /** API key for authenticated providers */
+  apiKey?: string;
 
   // Methods
   getGeoJSON(): Promise<FeatureCollection>;

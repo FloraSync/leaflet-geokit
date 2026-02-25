@@ -241,6 +241,40 @@
         <input type="checkbox" id="replaceMode" />
         Replace existing layers
       </label>
+      <div class="row" style="margin-bottom: 0">
+        <label for="tile-provider-select">Tile Provider:</label>
+        <select id="tile-provider-select">
+          <option value="osm">OpenStreetMap</option>
+          <option value="here">HERE Maps</option>
+        </select>
+
+        <label for="tile-style-select" id="style-label" style="display: none"
+          >Style:</label
+        >
+        <select id="tile-style-select" style="display: none">
+          <option value="lite.day">Lite Day</option>
+          <option value="normal.day">Normal Day</option>
+          <option value="satellite.day">Satellite Day</option>
+        </select>
+
+        <label for="api-key-input" id="api-key-label" style="display: none"
+          >HERE API Key:</label
+        >
+        <input
+          type="text"
+          id="api-key-input"
+          placeholder="Enter HERE API key"
+          style="display: none"
+        />
+        <button
+          type="button"
+          class="btn secondary"
+          id="apply-here-settings"
+          style="display: none"
+        >
+          Save
+        </button>
+      </div>
       <div
         id="geocodeStatus"
         class="geocode-status"
@@ -319,7 +353,18 @@
       const geocodeStatus = document.getElementById("geocodeStatus");
       const replaceToggle = document.getElementById("replaceMode");
       const geocodeButton = geocodeForm?.querySelector('button[type="submit"]');
+      const providerSelect = document.getElementById("tile-provider-select");
+      const styleSelect = document.getElementById("tile-style-select");
+      const apiKeyInput = document.getElementById("api-key-input");
+      const applyHereButton = document.getElementById("apply-here-settings");
       let mapReady = false;
+
+      const STORAGE_KEYS = {
+        TILE_PROVIDER: "leaflet-geokit:tile-provider",
+        TILE_STYLE: "leaflet-geokit:tile-style",
+        HERE_API_KEY: "leaflet-geokit:here-api-key",
+      };
+      let hereStyleFallbackAttempted = false;
 
       const waitForMapReady = () =>
         mapReady
@@ -513,6 +558,89 @@
         document.getElementById("evtTag").textContent = msg;
       }
 
+      function toggleHEREControls(show) {
+        const styleLabel = document.getElementById("style-label");
+        const apiKeyLabel = document.getElementById("api-key-label");
+        const display = show ? "inline-block" : "none";
+        if (styleSelect) styleSelect.style.display = display;
+        if (styleLabel) styleLabel.style.display = display;
+        if (apiKeyInput) apiKeyInput.style.display = display;
+        if (apiKeyLabel) apiKeyLabel.style.display = display;
+        if (applyHereButton) applyHereButton.style.display = display;
+      }
+
+      function applyTileProvider(options = {}) {
+        if (!providerSelect || !styleSelect || !apiKeyInput) {
+          return;
+        }
+        const { forceRefresh = false } = options;
+
+        const provider = providerSelect.value;
+        const style = styleSelect.value;
+        const apiKey = apiKeyInput.value.trim();
+
+        if (provider !== "here" || style !== "satellite.day") {
+          hereStyleFallbackAttempted = false;
+        }
+
+        if (provider === "here") {
+          map.setAttribute("tile-style", style);
+          if (apiKey) {
+            map.setAttribute("api-key", apiKey);
+          } else {
+            map.removeAttribute("api-key");
+          }
+          map.setAttribute("tile-provider", provider);
+          toggleHEREControls(true);
+        } else {
+          map.setAttribute("tile-provider", provider);
+          map.removeAttribute("tile-style");
+          map.removeAttribute("api-key");
+          toggleHEREControls(false);
+        }
+
+        if (forceRefresh && "tileProvider" in map) {
+          if (provider === "here") {
+            map.tileStyle = style;
+            map.apiKey = apiKey || undefined;
+          } else {
+            map.tileStyle = undefined;
+            map.apiKey = undefined;
+          }
+          map.tileProvider = provider;
+        }
+
+        localStorage.setItem(STORAGE_KEYS.TILE_PROVIDER, provider);
+        localStorage.setItem(STORAGE_KEYS.TILE_STYLE, style);
+        if (apiKey) {
+          localStorage.setItem(STORAGE_KEYS.HERE_API_KEY, apiKey);
+        } else {
+          localStorage.removeItem(STORAGE_KEYS.HERE_API_KEY);
+        }
+      }
+
+      if (providerSelect && styleSelect && apiKeyInput) {
+        const savedProvider =
+          localStorage.getItem(STORAGE_KEYS.TILE_PROVIDER) || "osm";
+        const savedStyle =
+          localStorage.getItem(STORAGE_KEYS.TILE_STYLE) || "lite.day";
+        const savedApiKey =
+          localStorage.getItem(STORAGE_KEYS.HERE_API_KEY) || "";
+
+        providerSelect.value = savedProvider;
+        styleSelect.value = savedStyle;
+        apiKeyInput.value = savedApiKey;
+
+        toggleHEREControls(savedProvider === "here");
+        applyTileProvider();
+
+        providerSelect.addEventListener("change", applyTileProvider);
+        styleSelect.addEventListener("change", applyTileProvider);
+        apiKeyInput.addEventListener("change", () =>
+          applyTileProvider({ forceRefresh: true }),
+        );
+      }
+
       // Wire events
       map.addEventListener("leaflet-draw:ready", (e) => {
         mapReady = true;
@@ -535,6 +663,71 @@
         tag("error");
         log({ event: "error", detail: e.detail });
       });
+
+      map.addEventListener("tile-provider-error", (event) => {
+        const { code, message } = event.detail || {};
+        showToast(`Error: ${message ?? "Unknown provider error"}`, "error");
+        tag("tile-provider-error");
+        log({ event: "tile-provider-error", detail: event.detail });
+
+        if (
+          code === "permission_denied" &&
+          providerSelect?.value === "here" &&
+          styleSelect?.value === "satellite.day" &&
+          !hereStyleFallbackAttempted
+        ) {
+          hereStyleFallbackAttempted = true;
+          styleSelect.value = "lite.day";
+          showToast(
+            "satellite.day may require extra HERE permissions. Retrying with lite.day.",
+            "info",
+          );
+          applyTileProvider({ forceRefresh: true });
+          return;
+        }
+
+        if (
+          code === "missing_api_key" ||
+          code === "invalid_api_key" ||
+          code === "permission_denied"
+        ) {
+          if (providerSelect?.value === "here") {
+            toggleHEREControls(true);
+          }
+        }
+      });
+
+      map.addEventListener("tile-provider-changed", (event) => {
+        const { provider, style } = event.detail || {};
+        const styleName = style ? ` (${style})` : "";
+        showToast(`Switched to ${provider}${styleName}`, "success");
+        hereStyleFallbackAttempted = false;
+        tag("tile-provider-changed");
+        log({ event: "tile-provider-changed", detail: event.detail });
+      });
+
+      if (apiKeyInput) {
+        apiKeyInput.addEventListener("input", () => {
+          const apiKey = apiKeyInput.value.trim();
+          if (apiKey) {
+            localStorage.setItem(STORAGE_KEYS.HERE_API_KEY, apiKey);
+          } else {
+            localStorage.removeItem(STORAGE_KEYS.HERE_API_KEY);
+          }
+        });
+
+        apiKeyInput.addEventListener("keydown", (event) => {
+          if (event.key !== "Enter") return;
+          event.preventDefault();
+          applyTileProvider({ forceRefresh: true });
+        });
+      }
+
+      if (applyHereButton) {
+        applyHereButton.addEventListener("click", () => {
+          applyTileProvider({ forceRefresh: true });
+        });
+      }
 
       // Export event: download as .geojson with timestamp
       map.addEventListener("leaflet-draw:export", (e) => {
