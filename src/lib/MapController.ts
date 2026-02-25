@@ -57,6 +57,10 @@ export interface MapControllerOptions {
   useExternalLeaflet?: boolean;
 }
 
+interface TileLayerCallbacks {
+  onTileError?: (error: unknown) => void;
+}
+
 /**
  * MapController: initializes Leaflet map + Draw, bridges events, and manages data via FeatureStore.
  */
@@ -420,7 +424,7 @@ export class MapController {
     this.map.setView([lat, lng], zoom ?? this.map.getZoom());
   }
 
-  setTileLayer(config: TileURLTemplate): void {
+  setTileLayer(config: TileURLTemplate, callbacks?: TileLayerCallbacks): void {
     if (!this.map) {
       this.logger.warn("setTileLayer called before map initialization", {
         urlTemplate: config.urlTemplate,
@@ -440,15 +444,30 @@ export class MapController {
       this.tileLayer = null;
     }
 
-    const nextTileLayer = this.L.tileLayer(config.urlTemplate, {
+    const tileLayerOptions: BundledL.TileLayerOptions = {
       attribution: config.attribution,
       minZoom: this.options.map.minZoom,
       maxZoom: config.maxZoom,
-      subdomains: config.subdomains,
-    });
+    };
 
+    if (config.subdomains !== undefined) {
+      tileLayerOptions.subdomains = config.subdomains;
+    } else if (config.urlTemplate.includes("{s}")) {
+      tileLayerOptions.subdomains = ["a", "b", "c"];
+    }
+
+    const nextTileLayer = this.L.tileLayer(
+      config.urlTemplate,
+      tileLayerOptions,
+    );
+
+    let tileErrorReported = false;
     nextTileLayer.on("tileerror", (error: unknown) => {
       this.logger.error("tile-layer:error", { error });
+      if (!tileErrorReported) {
+        tileErrorReported = true;
+        callbacks?.onTileError?.(error);
+      }
     });
 
     nextTileLayer.addTo(this.map);

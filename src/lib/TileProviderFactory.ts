@@ -52,6 +52,18 @@ const PROVIDERS = {
   },
 } as const;
 
+function normalizeProvider(provider: TileProviderConfig["provider"]): string {
+  return typeof provider === "string" ? provider.trim().toLowerCase() : "";
+}
+
+function normalizeApiKey(
+  apiKey: TileProviderConfig["apiKey"],
+): string | undefined {
+  if (typeof apiKey !== "string") return undefined;
+  const trimmed = apiKey.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
 /**
  * Build tile layer URL and metadata for the selected provider.
  *
@@ -60,7 +72,9 @@ const PROVIDERS = {
  * - Uses `lite.day` as default style when style is omitted/invalid
  */
 export function buildTileURL(config: TileProviderConfig): TileURLTemplate {
-  const { provider, style, apiKey, attribution } = config;
+  const { style, attribution } = config;
+  const provider = normalizeProvider(config.provider);
+  const apiKey = normalizeApiKey(config.apiKey);
 
   switch (provider) {
     case "osm":
@@ -76,9 +90,10 @@ export function buildTileURL(config: TileProviderConfig): TileURLTemplate {
         throw new Error("HERE Maps requires an API key");
       }
 
+      const normalizedStyle = typeof style === "string" ? style.trim() : "";
       const hereStyle =
-        style && style in PROVIDERS.here.styles
-          ? style
+        normalizedStyle && normalizedStyle in PROVIDERS.here.styles
+          ? normalizedStyle
           : PROVIDERS.here.defaultStyle;
 
       return {
@@ -90,7 +105,7 @@ export function buildTileURL(config: TileProviderConfig): TileURLTemplate {
     }
 
     default:
-      throw new Error(`Unknown tile provider: ${provider}`);
+      throw new Error(`Unknown tile provider: ${config.provider}`);
   }
 }
 
@@ -105,7 +120,8 @@ export function validateProviderConfig(config: TileProviderConfig): {
   valid: boolean;
   error?: string;
 } {
-  const { provider, apiKey } = config;
+  const provider = normalizeProvider(config.provider);
+  const apiKey = normalizeApiKey(config.apiKey);
 
   if (!provider) {
     return { valid: false, error: "Provider is required" };

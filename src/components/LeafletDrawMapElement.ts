@@ -39,6 +39,7 @@ export class LeafletDrawMapElement
   private _tileProvider?: string;
   private _tileStyle?: string;
   private _apiKey?: string;
+  private _activeTileProvider = "tile-url";
   private _readOnly = false;
   private _logLevel: LogLevel = "debug";
   private _devOverlay = false;
@@ -201,6 +202,7 @@ export class LeafletDrawMapElement
       "tile-provider",
       "tile-style",
       "api-key",
+      "here-api-key",
       "read-only",
       "log-level",
       "dev-overlay",
@@ -247,7 +249,8 @@ export class LeafletDrawMapElement
         this._maxZoom = value != null ? this._coerceNumber(value) : undefined;
         break;
       case "tile-url":
-        this._tileUrl = value ?? this._tileUrl;
+        this._tileUrl =
+          value ?? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
         if (this._controller) {
           this._updateTileLayer();
         }
@@ -259,19 +262,22 @@ export class LeafletDrawMapElement
         }
         break;
       case "tile-provider":
-        this._tileProvider = value ?? undefined;
+        this._tileProvider = this._normalizeText(value, {
+          lowercase: true,
+        });
         if (this._controller) {
           this._updateTileLayer();
         }
         break;
       case "tile-style":
-        this._tileStyle = value ?? undefined;
+        this._tileStyle = this._normalizeText(value);
         if (this._controller) {
           this._updateTileLayer();
         }
         break;
       case "api-key":
-        this._apiKey = value ?? undefined;
+      case "here-api-key":
+        this._syncApiKeyFromAttributes();
         if (this._controller) {
           this._updateTileLayer();
         }
@@ -342,7 +348,10 @@ export class LeafletDrawMapElement
     }
 
     const maybeController = this._controller as MapController & {
-      setTileLayer?: (config: TileURLTemplate) => void;
+      setTileLayer?: (
+        config: TileURLTemplate,
+        callbacks?: { onTileError?: (error: unknown) => void },
+      ) => void;
     };
 
     if (typeof maybeController.setTileLayer !== "function") {
@@ -352,8 +361,9 @@ export class LeafletDrawMapElement
 
     try {
       if (this._tileProvider) {
+        const provider = this._tileProvider;
         const config: TileProviderConfig = {
-          provider: this._tileProvider,
+          provider,
           style: this._tileStyle,
           apiKey: this._apiKey,
           attribution: this._tileAttribution,
@@ -361,17 +371,40 @@ export class LeafletDrawMapElement
 
         const validation = validateProviderConfig(config);
         if (!validation.valid) {
+          const code: TileProviderErrorDetail["code"] = validation.error
+            ?.toLowerCase()
+            .includes("api key")
+            ? "missing_api_key"
+            : "tile_load_failed";
           this._handleTileProviderError(
-            "missing_api_key",
+            code,
             validation.error ?? "Invalid tile provider configuration",
-            this._tileProvider,
+            provider,
           );
           return;
         }
 
         const tileConfig = buildTileURL(config);
-        maybeController.setTileLayer(tileConfig);
-        this._emitTileProviderChanged(this._tileProvider, this._tileStyle);
+        const previousProvider = this._activeTileProvider;
+
+        maybeController.setTileLayer(tileConfig, {
+          onTileError: (error: unknown) => {
+            if (this._tileProvider !== provider) return;
+            const message = this._describeTileLayerError(error, provider);
+            const code: TileProviderErrorDetail["code"] =
+              provider === "here"
+                ? this._resolveHereTileLayerErrorCode(message)
+                : "tile_load_failed";
+            this._handleTileProviderError(code, message, provider);
+          },
+        });
+
+        this._activeTileProvider = provider;
+        this._emitTileProviderChanged(
+          provider,
+          this._tileStyle,
+          previousProvider,
+        );
         return;
       }
 
@@ -381,10 +414,12 @@ export class LeafletDrawMapElement
         maxZoom: this._maxZoom,
         subdomains: ["a", "b", "c"],
       });
+      this._activeTileProvider = "tile-url";
     } catch (error) {
-      this._logger.error("Failed to update tile layer", { error });
+      const code = this._resolveTileProviderErrorCode(error);
+      this._logger.error("Failed to update tile layer", { error, code });
       this._handleTileProviderError(
-        "tile_load_failed",
+        code,
         error instanceof Error ? error.message : "Unknown tile layer error",
         this._tileProvider ?? "unknown",
       );
@@ -410,12 +445,11 @@ export class LeafletDrawMapElement
       }),
     );
 
-    this._tileProvider = "osm";
-    this._tileStyle = undefined;
-    this._apiKey = undefined;
-
     const maybeController = this._controller as MapController & {
-      setTileLayer?: (config: TileURLTemplate) => void;
+      setTileLayer?: (
+        config: TileURLTemplate,
+        callbacks?: { onTileError?: (error: unknown) => void },
+      ) => void;
     };
 
     if (typeof maybeController.setTileLayer === "function") {
@@ -426,17 +460,22 @@ export class LeafletDrawMapElement
         maxZoom: 19,
         subdomains: ["a", "b", "c"],
       });
+      this._activeTileProvider = "osm";
     }
   }
 
-  private _emitTileProviderChanged(provider: string, style?: string): void {
+  private _emitTileProviderChanged(
+    provider: string,
+    style: string | undefined,
+    previousProvider: string,
+  ): void {
     this.dispatchEvent(
       new CustomEvent("tile-provider-changed", {
         bubbles: true,
         detail: {
           provider,
           style,
-          previousProvider: this._tileProvider,
+          previousProvider,
           timestamp: Date.now(),
         },
       }),
@@ -499,8 +538,10 @@ export class LeafletDrawMapElement
     return this._tileProvider;
   }
   set tileProvider(v: string | undefined) {
-    this._tileProvider = v;
-    this._reflect("tile-provider", v ?? null);
+    this._tileProvider = this._normalizeText(v ?? null, {
+      lowercase: true,
+    });
+    this._reflect("tile-provider", this._tileProvider ?? null);
     if (this._controller) {
       this._updateTileLayer();
     }
@@ -510,8 +551,8 @@ export class LeafletDrawMapElement
     return this._tileStyle;
   }
   set tileStyle(v: string | undefined) {
-    this._tileStyle = v;
-    this._reflect("tile-style", v ?? null);
+    this._tileStyle = this._normalizeText(v ?? null);
+    this._reflect("tile-style", this._tileStyle ?? null);
     if (this._controller) {
       this._updateTileLayer();
     }
@@ -521,8 +562,11 @@ export class LeafletDrawMapElement
     return this._apiKey;
   }
   set apiKey(v: string | undefined) {
-    this._apiKey = v;
-    this._reflect("api-key", v ?? null);
+    this._apiKey = this._normalizeText(v ?? null);
+    this._reflect("api-key", this._apiKey ?? null);
+    if (this.hasAttribute("here-api-key")) {
+      this.removeAttribute("here-api-key");
+    }
     if (this._controller) {
       this._updateTileLayer();
     }
@@ -830,6 +874,92 @@ export class LeafletDrawMapElement
       this._themeStyleEl.remove();
       this._themeStyleEl = null;
     }
+  }
+
+  private _syncApiKeyFromAttributes(): void {
+    const canonical = this._normalizeText(this.getAttribute("api-key"));
+    const legacy = this._normalizeText(this.getAttribute("here-api-key"));
+    this._apiKey = canonical ?? legacy;
+  }
+
+  private _normalizeText(
+    value: string | null,
+    options?: { lowercase?: boolean },
+  ): string | undefined {
+    if (typeof value !== "string") return undefined;
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    return options?.lowercase ? trimmed.toLowerCase() : trimmed;
+  }
+
+  private _resolveTileProviderErrorCode(
+    error: unknown,
+  ): TileProviderErrorDetail["code"] {
+    if (!(error instanceof Error)) {
+      return "tile_load_failed";
+    }
+
+    if (error.message.toLowerCase().includes("unknown tile provider")) {
+      return "unknown_provider";
+    }
+
+    return "tile_load_failed";
+  }
+
+  private _resolveHereTileLayerErrorCode(
+    message: string,
+  ): TileProviderErrorDetail["code"] {
+    const normalized = message.toLowerCase();
+    if (
+      normalized.includes("permission") ||
+      normalized.includes("forbidden") ||
+      normalized.includes("403") ||
+      normalized.includes("unauthorized") ||
+      normalized.includes("not authorized") ||
+      normalized.includes("not authorised") ||
+      normalized.includes("access denied")
+    ) {
+      return "permission_denied";
+    }
+
+    return "invalid_api_key";
+  }
+
+  private _describeTileLayerError(error: unknown, provider: string): string {
+    if (
+      error &&
+      typeof error === "object" &&
+      "error" in error &&
+      (error as { error?: unknown }).error instanceof Error
+    ) {
+      return (error as { error: Error }).error.message;
+    }
+
+    if (error instanceof Error && error.message) {
+      return error.message;
+    }
+
+    if (
+      error &&
+      typeof error === "object" &&
+      "message" in error &&
+      typeof (error as { message?: unknown }).message === "string"
+    ) {
+      const message = (error as { message: string }).message.trim();
+      if (message.length > 0) {
+        return message;
+      }
+    }
+
+    if (provider === "here") {
+      const styleHint =
+        this._tileStyle === "satellite.day"
+          ? " If satellite.day fails, try lite.day."
+          : "";
+      return `Failed to load HERE tiles; verify API key, project permissions, and allowed localhost origin/referrer.${styleHint}`;
+    }
+
+    return "Failed to load tile layer";
   }
 
   private _reflect(name: string, value: string | null): void {

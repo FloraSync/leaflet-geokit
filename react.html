@@ -273,6 +273,14 @@
           placeholder="Enter HERE API key"
           style="display: none"
         />
+        <button
+          type="button"
+          class="btn secondary"
+          id="apply-here-settings"
+          style="display: none"
+        >
+          Save
+        </button>
       </div>
       <div
         id="geocodeStatus"
@@ -368,7 +376,9 @@
       function setupMap(el) {
         mapElement = el;
         setupMapEventListeners(el);
-        applyTileProvider();
+        queueMicrotask(() => {
+          applyTileProvider();
+        });
       }
 
       function getMap() {
@@ -395,12 +405,14 @@
       const providerSelect = document.getElementById("tile-provider-select");
       const styleSelect = document.getElementById("tile-style-select");
       const apiKeyInput = document.getElementById("api-key-input");
+      const applyHereButton = document.getElementById("apply-here-settings");
 
       const STORAGE_KEYS = {
         TILE_PROVIDER: "leaflet-geokit:tile-provider",
         TILE_STYLE: "leaflet-geokit:tile-style",
         HERE_API_KEY: "leaflet-geokit:here-api-key",
       };
+      let hereStyleFallbackAttempted = false;
 
       function setGeocodeStatus(message, isError = false) {
         if (!geocodeStatus) return;
@@ -453,26 +465,48 @@
         if (styleLabel) styleLabel.style.display = display;
         if (apiKeyInput) apiKeyInput.style.display = display;
         if (apiKeyLabel) apiKeyLabel.style.display = display;
+        if (applyHereButton) applyHereButton.style.display = display;
       }
 
-      function applyTileProvider() {
+      function applyTileProvider(options = {}) {
         if (!providerSelect || !styleSelect || !apiKeyInput) {
           return;
         }
+        const { forceRefresh = false } = options;
 
         const provider = providerSelect.value;
         const style = styleSelect.value;
-        const apiKey = apiKeyInput.value;
+        const apiKey = apiKeyInput.value.trim();
         const map = getMap();
 
+        if (provider !== "here" || style !== "satellite.day") {
+          hereStyleFallbackAttempted = false;
+        }
+
         if (map) {
-          map.setAttribute("tile-provider", provider);
           if (provider === "here") {
             map.setAttribute("tile-style", style);
-            map.setAttribute("api-key", apiKey);
+            if (apiKey) {
+              map.setAttribute("api-key", apiKey);
+            } else {
+              map.removeAttribute("api-key");
+            }
+            map.setAttribute("tile-provider", provider);
           } else {
+            map.setAttribute("tile-provider", provider);
             map.removeAttribute("tile-style");
             map.removeAttribute("api-key");
+          }
+
+          if (forceRefresh && "tileProvider" in map) {
+            if (provider === "here") {
+              map.tileStyle = style;
+              map.apiKey = apiKey || undefined;
+            } else {
+              map.tileStyle = undefined;
+              map.apiKey = undefined;
+            }
+            map.tileProvider = provider;
           }
         }
 
@@ -484,11 +518,6 @@
         } else {
           localStorage.removeItem(STORAGE_KEYS.HERE_API_KEY);
         }
-      }
-
-      function getHereOption() {
-        if (!providerSelect) return null;
-        return providerSelect.querySelector('option[value="here"]');
       }
 
       function setupMapEventListeners(map) {
@@ -547,10 +576,29 @@
           tag("tile-provider-error");
           log({ event: "tile-provider-error", detail: event.detail });
 
-          if (code === "missing_api_key" || code === "invalid_api_key") {
-            const hereOption = getHereOption();
-            if (hereOption) {
-              hereOption.disabled = true;
+          if (
+            code === "permission_denied" &&
+            providerSelect?.value === "here" &&
+            styleSelect?.value === "satellite.day" &&
+            !hereStyleFallbackAttempted
+          ) {
+            hereStyleFallbackAttempted = true;
+            styleSelect.value = "lite.day";
+            showToast(
+              "satellite.day may require extra HERE permissions. Retrying with lite.day.",
+              "info",
+            );
+            applyTileProvider({ forceRefresh: true });
+            return;
+          }
+
+          if (
+            code === "missing_api_key" ||
+            code === "invalid_api_key" ||
+            code === "permission_denied"
+          ) {
+            if (providerSelect?.value === "here") {
+              toggleHEREControls(true);
             }
           }
         });
@@ -559,6 +607,7 @@
           const { provider, style } = event.detail || {};
           const styleName = style ? ` (${style})` : "";
           showToast(`Switched to ${provider}${styleName}`, "success");
+          hereStyleFallbackAttempted = false;
           tag("tile-provider-changed");
           log({ event: "tile-provider-changed", detail: event.detail });
         });
@@ -576,16 +625,32 @@
         styleSelect.value = savedStyle;
         apiKeyInput.value = savedApiKey;
         toggleHEREControls(savedProvider === "here");
+        applyTileProvider();
 
         providerSelect.addEventListener("change", applyTileProvider);
         styleSelect.addEventListener("change", applyTileProvider);
-        apiKeyInput.addEventListener("blur", applyTileProvider);
+        apiKeyInput.addEventListener("change", () =>
+          applyTileProvider({ forceRefresh: true }),
+        );
         apiKeyInput.addEventListener("input", () => {
-          const hereOption = getHereOption();
-          if (!hereOption) return;
-          if (apiKeyInput.value.trim()) {
-            hereOption.disabled = false;
+          const apiKey = apiKeyInput.value.trim();
+          if (apiKey) {
+            localStorage.setItem(STORAGE_KEYS.HERE_API_KEY, apiKey);
+          } else {
+            localStorage.removeItem(STORAGE_KEYS.HERE_API_KEY);
           }
+        });
+
+        apiKeyInput.addEventListener("keydown", (event) => {
+          if (event.key !== "Enter") return;
+          event.preventDefault();
+          applyTileProvider({ forceRefresh: true });
+        });
+      }
+
+      if (applyHereButton) {
+        applyHereButton.addEventListener("click", () => {
+          applyTileProvider({ forceRefresh: true });
         });
       }
 

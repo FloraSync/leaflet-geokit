@@ -94,6 +94,7 @@ export interface TileProviderErrorDetail {
   code:
     | "missing_api_key"
     | "invalid_api_key"
+    | "permission_denied"
     | "tile_load_failed"
     | "unknown_provider";
 

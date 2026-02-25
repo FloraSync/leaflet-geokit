@@ -141,6 +141,8 @@ Requires a HERE API key ([get one here](https://developer.here.com/)):
 ></leaflet-geokit>
 ```
 
+`api-key` is the canonical attribute. `here-api-key` is also accepted as a legacy alias.
+
 **Available HERE Styles**:
 
 - `lite.day` - Lightweight basemap (default)
