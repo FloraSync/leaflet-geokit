@@ -5,6 +5,7 @@ import type {
   DrawControlsConfig,
   MeasurementSystem,
   TileProviderErrorDetail,
+  GeoKitHooks,
 } from "@src/types/public";
 import { createLogger, type Logger, type LogLevel } from "@src/utils/logger";
 import { applyLeafletStylingIfNeeded } from "@src/lib/leaflet-assets";
@@ -59,6 +60,9 @@ export class LeafletDrawMapElement
   private _useExternalLeaflet = false;
   private _skipLeafletStyles = false;
   private _leafletInstance: typeof LeafletNS | undefined;
+
+  // User-supplied hooks (called alongside DOM CustomEvents)
+  private _hooks: GeoKitHooks = {};
 
   constructor() {
     super();
@@ -151,24 +155,53 @@ export class LeafletDrawMapElement
       callbacks: {
         onReady: (detail) => {
           this.dispatchEvent(new CustomEvent("leaflet-draw:ready", { detail }));
+          this._hooks.onReady?.(detail);
         },
         onCreated: (detail) => {
           this.dispatchEvent(
             new CustomEvent("leaflet-draw:created", { detail }),
           );
+          this._hooks.onCreated?.(detail);
         },
         onEdited: (detail) => {
           this.dispatchEvent(
             new CustomEvent("leaflet-draw:edited", { detail }),
           );
+          this._hooks.onEdited?.(detail);
         },
         onDeleted: (detail) => {
           this.dispatchEvent(
             new CustomEvent("leaflet-draw:deleted", { detail }),
           );
+          this._hooks.onDeleted?.(detail);
         },
         onError: (detail) => {
           this.dispatchEvent(new CustomEvent("leaflet-draw:error", { detail }));
+          this._hooks.onError?.(detail);
+        },
+        onDrawStart: (detail) => {
+          this.dispatchEvent(
+            new CustomEvent("leaflet-draw:drawstart", { detail }),
+          );
+          this._hooks.onDrawStart?.(detail);
+        },
+        onDrawStop: (detail) => {
+          this.dispatchEvent(
+            new CustomEvent("leaflet-draw:drawstop", { detail }),
+          );
+          this._hooks.onDrawStop?.(detail);
+        },
+        onEditStart: (detail) => {
+          this.dispatchEvent(
+            new CustomEvent("leaflet-draw:editstart", { detail }),
+          );
+          this._hooks.onEditStart?.(detail);
+        },
+        onEditStop: (detail) => {
+          this.dispatchEvent(
+            new CustomEvent("leaflet-draw:editstop", { detail }),
+          );
+          this._hooks.onEditStop?.(detail);
         },
       },
       leaflet: this._leafletInstance ?? undefined,
@@ -639,6 +672,28 @@ export class LeafletDrawMapElement
     this._leafletInstance = v;
   }
 
+  get hooks(): GeoKitHooks {
+    return this._hooks;
+  }
+  /**
+   * Assign programmatic hooks to be called alongside the corresponding DOM
+   * CustomEvents. Replaces the entire hooks object; call with `{}` to clear.
+   *
+   * Hooks can be set at any time – they are resolved at call-time so changes
+   * take effect immediately without reinitialising the controller.
+   *
+   * @example
+   * ```ts
+   * map.hooks = {
+   *   onCreated: ({ id, geoJSON }) => console.log('Created', id, geoJSON),
+   *   onEdited:  ({ ids })         => console.log('Edited', ids),
+   * };
+   * ```
+   */
+  set hooks(v: GeoKitHooks) {
+    this._hooks = v ?? {};
+  }
+
   get themeCss(): string {
     return this._themeCss;
   }
@@ -661,6 +716,7 @@ export class LeafletDrawMapElement
     if (!this._controller) return;
     const detail = { fc, mode: "load" as const };
     this.dispatchEvent(new CustomEvent("leaflet-draw:ingest", { detail }));
+    this._hooks.onIngest?.(detail);
     const finalFc =
       detail.fc && detail.fc.type === "FeatureCollection" ? detail.fc : fc;
     await this._controller.loadGeoJSON(finalFc, false);
@@ -677,6 +733,7 @@ export class LeafletDrawMapElement
     if (!this._controller) return [];
     const detail = { fc, mode: "add" as const };
     this.dispatchEvent(new CustomEvent("leaflet-draw:ingest", { detail }));
+    this._hooks.onIngest?.(detail);
     const finalFc =
       detail.fc && detail.fc.type === "FeatureCollection" ? detail.fc : fc;
     return this._controller.addFeatures(finalFc);
@@ -731,6 +788,7 @@ export class LeafletDrawMapElement
     const fc = await this._controller.getGeoJSON();
     const detail = { geoJSON: fc, featureCount: fc.features.length };
     this.dispatchEvent(new CustomEvent("leaflet-draw:export", { detail }));
+    this._hooks.onExport?.(detail);
     return fc;
   }
 
@@ -784,16 +842,19 @@ export class LeafletDrawMapElement
       const err = new Error(
         `Failed to fetch GeoJSON from ${url}: ${res.status} ${res.statusText}`,
       );
+      const errorDetail = { message: err.message, cause: err };
       this.dispatchEvent(
         new CustomEvent("leaflet-draw:error", {
-          detail: { message: err.message, cause: err },
+          detail: errorDetail,
         }),
       );
+      this._hooks.onError?.(errorDetail);
       throw err;
     }
     const data = await res.json();
     const detail = { fc: data, mode: "load" as const };
     this.dispatchEvent(new CustomEvent("leaflet-draw:ingest", { detail }));
+    this._hooks.onIngest?.(detail);
     const finalFc =
       detail.fc && detail.fc.type === "FeatureCollection" ? detail.fc : data;
     await this._controller.loadGeoJSON(finalFc, true);
@@ -807,15 +868,18 @@ export class LeafletDrawMapElement
       data = JSON.parse(text);
     } catch (cause) {
       const err = new Error("Failed to parse GeoJSON text");
+      const errorDetail = { message: err.message, cause };
       this.dispatchEvent(
         new CustomEvent("leaflet-draw:error", {
-          detail: { message: err.message, cause },
+          detail: errorDetail,
         }),
       );
+      this._hooks.onError?.(errorDetail);
       throw err;
     }
     const detail = { fc: data, mode: "load" as const };
     this.dispatchEvent(new CustomEvent("leaflet-draw:ingest", { detail }));
+    this._hooks.onIngest?.(detail);
     const finalFc =
       detail.fc && detail.fc.type === "FeatureCollection" ? detail.fc : data;
     await this._controller.loadGeoJSON(finalFc, true);

@@ -62,6 +62,36 @@ export interface ExportEventDetail {
 }
 
 /**
+ * Details for 'leaflet-draw:drawstart' event. Fired when the user activates a draw tool.
+ */
+export interface DrawStartEventDetail {
+  /** The type of layer being drawn (e.g., "polygon", "polyline", "circle", "marker"). */
+  layerType: string;
+}
+
+/**
+ * Details for 'leaflet-draw:drawstop' event. Fired when the active draw tool is deactivated.
+ */
+export interface DrawStopEventDetail {
+  /** The type of layer that was being drawn. */
+  layerType: string;
+}
+
+/**
+ * Details for 'leaflet-draw:editstart' event. Fired when edit mode is activated.
+ */
+export interface EditStartEventDetail {
+  // Leaflet.draw does not provide additional data for this event.
+}
+
+/**
+ * Details for 'leaflet-draw:editstop' event. Fired when edit mode is deactivated.
+ */
+export interface EditStopEventDetail {
+  // Leaflet.draw does not provide additional data for this event.
+}
+
+/**
  * Event name constants for convenience (non-enforced).
  */
 export const DrawEvent = {
