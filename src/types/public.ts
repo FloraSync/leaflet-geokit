@@ -1,6 +1,19 @@
 import type { Feature, FeatureCollection, Geometry } from "geojson";
 import type { LogLevel } from "@src/utils/logger";
 import type * as Leaflet from "leaflet";
+import type {
+  ReadyEventDetail,
+  CreatedEventDetail,
+  EditedEventDetail,
+  DeletedEventDetail,
+  ErrorEventDetail,
+  IngestEventDetail,
+  ExportEventDetail,
+  DrawStartEventDetail,
+  DrawStopEventDetail,
+  EditStartEventDetail,
+  EditStopEventDetail,
+} from "@src/types/events";
 
 /**
  * Basic map configuration derived from element attributes.
@@ -126,6 +139,44 @@ export interface TileProviderChangedDetail {
 }
 
 /**
+ * Hooks that can be passed directly to the web component to be called alongside
+ * the corresponding DOM CustomEvents. This provides an alternative to attaching
+ * DOM event listeners and allows framework consumers to wire callbacks via properties.
+ *
+ * The `onIngest` hook receives the same mutable `detail` object that the DOM
+ * `leaflet-draw:ingest` event carries, so it can transform `detail.fc` before
+ * the data reaches the map (just like a synchronous event listener would).
+ */
+export interface GeoKitHooks {
+  /** Called when the map is ready (mirrors `leaflet-draw:ready`). */
+  onReady?: (detail: ReadyEventDetail) => void;
+  /** Called when a feature is drawn (mirrors `leaflet-draw:created`). */
+  onCreated?: (detail: CreatedEventDetail) => void;
+  /** Called when features are edited (mirrors `leaflet-draw:edited`). */
+  onEdited?: (detail: EditedEventDetail) => void;
+  /** Called when features are deleted (mirrors `leaflet-draw:deleted`). */
+  onDeleted?: (detail: DeletedEventDetail) => void;
+  /** Called when an error occurs (mirrors `leaflet-draw:error`). */
+  onError?: (detail: ErrorEventDetail) => void;
+  /**
+   * Called before data is loaded or added to the map (mirrors `leaflet-draw:ingest`).
+   * The `detail` object is shared with the DOM event; mutating `detail.fc` here
+   * transforms the data before it is passed to the controller.
+   */
+  onIngest?: (detail: IngestEventDetail) => void;
+  /** Called when GeoJSON is exported (mirrors `leaflet-draw:export`). */
+  onExport?: (detail: ExportEventDetail) => void;
+  /** Called when a draw tool is activated (mirrors `leaflet-draw:drawstart`). */
+  onDrawStart?: (detail: DrawStartEventDetail) => void;
+  /** Called when a draw tool is deactivated (mirrors `leaflet-draw:drawstop`). */
+  onDrawStop?: (detail: DrawStopEventDetail) => void;
+  /** Called when edit mode is activated (mirrors `leaflet-draw:editstart`). */
+  onEditStart?: (detail: EditStartEventDetail) => void;
+  /** Called when edit mode is deactivated (mirrors `leaflet-draw:editstop`). */
+  onEditStop?: (detail: EditStopEventDetail) => void;
+}
+
+/**
  * Public API that the custom element exposes (methods/properties).
  * This is provided for typing in TS consumers who may cast the element.
  */
@@ -158,6 +209,13 @@ export interface LeafletDrawMapElementAPI {
 
   /** API key for authenticated providers */
   apiKey?: string;
+
+  /**
+   * Programmatic hooks called alongside the corresponding DOM CustomEvents.
+   * Assign an object whose properties are callback functions to observe or
+   * intercept internal geokit events without attaching DOM event listeners.
+   */
+  hooks: GeoKitHooks;
 
   // Methods
   getGeoJSON(): Promise<FeatureCollection>;

@@ -42,6 +42,10 @@ export interface MapControllerCallbacks {
   onEdited?: (detail: { ids: string[]; geoJSON: FeatureCollection }) => void;
   onDeleted?: (detail: { ids: string[]; geoJSON: FeatureCollection }) => void;
   onError?: (detail: { message: string; cause?: unknown }) => void;
+  onDrawStart?: (detail: { layerType: string }) => void;
+  onDrawStop?: (detail: { layerType: string }) => void;
+  onEditStart?: (detail: Record<string, never>) => void;
+  onEditStop?: (detail: Record<string, never>) => void;
 }
 
 export interface MapControllerOptions {
@@ -1269,6 +1273,42 @@ export class MapController {
         this.hideMoveConfirmationUI();
       } catch (err) {
         this._error("draw:moveconfirmed handler failed", err);
+      }
+    });
+
+    // DRAWSTART: a draw tool has been activated
+    this.map.on((this.L as any).Draw.Event.DRAWSTART, (e: any) => {
+      try {
+        this.options.callbacks?.onDrawStart?.({ layerType: e.layerType ?? "" });
+      } catch (err) {
+        this._error("onDrawStart handler failed", err);
+      }
+    });
+
+    // DRAWSTOP: the active draw tool has been deactivated
+    this.map.on((this.L as any).Draw.Event.DRAWSTOP, (e: any) => {
+      try {
+        this.options.callbacks?.onDrawStop?.({ layerType: e.layerType ?? "" });
+      } catch (err) {
+        this._error("onDrawStop handler failed", err);
+      }
+    });
+
+    // EDITSTART: edit mode has been activated
+    this.map.on((this.L as any).Draw.Event.EDITSTART, (_e: any) => {
+      try {
+        this.options.callbacks?.onEditStart?.({} as Record<string, never>);
+      } catch (err) {
+        this._error("onEditStart handler failed", err);
+      }
+    });
+
+    // EDITSTOP: edit mode has been deactivated
+    this.map.on((this.L as any).Draw.Event.EDITSTOP, (_e: any) => {
+      try {
+        this.options.callbacks?.onEditStop?.({} as Record<string, never>);
+      } catch (err) {
+        this._error("onEditStop handler failed", err);
       }
     });
   }
