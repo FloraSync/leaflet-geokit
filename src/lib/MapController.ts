@@ -7,6 +7,10 @@ import type {
   MapConfig,
   MeasurementSystem,
 } from "@src/types/public";
+import type {
+  EditStartEventDetail,
+  EditStopEventDetail,
+} from "@src/types/events";
 import { createLogger, type Logger } from "@src/utils/logger";
 import { FeatureStore } from "@src/lib/FeatureStore";
 import { registerLayerCakeTool } from "@src/lib/draw/toolbar-patch";
@@ -44,8 +48,8 @@ export interface MapControllerCallbacks {
   onError?: (detail: { message: string; cause?: unknown }) => void;
   onDrawStart?: (detail: { layerType: string }) => void;
   onDrawStop?: (detail: { layerType: string }) => void;
-  onEditStart?: (detail: Record<string, never>) => void;
-  onEditStop?: (detail: Record<string, never>) => void;
+  onEditStart?: (detail: EditStartEventDetail) => void;
+  onEditStop?: (detail: EditStopEventDetail) => void;
 }
 
 export interface MapControllerOptions {
@@ -1297,7 +1301,7 @@ export class MapController {
     // EDITSTART: edit mode has been activated
     this.map.on((this.L as any).Draw.Event.EDITSTART, (_e: any) => {
       try {
-        this.options.callbacks?.onEditStart?.({} as Record<string, never>);
+        this.options.callbacks?.onEditStart?.({});
       } catch (err) {
         this._error("onEditStart handler failed", err);
       }
@@ -1306,7 +1310,7 @@ export class MapController {
     // EDITSTOP: edit mode has been deactivated
     this.map.on((this.L as any).Draw.Event.EDITSTOP, (_e: any) => {
       try {
-        this.options.callbacks?.onEditStop?.({} as Record<string, never>);
+        this.options.callbacks?.onEditStop?.({});
       } catch (err) {
         this._error("onEditStop handler failed", err);
       }

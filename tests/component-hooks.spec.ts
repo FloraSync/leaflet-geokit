@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import "@src/index";
 import type { GeoKitHooks } from "@src/types/public";
+import type { EditStartEventDetail, EditStopEventDetail } from "@src/types/events";
 
 const TAG = "leaflet-geokit";
 
@@ -197,7 +198,7 @@ describe("LeafletDrawMapElement — GeoKitHooks", () => {
     el.hooks = { onEditStart };
 
     const callbacks = captureCallbacks(el);
-    callbacks.onEditStart({} as Record<string, never>);
+    callbacks.onEditStart({} as EditStartEventDetail);
     expect(onEditStart).toHaveBeenCalledOnce();
   });
 
@@ -207,7 +208,7 @@ describe("LeafletDrawMapElement — GeoKitHooks", () => {
     el.hooks = { onEditStop };
 
     const callbacks = captureCallbacks(el);
-    callbacks.onEditStop({} as Record<string, never>);
+    callbacks.onEditStop({} as EditStopEventDetail);
     expect(onEditStop).toHaveBeenCalledOnce();
   });
 
