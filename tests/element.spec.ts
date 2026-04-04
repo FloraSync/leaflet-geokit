@@ -90,6 +90,13 @@ describe("LeafletDrawMapElement (scaffold)", () => {
     const fakeLeaflet = { marker: () => null } as any;
     el.leafletInstance = fakeLeaflet;
     expect(el.leafletInstance).toBe(fakeLeaflet);
+
+    const hooks = { "tool:move:pending": () => {} } as any;
+    const emitter = { emit: () => {} } as any;
+    el.toolHooks = hooks;
+    el.toolEventEmitter = emitter;
+    expect(el.toolHooks).toBe(hooks);
+    expect(el.toolEventEmitter).toBe(emitter);
   });
 
   it("exposes themeCss getter and normalizes non-string values", () => {

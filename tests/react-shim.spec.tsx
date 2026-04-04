@@ -182,4 +182,20 @@ describe("React shim", () => {
 
     expect(onChangeGeoJSON).toHaveBeenCalledWith(geoJSON);
   });
+
+  it("forwards tool hooks and emitter props to element", async () => {
+    const toolHooks = { "tool:move:pending": vi.fn() } as any;
+    const toolEventEmitter = { emit: vi.fn() } as any;
+    const { container } = render(
+      React.createElement(ReactLeafletGeoKit, {
+        toolHooks,
+        toolEventEmitter,
+      }),
+    );
+
+    await flushPromises();
+    const element = container.querySelector("leaflet-geokit") as any;
+    expect(element.toolHooks).toBe(toolHooks);
+    expect(element.toolEventEmitter).toBe(toolEventEmitter);
+  });
 });

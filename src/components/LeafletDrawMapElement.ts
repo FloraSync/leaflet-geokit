@@ -3,6 +3,8 @@ import type {
   LeafletDrawMapElementAPI,
   MapConfig,
   DrawControlsConfig,
+  IntegratedToolEventEmitter,
+  IntegratedToolHooks,
   MeasurementSystem,
   TileProviderErrorDetail,
 } from "@src/types/public";
@@ -59,6 +61,8 @@ export class LeafletDrawMapElement
   private _useExternalLeaflet = false;
   private _skipLeafletStyles = false;
   private _leafletInstance: typeof LeafletNS | undefined;
+  private _toolHooks: IntegratedToolHooks | undefined;
+  private _toolEventEmitter: IntegratedToolEventEmitter | undefined;
 
   constructor() {
     super();
@@ -173,6 +177,8 @@ export class LeafletDrawMapElement
       },
       leaflet: this._leafletInstance ?? undefined,
       useExternalLeaflet: this._useExternalLeaflet,
+      toolHooks: this._toolHooks,
+      toolEventEmitter: this._toolEventEmitter,
     });
 
     await this._controller.init();
@@ -637,6 +643,20 @@ export class LeafletDrawMapElement
   }
   set leafletInstance(v: typeof LeafletNS | undefined) {
     this._leafletInstance = v;
+  }
+
+  get toolHooks(): IntegratedToolHooks | undefined {
+    return this._toolHooks;
+  }
+  set toolHooks(v: IntegratedToolHooks | undefined) {
+    this._toolHooks = v;
+  }
+
+  get toolEventEmitter(): IntegratedToolEventEmitter | undefined {
+    return this._toolEventEmitter;
+  }
+  set toolEventEmitter(v: IntegratedToolEventEmitter | undefined) {
+    this._toolEventEmitter = v;
   }
 
   get themeCss(): string {

@@ -158,4 +158,20 @@ describe("Preact shim", () => {
       expect(onReady).toHaveBeenCalledWith(element);
     });
   });
+
+  it("forwards tool hooks and emitter props to element", async () => {
+    const toolHooks = { "tool:move:pending": vi.fn() } as any;
+    const toolEventEmitter = { emit: vi.fn() } as any;
+    const { container } = render(
+      h(PreactLeafletGeoKit, {
+        toolHooks,
+        toolEventEmitter,
+      }),
+    );
+
+    await flushPromises();
+    const element = container.querySelector("leaflet-geokit") as any;
+    expect(element.toolHooks).toBe(toolHooks);
+    expect(element.toolEventEmitter).toBe(toolEventEmitter);
+  });
 });

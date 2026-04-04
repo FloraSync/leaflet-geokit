@@ -200,6 +200,38 @@ describe("MapController", () => {
     }
   });
 
+  it("emits integrated tool events to hooks and emitter", () => {
+    const hook = vi.fn();
+    const emit = vi.fn();
+    const controller = new MapController({
+      ...opts,
+      toolHooks: { "tool:move:pending": hook },
+      toolEventEmitter: { emit },
+    });
+
+    (controller as any).emitToolEvent("tool:move:pending", { fid: "abc" });
+
+    expect(hook).toHaveBeenCalledWith({ fid: "abc" });
+    expect(emit).toHaveBeenCalledWith("tool:move:pending", { fid: "abc" });
+    controller.destroy();
+  });
+
+  it("emits integrated tool events through dispatchEvent emitter", () => {
+    const dispatchEvent = vi.fn();
+    const controller = new MapController({
+      ...opts,
+      toolEventEmitter: { dispatchEvent },
+    });
+
+    (controller as any).emitToolEvent("tool:move:confirmed", { fid: "xyz" });
+
+    expect(dispatchEvent).toHaveBeenCalledTimes(1);
+    const evt = dispatchEvent.mock.calls[0][0] as CustomEvent;
+    expect(evt.type).toBe("tool:move:confirmed");
+    expect(evt.detail).toEqual({ fid: "xyz" });
+    controller.destroy();
+  });
+
   describe("mergeVisiblePolygons", () => {
     it("returns null when no polygons exist", async () => {
       const controller = new MapController(opts);

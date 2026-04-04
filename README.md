@@ -364,6 +364,12 @@ map.tileAttribution = "..."; // string | undefined
 map.readOnly = true; // boolean
 map.preferCanvas = false; // boolean
 map.logLevel = "info"; // LogLevel
+map.toolHooks = {
+  "tool:move:pending": (detail) => console.log("pending move", detail),
+}; // optional integrated tool hooks
+map.toolEventEmitter = {
+  emit: (eventName, detail) => console.log(eventName, detail),
+}; // optional integrated tool event emitter
 
 // Theming
 map.themeCss = `

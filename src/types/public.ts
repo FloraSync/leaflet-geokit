@@ -34,6 +34,22 @@ export interface MapConfig {
 
 export type MeasurementSystem = "metric" | "imperial";
 
+export type IntegratedToolEventName =
+  | "tool:layer-cake:session-started"
+  | "tool:layer-cake:saved"
+  | "tool:move:pending"
+  | "tool:move:confirmed"
+  | "tool:move:cancelled";
+
+export type IntegratedToolHooks = Partial<
+  Record<IntegratedToolEventName, (detail: unknown) => void>
+>;
+
+export interface IntegratedToolEventEmitter {
+  emit?: (eventName: IntegratedToolEventName, detail: unknown) => void;
+  dispatchEvent?: (event: Event) => boolean;
+}
+
 /**
  * Draw controls toggles (presence = true on the element).
  */
@@ -149,6 +165,10 @@ export interface LeafletDrawMapElementAPI {
 
   /** Optional injection of a pre-existing Leaflet namespace to use instead of bundled import. */
   leafletInstance?: typeof Leaflet;
+  /** Optional per-tool hooks keyed by integrated tool event name. */
+  toolHooks?: IntegratedToolHooks;
+  /** Optional emitter for integrated tool events. */
+  toolEventEmitter?: IntegratedToolEventEmitter;
 
   /** Tile provider identifier (e.g., "osm", "here") */
   tileProvider?: "osm" | "here" | string;
