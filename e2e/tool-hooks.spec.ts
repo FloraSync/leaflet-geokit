@@ -24,13 +24,10 @@ import { test, expect, type Page } from "@playwright/test";
 async function waitForReady(page: Page): Promise<void> {
   const tag = page.locator("#evtTag");
   await expect
-    .poll(
-      async () => (await tag.textContent())?.trim().toLowerCase() ?? "",
-      {
-        timeout: 30_000,
-        message: "Expected #evtTag to show 'ready'",
-      },
-    )
+    .poll(async () => (await tag.textContent())?.trim().toLowerCase() ?? "", {
+      timeout: 30_000,
+      message: "Expected #evtTag to show 'ready'",
+    })
     .toMatch(/^ready$/);
 }
 
@@ -39,18 +36,6 @@ async function getMapBounds(page: Page) {
   const box = await container.boundingBox();
   expect(box, "Leaflet container must be visible").not.toBeNull();
   return box!;
-}
-
-async function clickMapAt(
-  page: Page,
-  xRatio: number,
-  yRatio: number,
-): Promise<void> {
-  const box = await getMapBounds(page);
-  await page.mouse.click(
-    box.x + box.width * xRatio,
-    box.y + box.height * yRatio,
-  );
 }
 
 async function dragMapBetween(
@@ -149,8 +134,8 @@ test.describe("Tool hooks harness", () => {
     // ── Activate the Layer Cake draw tool ──────────────────────────────────
     await page.locator("a.leaflet-draw-draw-cake").click();
 
-    // Click on the map to drop the initial circle
-    await clickMapAt(page, 0.35, 0.4);
+    // Drag to create the base circle (DrawCake extends Draw.Circle — requires a drag)
+    await dragMapBetween(page, 0.35, 0.4, 0.45, 0.5);
 
     // ── session-started hook must have fired ───────────────────────────────
     await expect
@@ -312,7 +297,8 @@ test.describe("Tool hooks harness", () => {
 
     // ── Layer Cake: session-started + saved ───────────────────────────────
     await page.locator("a.leaflet-draw-draw-cake").click();
-    await clickMapAt(page, 0.28, 0.38);
+    // Drag to create the base circle (DrawCake extends Draw.Circle — requires a drag)
+    await dragMapBetween(page, 0.28, 0.38, 0.38, 0.48);
     await expect
       .poll(() => readHookCount(page, "hook-count-cake-started"), {
         timeout: 10_000,
@@ -418,17 +404,18 @@ test.describe("Tool hooks harness", () => {
       "tool:move:cancelled",
     ];
     for (const eventName of expectedEvents) {
-      expect(emittedNames, `Expected emitter to contain ${eventName}`).toContain(
-        eventName,
-      );
+      expect(
+        emittedNames,
+        `Expected emitter to contain ${eventName}`,
+      ).toContain(eventName);
     }
 
     // ── Also verify window.__toolHookLog and window.__emitterLog match ─────
-    const hookLog: string[] = await page.evaluate(
-      () => ((window as any).__toolHookLog ?? []).map((e: any) => e.event),
+    const hookLog: string[] = await page.evaluate(() =>
+      ((window as any).__toolHookLog ?? []).map((e: any) => e.event),
     );
-    const emitterLog: string[] = await page.evaluate(
-      () => ((window as any).__emitterLog ?? []).map((e: any) => e.event),
+    const emitterLog: string[] = await page.evaluate(() =>
+      ((window as any).__emitterLog ?? []).map((e: any) => e.event),
     );
 
     for (const eventName of expectedEvents) {
