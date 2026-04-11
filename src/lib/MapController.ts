@@ -6,6 +6,9 @@ import type {
   DrawControlsConfig,
   MapConfig,
   MeasurementSystem,
+  IntegratedToolEventEmitter,
+  IntegratedToolEventName,
+  IntegratedToolHooks,
 } from "@src/types/public";
 import { createLogger, type Logger } from "@src/utils/logger";
 import { FeatureStore } from "@src/lib/FeatureStore";
@@ -55,7 +58,29 @@ export interface MapControllerOptions {
   leaflet?: typeof BundledL;
   /** Prefer external Leaflet if available (falls back to bundled if missing/invalid). */
   useExternalLeaflet?: boolean;
+  /** Optional hooks for integrated tool lifecycle/events. */
+  toolHooks?: IntegratedToolHooks;
+  /** Optional event emitter for integrated tool lifecycle/events. */
+  toolEventEmitter?: IntegratedToolEventEmitter;
 }
+
+type CreatedLayerType =
+  | "polygon"
+  | "polyline"
+  | "rectangle"
+  | "circle"
+  | "marker";
+
+const CREATED_LAYER_EVENT_BY_TYPE: Record<
+  CreatedLayerType,
+  IntegratedToolEventName
+> = {
+  polygon: "tool:polygon:created",
+  polyline: "tool:polyline:created",
+  rectangle: "tool:rectangle:created",
+  circle: "tool:circle:created",
+  marker: "tool:marker:created",
+};
 
 interface TileLayerCallbacks {
   onTileError?: (error: unknown) => void;
@@ -104,6 +129,37 @@ export class MapController {
   private moveConfirmationUI: HTMLDivElement | null = null;
   private activeMoveHandler: DrawMove | null = null;
 
+  private emitToolEvent(
+    eventName: IntegratedToolEventName,
+    detail: unknown,
+  ): void {
+    try {
+      this.options.toolHooks?.[eventName]?.(detail);
+    } catch (err) {
+      this._error(`tool hook failed: ${eventName}`, err);
+    }
+
+    const emitter = this.options.toolEventEmitter;
+    if (!emitter) return;
+
+    try {
+      if (typeof emitter.emit === "function") {
+        emitter.emit(eventName, detail);
+        return;
+      }
+
+      if (typeof emitter.dispatchEvent === "function") {
+        emitter.dispatchEvent(
+          new CustomEvent(eventName, {
+            detail,
+          }),
+        );
+      }
+    } catch (err) {
+      this._error(`tool emitter failed: ${eventName}`, err);
+    }
+  }
+
   constructor(opts: MapControllerOptions) {
     this.options = opts;
     this.container = opts.container;
@@ -122,6 +178,14 @@ export class MapController {
     ensureDrawCakeRegistered(this.L);
     ensureDrawMoveRegistered(this.L);
     registerLayerCakeTool(this.L);
+  }
+
+  setToolObservers(options: {
+    toolHooks?: IntegratedToolHooks;
+    toolEventEmitter?: IntegratedToolEventEmitter;
+  }): void {
+    this.options.toolHooks = options.toolHooks;
+    this.options.toolEventEmitter = options.toolEventEmitter;
   }
 
   private resolveLeaflet(opts: MapControllerOptions): typeof BundledL {
@@ -532,12 +596,16 @@ export class MapController {
 
   setRulerUnits(system: MeasurementSystem): void {
     if (this.measurementSystem === system) return;
+    const previous = this.measurementSystem;
     this.measurementSystem = system;
     this.logger.debug("ruler:units", { system });
+    this.emitToolEvent("tool:ruler:units-changed", {
+      previous,
+      current: system,
+    });
     this.syncMeasurementModalState();
     this.rebuildRulerControl();
   }
-
   // ---------------- Internals ----------------
 
   private buildDrawOptions(
@@ -1165,9 +1233,17 @@ export class MapController {
               });
 
               this.activeCakeSession = null;
+              this.emitToolEvent("tool:layer-cake:saved", {
+                featureCollection,
+              });
             },
             this.measurementSystem,
           );
+
+          this.emitToolEvent("tool:layer-cake:session-started", {
+            center: (layer as BundledL.Circle).getLatLng(),
+            radius: (layer as BundledL.Circle).getRadius(),
+          });
 
           return;
         }
@@ -1183,6 +1259,14 @@ export class MapController {
         this.installVertexContextMenu(layer);
 
         this.options.callbacks?.onCreated?.({ id, layerType, geoJSON: feat });
+        const createdToolEvent =
+          CREATED_LAYER_EVENT_BY_TYPE[layerType as CreatedLayerType];
+        if (createdToolEvent) {
+          this.emitToolEvent(createdToolEvent, {
+            id,
+            geoJSON: feat,
+          });
+        }
       } catch (err) {
         this._error("onCreated handler failed", err);
       }
@@ -1210,9 +1294,14 @@ export class MapController {
           }
         });
 
+        const geoJSON = this.store.toFeatureCollection();
         this.options.callbacks?.onEdited?.({
           ids,
-          geoJSON: this.store.toFeatureCollection(),
+          geoJSON,
+        });
+        this.emitToolEvent("tool:edit:applied", {
+          ids,
+          geoJSON,
         });
       } catch (err) {
         this._error("onEdited handler failed", err);
@@ -1232,9 +1321,14 @@ export class MapController {
           }
         });
 
+        const geoJSON = this.store.toFeatureCollection();
         this.options.callbacks?.onDeleted?.({
           ids,
-          geoJSON: this.store.toFeatureCollection(),
+          geoJSON,
+        });
+        this.emitToolEvent("tool:delete:applied", {
+          ids,
+          geoJSON,
         });
       } catch (err) {
         this._error("onDeleted handler failed", err);
@@ -1244,7 +1338,12 @@ export class MapController {
     // MOVEEND: user has finished dragging a feature, show Save/Cancel UI
     this.map.on("draw:moveend", (e: any) => {
       try {
-        this.showMoveConfirmationUI(e.layer, e.originalGeoJSON, e.newGeoJSON);
+        this.emitToolEvent("tool:move:pending", {
+          layerId: (e?.layer as any)?._fid,
+          originalGeoJSON: e?.originalGeoJSON,
+          newGeoJSON: e?.newGeoJSON,
+        });
+        this.showMoveConfirmationUI(e.layer);
       } catch (err) {
         this._error("draw:moveend handler failed", err);
       }
@@ -1253,6 +1352,11 @@ export class MapController {
     // MOVECONFIRMED: user clicked Save, update the store and emit event
     this.map.on("draw:moveconfirmed", (e: any) => {
       try {
+        this.emitToolEvent("tool:move:confirmed", {
+          layerId: (e?.layer as any)?._fid,
+          originalGeoJSON: e?.originalGeoJSON,
+          newGeoJSON: e?.newGeoJSON,
+        });
         const layer = e.layer;
         const id = (layer as any)._fid as string | undefined;
         if (id) {
@@ -1497,11 +1601,7 @@ export class MapController {
 
   // -------- Move tool Save/Cancel UI --------
 
-  private showMoveConfirmationUI(
-    layer: any,
-    originalGeoJSON: GeoJSON.Feature,
-    newGeoJSON: GeoJSON.Feature,
-  ): void {
+  private showMoveConfirmationUI(layer: any): void {
     try {
       // Clean up any existing UI
       this.hideMoveConfirmationUI();
@@ -1576,6 +1676,9 @@ export class MapController {
       cancelBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         e.preventDefault();
+        this.emitToolEvent("tool:move:cancelled", {
+          layerId: (layer as any)?._fid,
+        });
         if (moveHandler?.cancelMove) {
           moveHandler.cancelMove();
         }

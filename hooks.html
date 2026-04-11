@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>@florasync/leaflet-geokit — Tool Hooks Harness</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        font-family:
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          Helvetica,
+          Arial,
+          Noto Sans,
+          "Apple Color Emoji",
+          "Segoe UI Emoji";
+        display: grid;
+        grid-template-rows: auto auto 1fr;
+      }
+      header {
+        padding: 10px 12px;
+        border-bottom: 1px solid #ddd;
+        background: #fafafa;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .header-title {
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+      }
+      .wrap {
+        padding: 12px;
+        height: 100%;
+        display: grid;
+        grid-template-columns: 1fr 400px;
+        gap: 12px;
+        overflow: hidden;
+      }
+      #map-container {
+        height: 100%;
+        width: 100%;
+      }
+      #map-container leaflet-geokit {
+        display: block;
+        height: 100%;
+        width: 100%;
+        border-radius: 8px;
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08) inset;
+      }
+      .panel {
+        border: 1px solid #e5e5e5;
+        border-radius: 8px;
+        padding: 10px;
+        background: #fff;
+        overflow: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .panel pre {
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 12px;
+        line-height: 1.4;
+        background: #f8f8f8;
+        border: 1px solid #e0e0e0;
+        border-radius: 4px;
+        padding: 8px;
+        margin: 0;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      /* Harness Navigation */
+      .harness-nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 8px 12px;
+        background: #e8e8e8;
+        border-bottom: 1px solid #ccc;
+        font-size: 13px;
+        align-items: center;
+      }
+      .harness-nav a {
+        color: #0066cc;
+        text-decoration: none;
+        padding: 2px 8px;
+        border-radius: 4px;
+      }
+      .harness-nav a:hover {
+        background: rgba(0, 102, 204, 0.1);
+      }
+      .harness-nav a.active {
+        font-weight: 600;
+        color: #333;
+        background: #fff;
+        pointer-events: none;
+        border: 1px solid #ccc;
+      }
+      .harness-nav .nav-divider {
+        width: 1px;
+        height: 16px;
+        background: #ccc;
+        margin: 0 4px;
+      }
+      /* Custom generic toolbar styles */
+      #custom-toolbar {
+        border: 1px solid #d0d0d0;
+        border-radius: 6px;
+        overflow: hidden;
+      }
+      #custom-toolbar h3 {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 600;
+        padding: 6px 10px;
+        background: #f0f0f0;
+        border-bottom: 1px solid #d0d0d0;
+        letter-spacing: 0.01em;
+      }
+      .hook-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
+      .hook-table th {
+        text-align: left;
+        padding: 5px 8px;
+        background: #fafafa;
+        border-bottom: 1px solid #e0e0e0;
+        font-weight: 600;
+        color: #555;
+      }
+      .hook-table td {
+        padding: 5px 8px;
+        border-bottom: 1px solid #f0f0f0;
+        vertical-align: top;
+      }
+      .hook-table tr:last-child td {
+        border-bottom: none;
+      }
+      .hook-count {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 24px;
+        height: 20px;
+        padding: 0 6px;
+        border-radius: 10px;
+        background: #e0e0e0;
+        font-size: 11px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        transition: background 0.2s;
+      }
+      .hook-count.active {
+        background: #24a148;
+        color: #fff;
+      }
+      .event-label {
+        font-family: monospace;
+        font-size: 11px;
+        color: #333;
+      }
+      #emitter-log-section {
+        border-top: 1px solid #e0e0e0;
+        padding: 6px 10px;
+      }
+      #emitter-log-section strong {
+        font-size: 12px;
+      }
+      #emitter-log {
+        list-style: none;
+        margin: 4px 0 0;
+        padding: 0;
+        max-height: 120px;
+        overflow-y: auto;
+        font-size: 11px;
+        font-family: monospace;
+      }
+      #emitter-log li {
+        padding: 2px 0;
+        border-bottom: 1px solid #f0f0f0;
+        color: #333;
+        word-break: break-all;
+      }
+      #emitter-log li:last-child {
+        border-bottom: none;
+      }
+      #emitter-log li[data-event="tool:layer-cake:session-started"] {
+        color: #0f62fe;
+      }
+      #emitter-log li[data-event="tool:layer-cake:saved"] {
+        color: #24a148;
+      }
+      #emitter-log li[data-event="tool:move:pending"] {
+        color: #9e5000;
+      }
+      #emitter-log li[data-event="tool:move:confirmed"] {
+        color: #24a148;
+      }
+      #emitter-log li[data-event="tool:move:cancelled"] {
+        color: #da1e28;
+      }
+      #hook-last-detail {
+        font-size: 11px;
+        max-height: 80px;
+        overflow-y: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <nav class="harness-nav">
+      <a href="/">Bundled WC</a>
+      <a href="/external.html">External WC</a>
+      <span class="nav-divider"></span>
+      <a href="/preact.html">Preact</a>
+      <a href="/react.html">React</a>
+      <span class="nav-divider"></span>
+      <a href="/preact-bundled.html">Preact (Bundled)</a>
+      <a href="/react-bundled.html">React (Bundled)</a>
+      <span class="nav-divider"></span>
+      <a href="/hooks.html" class="active">Tool Hooks</a>
+      <a href="/tool-events.html">Tool Events</a>
+    </nav>
+    <header>
+      <div class="header-title">
+        <strong>@florasync/leaflet-geokit</strong>
+        <span style="opacity: 0.6">tool hooks harness</span>
+      </div>
+      <div class="row" style="margin-left: auto">
+        <code
+          style="
+            font-size: 12px;
+            background: #f2f2f2;
+            padding: 2px 8px;
+            border-radius: 4px;
+          "
+          >Events</code
+        >
+        <span id="evtTag" style="opacity: 0.7; font-size: 13px">…</span>
+      </div>
+    </header>
+
+    <div class="wrap">
+      <!-- Map is created programmatically so toolHooks + toolEventEmitter
+           can be attached before connectedCallback runs -->
+      <div id="map-container"></div>
+
+      <div class="panel">
+        <!--
+          Generic toolbar driven entirely by toolHooks + toolEventEmitter.
+          It has no direct knowledge of Leaflet internals.
+        -->
+        <section id="custom-toolbar" aria-label="Tool hook status">
+          <h3>Integrated Tool Hooks</h3>
+          <table class="hook-table">
+            <thead>
+              <tr>
+                <th>Tool Event</th>
+                <th>Count</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr data-hook-row="tool:layer-cake:session-started">
+                <td class="event-label">cake:session‑started</td>
+                <td>
+                  <span
+                    id="hook-count-cake-started"
+                    class="hook-count"
+                    data-count="0"
+                    >0</span
+                  >
+                </td>
+              </tr>
+              <tr data-hook-row="tool:layer-cake:saved">
+                <td class="event-label">cake:saved</td>
+                <td>
+                  <span
+                    id="hook-count-cake-saved"
+                    class="hook-count"
+                    data-count="0"
+                    >0</span
+                  >
+                </td>
+              </tr>
+              <tr data-hook-row="tool:move:pending">
+                <td class="event-label">move:pending</td>
+                <td>
+                  <span
+                    id="hook-count-move-pending"
+                    class="hook-count"
+                    data-count="0"
+                    >0</span
+                  >
+                </td>
+              </tr>
+              <tr data-hook-row="tool:move:confirmed">
+                <td class="event-label">move:confirmed</td>
+                <td>
+                  <span
+                    id="hook-count-move-confirmed"
+                    class="hook-count"
+                    data-count="0"
+                    >0</span
+                  >
+                </td>
+              </tr>
+              <tr data-hook-row="tool:move:cancelled">
+                <td class="event-label">move:cancelled</td>
+                <td>
+                  <span
+                    id="hook-count-move-cancelled"
+                    class="hook-count"
+                    data-count="0"
+                    >0</span
+                  >
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div style="padding: 6px 10px; border-top: 1px solid #e0e0e0">
+            <div
+              style="
+                font-size: 11px;
+                font-weight: 600;
+                margin-bottom: 4px;
+                color: #555;
+              "
+            >
+              Last hook detail
+            </div>
+            <pre id="hook-last-detail">—</pre>
+          </div>
+          <div id="emitter-log-section">
+            <strong>Emitter log</strong>
+            <ul id="emitter-log" aria-label="Emitter event log"></ul>
+          </div>
+        </section>
+
+        <div>
+          <div class="row" style="margin-bottom: 6px">
+            <code
+              style="
+                font-size: 12px;
+                background: #f2f2f2;
+                padding: 2px 6px;
+                border-radius: 4px;
+              "
+              >Map events</code
+            >
+          </div>
+          <pre id="out">{}</pre>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      import "/src/index.ts";
+
+      // ── Shared counters used by both hooks and emitter ──────────────────
+      const hookCounts = {
+        "tool:layer-cake:session-started": 0,
+        "tool:layer-cake:saved": 0,
+        "tool:move:pending": 0,
+        "tool:move:confirmed": 0,
+        "tool:move:cancelled": 0,
+      };
+
+      const hookCountElemIds = {
+        "tool:layer-cake:session-started": "hook-count-cake-started",
+        "tool:layer-cake:saved": "hook-count-cake-saved",
+        "tool:move:pending": "hook-count-move-pending",
+        "tool:move:confirmed": "hook-count-move-confirmed",
+        "tool:move:cancelled": "hook-count-move-cancelled",
+      };
+
+      /**
+       * Called by each toolHook.  Updates the generic toolbar counter badge
+       * and writes the latest detail to the "Last hook detail" block.
+       * Also pushes to window.__toolHookLog so e2e tests can read it.
+       */
+      function onHookFired(eventName, detail) {
+        hookCounts[eventName] += 1;
+
+        const countEl = document.getElementById(hookCountElemIds[eventName]);
+        if (countEl) {
+          const n = hookCounts[eventName];
+          countEl.textContent = String(n);
+          countEl.setAttribute("data-count", String(n));
+          countEl.classList.add("active");
+        }
+
+        const detailEl = document.getElementById("hook-last-detail");
+        if (detailEl) {
+          detailEl.textContent = JSON.stringify(
+            { event: eventName, detail },
+            null,
+            2,
+          );
+        }
+
+        // Expose for e2e assertions
+        window.__toolHookLog = window.__toolHookLog ?? [];
+        window.__toolHookLog.push({ event: eventName, detail });
+      }
+
+      // ── Create the map element programmatically ──────────────────────────
+      // This is the idiomatic pattern: create → attach hooks → connect to DOM
+      // so that connectedCallback sees the hooks when it creates the controller.
+      const mapEl = document.createElement("leaflet-geokit");
+      mapEl.id = "map";
+      mapEl.setAttribute("latitude", "39.7392");
+      mapEl.setAttribute("longitude", "-104.9903");
+      mapEl.setAttribute("zoom", "11");
+      mapEl.setAttribute(
+        "tile-url",
+        "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      );
+      mapEl.setAttribute("draw-polygon", "");
+      mapEl.setAttribute("draw-polyline", "");
+      mapEl.setAttribute("draw-rectangle", "");
+      mapEl.setAttribute("draw-circle", "");
+      mapEl.setAttribute("draw-layer-cake", "");
+      mapEl.setAttribute("draw-marker", "");
+      mapEl.setAttribute("draw-move", "");
+      mapEl.setAttribute("draw-ruler", "");
+      mapEl.setAttribute("edit-features", "");
+      mapEl.setAttribute("delete-features", "");
+      mapEl.setAttribute("log-level", "debug");
+
+      // ── Attach toolHooks before DOM connection ───────────────────────────
+      mapEl.toolHooks = {
+        "tool:layer-cake:session-started": (detail) =>
+          onHookFired("tool:layer-cake:session-started", detail),
+        "tool:layer-cake:saved": (detail) =>
+          onHookFired("tool:layer-cake:saved", detail),
+        "tool:move:pending": (detail) =>
+          onHookFired("tool:move:pending", detail),
+        "tool:move:confirmed": (detail) =>
+          onHookFired("tool:move:confirmed", detail),
+        "tool:move:cancelled": (detail) =>
+          onHookFired("tool:move:cancelled", detail),
+      };
+
+      // ── Attach toolEventEmitter before DOM connection ────────────────────
+      // Uses the emit(name, detail) style emitter.
+      // Appends a log item to the DOM emitter-log list so we can assert on it.
+      mapEl.toolEventEmitter = {
+        emit(eventName, detail) {
+          const logEl = document.getElementById("emitter-log");
+          if (logEl) {
+            const li = document.createElement("li");
+            li.setAttribute("data-event", eventName);
+            li.textContent = `${eventName} ${JSON.stringify(detail)}`;
+            logEl.appendChild(li);
+          }
+
+          // Expose for e2e assertions
+          window.__emitterLog = window.__emitterLog ?? [];
+          window.__emitterLog.push({ event: eventName, detail });
+        },
+      };
+
+      // ── Connect to DOM — triggers connectedCallback with hooks set ───────
+      document.getElementById("map-container").appendChild(mapEl);
+
+      // ── Standard draw event logging ───────────────────────────────────────
+      function tag(msg) {
+        const el = document.getElementById("evtTag");
+        if (el) el.textContent = msg;
+      }
+
+      function log(obj) {
+        const el = document.getElementById("out");
+        if (el) el.textContent = JSON.stringify(obj, null, 2);
+      }
+
+      mapEl.addEventListener("leaflet-draw:ready", (e) => {
+        tag("ready");
+        log({ event: "ready", detail: e.detail });
+      });
+
+      mapEl.addEventListener("leaflet-draw:created", (e) => {
+        tag("created");
+        log({ event: "created", detail: e.detail });
+      });
+
+      mapEl.addEventListener("leaflet-draw:edited", (e) => {
+        tag("edited");
+        log({ event: "edited", detail: e.detail });
+      });
+
+      mapEl.addEventListener("leaflet-draw:deleted", (e) => {
+        tag("deleted");
+        log({ event: "deleted", detail: e.detail });
+      });
+
+      mapEl.addEventListener("leaflet-draw:error", (e) => {
+        tag("error");
+        log({ event: "error", detail: e.detail });
+      });
+    </script>
+  </body>
+</html>

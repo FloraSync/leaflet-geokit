@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>@florasync/leaflet-geokit — Tool Event Matrix Harness</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        font-family:
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          Helvetica,
+          Arial,
+          sans-serif;
+        display: grid;
+        grid-template-rows: auto auto 1fr;
+      }
+      .harness-nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 8px 12px;
+        background: #e8e8e8;
+        border-bottom: 1px solid #ccc;
+        font-size: 13px;
+        align-items: center;
+      }
+      .harness-nav a {
+        color: #0066cc;
+        text-decoration: none;
+        padding: 2px 8px;
+        border-radius: 4px;
+      }
+      .harness-nav a:hover {
+        background: rgba(0, 102, 204, 0.1);
+      }
+      .harness-nav a.active {
+        font-weight: 600;
+        color: #333;
+        background: #fff;
+        pointer-events: none;
+        border: 1px solid #ccc;
+      }
+      .harness-nav .nav-divider {
+        width: 1px;
+        height: 16px;
+        background: #ccc;
+        margin: 0 4px;
+      }
+      header {
+        padding: 10px 12px;
+        border-bottom: 1px solid #ddd;
+        background: #fafafa;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .wrap {
+        display: grid;
+        grid-template-columns: minmax(420px, 1fr) 2fr;
+        gap: 12px;
+        padding: 12px;
+        overflow: hidden;
+      }
+      #map-container leaflet-geokit {
+        display: block;
+        width: 100%;
+        height: 100%;
+        min-height: 420px;
+      }
+      .panel {
+        border: 1px solid #e5e5e5;
+        border-radius: 8px;
+        padding: 10px;
+        overflow: auto;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 8px;
+      }
+      button {
+        padding: 6px 10px;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        background: #fff;
+        cursor: pointer;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
+      th,
+      td {
+        padding: 6px 8px;
+        border-bottom: 1px solid #eee;
+        text-align: left;
+      }
+      .event-name {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      .count {
+        font-variant-numeric: tabular-nums;
+        font-weight: 600;
+      }
+      #emitter-log {
+        max-height: 220px;
+        overflow: auto;
+        border: 1px solid #eee;
+        border-radius: 6px;
+        padding: 6px;
+        margin: 8px 0 0;
+      }
+      #emitter-log li {
+        font-size: 11px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      #evtTag {
+        opacity: 0.8;
+      }
+      .muted {
+        color: #666;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <nav class="harness-nav">
+      <a href="/">Bundled WC</a>
+      <a href="/external.html">External WC</a>
+      <span class="nav-divider"></span>
+      <a href="/preact.html">Preact</a>
+      <a href="/react.html">React</a>
+      <span class="nav-divider"></span>
+      <a href="/preact-bundled.html">Preact (Bundled)</a>
+      <a href="/react-bundled.html">React (Bundled)</a>
+      <span class="nav-divider"></span>
+      <a href="/hooks.html">Tool Hooks</a>
+      <a href="/tool-events.html" class="active">Tool Events</a>
+    </nav>
+
+    <header>
+      <div>
+        <strong>@florasync/leaflet-geokit</strong>
+        <span class="muted">tool event matrix harness</span>
+      </div>
+      <div>event: <span id="evtTag">…</span></div>
+    </header>
+
+    <div class="wrap">
+      <div id="map-container"></div>
+
+      <div class="panel">
+        <div class="row">
+          <button id="btnEmitAll" type="button">Emit all tool events</button>
+          <button id="btnClearObservers" type="button">Clear observers</button>
+          <button id="btnInstallObservers" type="button">
+            Install observers
+          </button>
+        </div>
+        <div class="muted">
+          The buttons use the live element API (`toolHooks`/`toolEventEmitter`)
+          and controller-backed event emission for deterministic e2e
+          verification.
+        </div>
+
+        <h3 style="margin: 12px 0 8px">Hook counters</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Event</th>
+              <th>Count</th>
+            </tr>
+          </thead>
+          <tbody id="hook-body"></tbody>
+        </table>
+
+        <h3 style="margin: 12px 0 8px">Emitter log</h3>
+        <ul id="emitter-log" aria-label="Emitter log"></ul>
+      </div>
+    </div>
+
+    <script type="module">
+      import "/src/index.ts";
+
+      const TOOL_EVENTS = [
+        "tool:polygon:created",
+        "tool:polyline:created",
+        "tool:rectangle:created",
+        "tool:circle:created",
+        "tool:marker:created",
+        "tool:layer-cake:session-started",
+        "tool:layer-cake:saved",
+        "tool:move:pending",
+        "tool:move:confirmed",
+        "tool:move:cancelled",
+        "tool:edit:applied",
+        "tool:delete:applied",
+        "tool:ruler:units-changed",
+      ];
+
+      const counts = Object.fromEntries(TOOL_EVENTS.map((e) => [e, 0]));
+      const hookBody = document.getElementById("hook-body");
+      const emitterLog = document.getElementById("emitter-log");
+
+      for (const eventName of TOOL_EVENTS) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td class="event-name">${eventName}</td>
+          <td><span class="count" id="count-${eventName.replace(/[:]/g, "-")}">0</span></td>
+        `;
+        hookBody.appendChild(tr);
+      }
+
+      function detailFor(eventName) {
+        switch (eventName) {
+          case "tool:ruler:units-changed":
+            return { previous: "metric", current: "imperial" };
+          case "tool:layer-cake:session-started":
+            return { center: { lat: 39.7392, lng: -104.9903 }, radius: 250 };
+          case "tool:layer-cake:saved":
+            return {
+              featureCollection: { type: "FeatureCollection", features: [] },
+            };
+          case "tool:edit:applied":
+          case "tool:delete:applied":
+            return {
+              ids: ["f-1"],
+              geoJSON: { type: "FeatureCollection", features: [] },
+            };
+          case "tool:move:cancelled":
+            return { layerId: "f-1" };
+          case "tool:move:pending":
+          case "tool:move:confirmed":
+            return {
+              layerId: "f-1",
+              originalGeoJSON: {
+                type: "Feature",
+                properties: {},
+                geometry: { type: "Point", coordinates: [0, 0] },
+              },
+              newGeoJSON: {
+                type: "Feature",
+                properties: {},
+                geometry: { type: "Point", coordinates: [1, 1] },
+              },
+            };
+          default:
+            return {
+              id: "f-1",
+              geoJSON: {
+                type: "Feature",
+                properties: {},
+                geometry: { type: "Point", coordinates: [0, 0] },
+              },
+            };
+        }
+      }
+
+      function updateCount(eventName) {
+        counts[eventName] += 1;
+        const el = document.getElementById(
+          `count-${eventName.replace(/[:]/g, "-")}`,
+        );
+        if (el) el.textContent = String(counts[eventName]);
+      }
+
+      function installObservers(mapEl) {
+        mapEl.toolHooks = Object.fromEntries(
+          TOOL_EVENTS.map((eventName) => [
+            eventName,
+            (detail) => {
+              updateCount(eventName);
+              window.__toolHookLog = window.__toolHookLog ?? [];
+              window.__toolHookLog.push({ event: eventName, detail });
+            },
+          ]),
+        );
+
+        mapEl.toolEventEmitter = {
+          emit(eventName, detail) {
+            const li = document.createElement("li");
+            li.dataset.event = eventName;
+            li.textContent = `${eventName} ${JSON.stringify(detail)}`;
+            emitterLog.appendChild(li);
+            window.__emitterLog = window.__emitterLog ?? [];
+            window.__emitterLog.push({ event: eventName, detail });
+          },
+        };
+      }
+
+      function clearObservers(mapEl) {
+        mapEl.toolHooks = undefined;
+        mapEl.toolEventEmitter = undefined;
+      }
+
+      function emitAll(mapEl) {
+        const controller = mapEl._controller;
+        if (!controller || typeof controller.emitToolEvent !== "function") {
+          throw new Error("controller emitToolEvent not available");
+        }
+        for (const eventName of TOOL_EVENTS) {
+          controller.emitToolEvent(eventName, detailFor(eventName));
+        }
+      }
+
+      const mapEl = document.createElement("leaflet-geokit");
+      mapEl.id = "map";
+      mapEl.setAttribute("latitude", "39.7392");
+      mapEl.setAttribute("longitude", "-104.9903");
+      mapEl.setAttribute("zoom", "11");
+      mapEl.setAttribute(
+        "tile-url",
+        "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      );
+      mapEl.setAttribute("draw-polygon", "");
+      mapEl.setAttribute("draw-polyline", "");
+      mapEl.setAttribute("draw-rectangle", "");
+      mapEl.setAttribute("draw-circle", "");
+      mapEl.setAttribute("draw-layer-cake", "");
+      mapEl.setAttribute("draw-marker", "");
+      mapEl.setAttribute("draw-move", "");
+      mapEl.setAttribute("draw-ruler", "");
+      mapEl.setAttribute("edit-features", "");
+      mapEl.setAttribute("delete-features", "");
+
+      installObservers(mapEl);
+      document.getElementById("map-container").appendChild(mapEl);
+
+      mapEl.addEventListener("leaflet-draw:ready", () => {
+        document.getElementById("evtTag").textContent = "ready";
+      });
+
+      document
+        .getElementById("btnEmitAll")
+        .addEventListener("click", () => emitAll(mapEl));
+      document
+        .getElementById("btnClearObservers")
+        .addEventListener("click", () => clearObservers(mapEl));
+      document
+        .getElementById("btnInstallObservers")
+        .addEventListener("click", () => installObservers(mapEl));
+
+      window.__toolEvents = TOOL_EVENTS;
+      window.__emitAllToolEvents = () => emitAll(mapEl);
+    </script>
+  </body>
+</html>

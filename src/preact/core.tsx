@@ -2,6 +2,10 @@ import { h } from "preact";
 import { useEffect, useMemo, useRef } from "preact/hooks";
 
 import type { LeafletDrawMapElement } from "@src/components/LeafletDrawMapElement";
+import type {
+  IntegratedToolEventEmitter,
+  IntegratedToolHooks,
+} from "@src/types/public";
 import { ensureLeafletGeoKitRegistered } from "@src/shims/ensure-element";
 
 type Primitive = string | number | boolean | null | undefined;
@@ -33,6 +37,10 @@ export interface PreactLeafletGeoKitProps {
 
   /** Optional explicit Leaflet namespace (window.L equivalent). */
   leafletInstance?: any;
+  /** Optional integrated tool hooks map. */
+  toolHooks?: IntegratedToolHooks;
+  /** Optional integrated tool event emitter. */
+  toolEventEmitter?: IntegratedToolEventEmitter;
 
   /** Initial GeoJSON text to load once on ready. */
   initialGeoJSONText?: string;
@@ -124,9 +132,9 @@ export function createPreactLeafletGeoKit(defaultMode: LeafletMode) {
 
           applyModeDefaults(element, mode);
 
-          if (props.leafletInstance) {
-            element.leafletInstance = props.leafletInstance;
-          }
+          element.leafletInstance = props.leafletInstance;
+          element.toolHooks = props.toolHooks;
+          element.toolEventEmitter = props.toolEventEmitter;
 
           if (props.attributes) {
             applyAttributes(element, props.attributes);
@@ -184,6 +192,8 @@ export function createPreactLeafletGeoKit(defaultMode: LeafletMode) {
       defaultMode,
       props.externalLeaflet,
       props.leafletInstance,
+      props.toolHooks,
+      props.toolEventEmitter,
       props.attributes,
       props.initialGeoJSONText,
       props.onChangeText,

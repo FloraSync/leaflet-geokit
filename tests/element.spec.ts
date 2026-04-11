@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, vi } from "vitest";
 
 // Importing our custom element will register it with customElements
 import "@src/index";
@@ -90,6 +90,43 @@ describe("LeafletDrawMapElement (scaffold)", () => {
     const fakeLeaflet = { marker: () => null } as any;
     el.leafletInstance = fakeLeaflet;
     expect(el.leafletInstance).toBe(fakeLeaflet);
+
+    const hooks = { "tool:move:pending": () => {} } as any;
+    const emitter = { emit: () => {} } as any;
+    el.toolHooks = hooks;
+    el.toolEventEmitter = emitter;
+    expect(el.toolHooks).toBe(hooks);
+    expect(el.toolEventEmitter).toBe(emitter);
+  });
+
+  it("updates active controller tool observers when hook props change", () => {
+    const originalController = el._controller;
+    const setToolObservers = vi.fn();
+    el._controller = { setToolObservers };
+
+    const hooks = { "tool:move:pending": vi.fn() } as any;
+    const emitter = { emit: vi.fn() } as any;
+
+    el.toolEventEmitter = undefined;
+    el.toolHooks = hooks;
+    expect(setToolObservers).toHaveBeenLastCalledWith({
+      toolHooks: hooks,
+      toolEventEmitter: undefined,
+    });
+
+    el.toolEventEmitter = emitter;
+    expect(setToolObservers).toHaveBeenLastCalledWith({
+      toolHooks: hooks,
+      toolEventEmitter: emitter,
+    });
+
+    el.toolHooks = undefined;
+    expect(setToolObservers).toHaveBeenLastCalledWith({
+      toolHooks: undefined,
+      toolEventEmitter: emitter,
+    });
+
+    el._controller = originalController;
   });
 
   it("exposes themeCss getter and normalizes non-string values", () => {
