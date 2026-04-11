@@ -650,6 +650,20 @@ export class LeafletDrawMapElement
   }
   set toolHooks(v: IntegratedToolHooks | undefined) {
     this._toolHooks = v;
+    const maybeController = this._controller as
+      | (MapController & {
+          setToolObservers?: (options: {
+            toolHooks?: IntegratedToolHooks;
+            toolEventEmitter?: IntegratedToolEventEmitter;
+          }) => void;
+        })
+      | null;
+    if (typeof maybeController?.setToolObservers === "function") {
+      maybeController.setToolObservers({
+        toolHooks: this._toolHooks,
+        toolEventEmitter: this._toolEventEmitter,
+      });
+    }
   }
 
   get toolEventEmitter(): IntegratedToolEventEmitter | undefined {
@@ -657,6 +671,20 @@ export class LeafletDrawMapElement
   }
   set toolEventEmitter(v: IntegratedToolEventEmitter | undefined) {
     this._toolEventEmitter = v;
+    const maybeController = this._controller as
+      | (MapController & {
+          setToolObservers?: (options: {
+            toolHooks?: IntegratedToolHooks;
+            toolEventEmitter?: IntegratedToolEventEmitter;
+          }) => void;
+        })
+      | null;
+    if (typeof maybeController?.setToolObservers === "function") {
+      maybeController.setToolObservers({
+        toolHooks: this._toolHooks,
+        toolEventEmitter: this._toolEventEmitter,
+      });
+    }
   }
 
   get themeCss(): string {

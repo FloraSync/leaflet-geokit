@@ -378,6 +378,122 @@ map.themeCss = `
 `;
 ```
 
+### Integrated Tool Hooks & Event Emitter
+
+GeoKit exposes tool lifecycle events through two optional integration points:
+
+- `map.toolHooks`: per-event callbacks keyed by event name
+- `map.toolEventEmitter`: generic emitter object with either:
+  - `emit(eventName, detail)`
+  - or `dispatchEvent(new CustomEvent(eventName, { detail }))`
+
+Both can be used together. If both are provided, both are called.
+
+```javascript
+const map = document.querySelector("leaflet-geokit");
+
+map.toolHooks = {
+  "tool:move:pending": (detail) => {
+    console.log("Move pending", detail.layerId);
+  },
+  "tool:ruler:units-changed": (detail) => {
+    console.log("Units changed", detail.previous, "->", detail.current);
+  },
+};
+
+map.toolEventEmitter = {
+  emit: (eventName, detail) => {
+    analytics.track(eventName, detail);
+  },
+};
+```
+
+Important behavior notes:
+
+- Hooks/emitter can be assigned before or after map initialization.
+- Re-assigning `toolHooks`/`toolEventEmitter` at runtime updates active observers immediately.
+- Assign `undefined` to clear either integration point.
+
+#### Supported integrated tool event names
+
+- `tool:polygon:created`
+- `tool:polyline:created`
+- `tool:rectangle:created`
+- `tool:circle:created`
+- `tool:marker:created`
+- `tool:layer-cake:session-started`
+- `tool:layer-cake:saved`
+- `tool:move:pending`
+- `tool:move:confirmed`
+- `tool:move:cancelled`
+- `tool:edit:applied`
+- `tool:delete:applied`
+- `tool:ruler:units-changed`
+
+#### Event detail payloads
+
+`tool:*:created` (polygon/polyline/rectangle/circle/marker):
+
+```ts
+{
+  id: string;
+  geoJSON: GeoJSON.Feature;
+}
+```
+
+`tool:layer-cake:session-started`:
+
+```ts
+{
+  center: { lat: number; lng: number; ... };
+  radius: number;
+}
+```
+
+`tool:layer-cake:saved`:
+
+```ts
+{
+  featureCollection: GeoJSON.FeatureCollection;
+}
+```
+
+`tool:move:pending` / `tool:move:confirmed`:
+
+```ts
+{
+  layerId?: string;
+  originalGeoJSON?: GeoJSON.Feature;
+  newGeoJSON?: GeoJSON.Feature;
+}
+```
+
+`tool:move:cancelled`:
+
+```ts
+{
+  layerId?: string;
+}
+```
+
+`tool:edit:applied` / `tool:delete:applied`:
+
+```ts
+{
+  ids: string[];
+  geoJSON: GeoJSON.FeatureCollection;
+}
+```
+
+`tool:ruler:units-changed`:
+
+```ts
+{
+  previous: "metric" | "imperial";
+  current: "metric" | "imperial";
+}
+```
+
 ### Methods
 
 All methods return Promises and should be awaited. Invoke on the element instance:

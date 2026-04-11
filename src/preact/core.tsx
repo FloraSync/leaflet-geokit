@@ -132,15 +132,9 @@ export function createPreactLeafletGeoKit(defaultMode: LeafletMode) {
 
           applyModeDefaults(element, mode);
 
-          if (props.leafletInstance) {
-            element.leafletInstance = props.leafletInstance;
-          }
-          if (props.toolHooks) {
-            element.toolHooks = props.toolHooks;
-          }
-          if (props.toolEventEmitter) {
-            element.toolEventEmitter = props.toolEventEmitter;
-          }
+          element.leafletInstance = props.leafletInstance;
+          element.toolHooks = props.toolHooks;
+          element.toolEventEmitter = props.toolEventEmitter;
 
           if (props.attributes) {
             applyAttributes(element, props.attributes);

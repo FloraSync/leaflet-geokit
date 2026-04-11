@@ -35,11 +35,19 @@ export interface MapConfig {
 export type MeasurementSystem = "metric" | "imperial";
 
 export type IntegratedToolEventName =
+  | "tool:polygon:created"
+  | "tool:polyline:created"
+  | "tool:rectangle:created"
+  | "tool:circle:created"
+  | "tool:marker:created"
   | "tool:layer-cake:session-started"
   | "tool:layer-cake:saved"
   | "tool:move:pending"
   | "tool:move:confirmed"
-  | "tool:move:cancelled";
+  | "tool:move:cancelled"
+  | "tool:edit:applied"
+  | "tool:delete:applied"
+  | "tool:ruler:units-changed";
 
 export type IntegratedToolHooks = Partial<
   Record<IntegratedToolEventName, (detail: unknown) => void>

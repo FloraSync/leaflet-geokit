@@ -232,6 +232,52 @@ describe("MapController", () => {
     controller.destroy();
   });
 
+  it("updates tool observers at runtime", () => {
+    const hookA = vi.fn();
+    const hookB = vi.fn();
+    const emitA = vi.fn();
+    const emitB = vi.fn();
+
+    const controller = new MapController({
+      ...opts,
+      toolHooks: { "tool:move:pending": hookA },
+      toolEventEmitter: { emit: emitA },
+    });
+
+    (controller as any).emitToolEvent("tool:move:pending", { seq: 1 });
+    expect(hookA).toHaveBeenCalledWith({ seq: 1 });
+    expect(emitA).toHaveBeenCalledWith("tool:move:pending", { seq: 1 });
+
+    controller.setToolObservers({
+      toolHooks: { "tool:move:pending": hookB },
+      toolEventEmitter: { emit: emitB },
+    });
+
+    (controller as any).emitToolEvent("tool:move:pending", { seq: 2 });
+    expect(hookA).toHaveBeenCalledTimes(1);
+    expect(emitA).toHaveBeenCalledTimes(1);
+    expect(hookB).toHaveBeenCalledWith({ seq: 2 });
+    expect(emitB).toHaveBeenCalledWith("tool:move:pending", { seq: 2 });
+
+    controller.destroy();
+  });
+
+  it("emits ruler units changed tool event", () => {
+    const emit = vi.fn();
+    const controller = new MapController({
+      ...opts,
+      toolEventEmitter: { emit },
+    });
+
+    controller.setRulerUnits("imperial");
+
+    expect(emit).toHaveBeenCalledWith("tool:ruler:units-changed", {
+      previous: "metric",
+      current: "imperial",
+    });
+    controller.destroy();
+  });
+
   describe("mergeVisiblePolygons", () => {
     it("returns null when no polygons exist", async () => {
       const controller = new MapController(opts);

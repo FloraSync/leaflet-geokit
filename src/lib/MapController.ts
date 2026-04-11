@@ -64,6 +64,24 @@ export interface MapControllerOptions {
   toolEventEmitter?: IntegratedToolEventEmitter;
 }
 
+type CreatedLayerType =
+  | "polygon"
+  | "polyline"
+  | "rectangle"
+  | "circle"
+  | "marker";
+
+const CREATED_LAYER_EVENT_BY_TYPE: Record<
+  CreatedLayerType,
+  IntegratedToolEventName
+> = {
+  polygon: "tool:polygon:created",
+  polyline: "tool:polyline:created",
+  rectangle: "tool:rectangle:created",
+  circle: "tool:circle:created",
+  marker: "tool:marker:created",
+};
+
 interface TileLayerCallbacks {
   onTileError?: (error: unknown) => void;
 }
@@ -160,6 +178,14 @@ export class MapController {
     ensureDrawCakeRegistered(this.L);
     ensureDrawMoveRegistered(this.L);
     registerLayerCakeTool(this.L);
+  }
+
+  setToolObservers(options: {
+    toolHooks?: IntegratedToolHooks;
+    toolEventEmitter?: IntegratedToolEventEmitter;
+  }): void {
+    this.options.toolHooks = options.toolHooks;
+    this.options.toolEventEmitter = options.toolEventEmitter;
   }
 
   private resolveLeaflet(opts: MapControllerOptions): typeof BundledL {
@@ -570,12 +596,16 @@ export class MapController {
 
   setRulerUnits(system: MeasurementSystem): void {
     if (this.measurementSystem === system) return;
+    const previous = this.measurementSystem;
     this.measurementSystem = system;
     this.logger.debug("ruler:units", { system });
+    this.emitToolEvent("tool:ruler:units-changed", {
+      previous,
+      current: system,
+    });
     this.syncMeasurementModalState();
     this.rebuildRulerControl();
   }
-
   // ---------------- Internals ----------------
 
   private buildDrawOptions(
@@ -1229,6 +1259,14 @@ export class MapController {
         this.installVertexContextMenu(layer);
 
         this.options.callbacks?.onCreated?.({ id, layerType, geoJSON: feat });
+        const createdToolEvent =
+          CREATED_LAYER_EVENT_BY_TYPE[layerType as CreatedLayerType];
+        if (createdToolEvent) {
+          this.emitToolEvent(createdToolEvent, {
+            id,
+            geoJSON: feat,
+          });
+        }
       } catch (err) {
         this._error("onCreated handler failed", err);
       }
@@ -1256,9 +1294,14 @@ export class MapController {
           }
         });
 
+        const geoJSON = this.store.toFeatureCollection();
         this.options.callbacks?.onEdited?.({
           ids,
-          geoJSON: this.store.toFeatureCollection(),
+          geoJSON,
+        });
+        this.emitToolEvent("tool:edit:applied", {
+          ids,
+          geoJSON,
         });
       } catch (err) {
         this._error("onEdited handler failed", err);
@@ -1278,9 +1321,14 @@ export class MapController {
           }
         });
 
+        const geoJSON = this.store.toFeatureCollection();
         this.options.callbacks?.onDeleted?.({
           ids,
-          geoJSON: this.store.toFeatureCollection(),
+          geoJSON,
+        });
+        this.emitToolEvent("tool:delete:applied", {
+          ids,
+          geoJSON,
         });
       } catch (err) {
         this._error("onDeleted handler failed", err);

@@ -234,6 +234,7 @@
       <a href="/react-bundled.html">React (Bundled)</a>
       <span class="nav-divider"></span>
       <a href="/hooks.html" class="active">Tool Hooks</a>
+      <a href="/tool-events.html">Tool Events</a>
     </nav>
     <header>
       <div class="header-title">
@@ -241,11 +242,16 @@
         <span style="opacity: 0.6">tool hooks harness</span>
       </div>
       <div class="row" style="margin-left: auto">
-        <code style="font-size: 12px; background: #f2f2f2; padding: 2px 8px; border-radius: 4px">Events</code>
-        <span
-          id="evtTag"
-          style="opacity: 0.7; font-size: 13px"
-        >…</span>
+        <code
+          style="
+            font-size: 12px;
+            background: #f2f2f2;
+            padding: 2px 8px;
+            border-radius: 4px;
+          "
+          >Events</code
+        >
+        <span id="evtTag" style="opacity: 0.7; font-size: 13px">…</span>
       </div>
     </header>
 
@@ -276,7 +282,8 @@
                     id="hook-count-cake-started"
                     class="hook-count"
                     data-count="0"
-                    >0</span>
+                    >0</span
+                  >
                 </td>
               </tr>
               <tr data-hook-row="tool:layer-cake:saved">
@@ -286,7 +293,8 @@
                     id="hook-count-cake-saved"
                     class="hook-count"
                     data-count="0"
-                    >0</span>
+                    >0</span
+                  >
                 </td>
               </tr>
               <tr data-hook-row="tool:move:pending">
@@ -296,7 +304,8 @@
                     id="hook-count-move-pending"
                     class="hook-count"
                     data-count="0"
-                    >0</span>
+                    >0</span
+                  >
                 </td>
               </tr>
               <tr data-hook-row="tool:move:confirmed">
@@ -306,7 +315,8 @@
                     id="hook-count-move-confirmed"
                     class="hook-count"
                     data-count="0"
-                    >0</span>
+                    >0</span
+                  >
                 </td>
               </tr>
               <tr data-hook-row="tool:move:cancelled">
@@ -316,13 +326,21 @@
                     id="hook-count-move-cancelled"
                     class="hook-count"
                     data-count="0"
-                    >0</span>
+                    >0</span
+                  >
                 </td>
               </tr>
             </tbody>
           </table>
           <div style="padding: 6px 10px; border-top: 1px solid #e0e0e0">
-            <div style="font-size: 11px; font-weight: 600; margin-bottom: 4px; color: #555">
+            <div
+              style="
+                font-size: 11px;
+                font-weight: 600;
+                margin-bottom: 4px;
+                color: #555;
+              "
+            >
               Last hook detail
             </div>
             <pre id="hook-last-detail">—</pre>
@@ -335,7 +353,15 @@
 
         <div>
           <div class="row" style="margin-bottom: 6px">
-            <code style="font-size: 12px; background: #f2f2f2; padding: 2px 6px; border-radius: 4px">Map events</code>
+            <code
+              style="
+                font-size: 12px;
+                background: #f2f2f2;
+                padding: 2px 6px;
+                border-radius: 4px;
+              "
+              >Map events</code
+            >
           </div>
           <pre id="out">{}</pre>
         </div>
