@@ -20,6 +20,19 @@
 import { test, expect, type Page } from "@playwright/test";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
+const toolControlSelectors = [
+  "a.leaflet-draw-draw-polyline",
+  "a.leaflet-draw-draw-polygon",
+  "a.leaflet-draw-draw-rectangle",
+  "a.leaflet-draw-draw-circle",
+  "a.leaflet-draw-draw-cake",
+  "a.leaflet-draw-draw-marker",
+  "a.leaflet-draw-draw-move",
+  "a.leaflet-draw-edit-edit",
+  "a.leaflet-draw-edit-remove",
+  ".leaflet-ruler",
+  ".leaflet-ruler-settings-button",
+] as const;
 
 async function waitForReady(page: Page): Promise<void> {
   const tag = page.locator("#evtTag");
@@ -112,6 +125,11 @@ test.describe("Tool hooks harness", () => {
     page,
   }) => {
     await expect(page.locator("#custom-toolbar")).toBeVisible();
+    await expect(page.locator(".leaflet-draw.leaflet-control")).toBeVisible();
+
+    for (const selector of toolControlSelectors) {
+      await expect(page.locator(selector)).toBeVisible();
+    }
 
     for (const id of [
       "hook-count-cake-started",
