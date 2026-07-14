@@ -14,9 +14,7 @@
 
 **Data & ID Mapping**
 
-- **Layer–feature id assignment via `L.geoJSON` iteration is fragile:** In `loadGeoJSON`/`addFeatures`, ids are assigned by indexing across `layers.eachLayer(...)` with `ids[i] ?? ids[ids.length - 1]`. Multi‑geometries or geometry collections can yield multiple Leaflet layers per feature, breaking 1:1 mapping. Impact: edited/deleted callbacks may update/remove wrong features or miss some. Suggest: use `onEachFeature(feature)` to attach `_fid` from normalized id per feature, not per produced layer; maintain layer↔id maps if one feature yields multiple layers.
 - **Store mutates input features:** `ensureId()` writes `feature.id` and `feature.properties.id` directly to the caller’s objects. Impact: surprising side‑effects for consumers. Suggest: deep/shallow copy before mutation or document clearly.
-- **`updateFeature` does not sync layers:** Store is updated but map layers are not. Impact: UI and data diverge until reload. Suggest: implement in‑place geometry update or replace layer for the given id.
 
 **Attribute Handling & Reflection**
 
@@ -26,7 +24,6 @@
 
 **Lifecycle, Re‑init, and State Loss**
 
-- **Attribute changes re‑init the controller and drop data:** For many attributes (tiles, min/max zoom, read‑only, controls), the element destroys and re‑inits the controller without reloading features from the previous store. Impact: user‑drawn/loaded data is lost on common toggles; surprising UX. Suggest: capture current `FeatureCollection` before destroy and reload after init.
 - **Re‑init race potential:** Rapid successive attribute changes chain `destroy().then(() => init())` calls without cancellation. Impact: flicker/inconsistent final state. Suggest: queue or coalesce changes, or guard with a reentrancy token.
 
 **Events & Error Handling**

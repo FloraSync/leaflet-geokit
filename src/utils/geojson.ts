@@ -143,43 +143,57 @@ export function expandMultiGeometries(
   for (const f of fc.features) {
     if (!f || f.type !== "Feature") continue;
     const baseProps = f.properties ?? {};
+    const sourceId = normalizeId(f);
+    const buildExpandedFeature = (
+      geometry: Geometry,
+      childIndex: number,
+    ): Feature => {
+      const properties =
+        baseProps && typeof baseProps === "object" ? { ...baseProps } : {};
+      const derivedId =
+        sourceId !== undefined ? `${sourceId}::${childIndex}` : undefined;
+
+      if (derivedId !== undefined) {
+        (properties as Record<string, unknown>).id = derivedId;
+      }
+
+      return {
+        type: "Feature",
+        id: derivedId,
+        properties,
+        geometry,
+      };
+    };
     const geom = f.geometry;
     if (!geom) continue; // skip null geometry
     switch (geom.type) {
       case "MultiPolygon":
-        for (const poly of geom.coordinates) {
-          out.push({
-            type: "Feature",
-            properties: { ...baseProps },
-            geometry: { type: "Polygon", coordinates: poly },
-          });
+        for (const [index, poly] of geom.coordinates.entries()) {
+          out.push(
+            buildExpandedFeature({ type: "Polygon", coordinates: poly }, index),
+          );
         }
         break;
       case "MultiLineString":
-        for (const line of geom.coordinates) {
-          out.push({
-            type: "Feature",
-            properties: { ...baseProps },
-            geometry: { type: "LineString", coordinates: line },
-          });
+        for (const [index, line] of geom.coordinates.entries()) {
+          out.push(
+            buildExpandedFeature(
+              { type: "LineString", coordinates: line },
+              index,
+            ),
+          );
         }
         break;
       case "MultiPoint":
-        for (const pt of geom.coordinates) {
-          out.push({
-            type: "Feature",
-            properties: { ...baseProps },
-            geometry: { type: "Point", coordinates: pt },
-          });
+        for (const [index, pt] of geom.coordinates.entries()) {
+          out.push(
+            buildExpandedFeature({ type: "Point", coordinates: pt }, index),
+          );
         }
         break;
       case "GeometryCollection":
-        for (const child of geom.geometries) {
-          out.push({
-            type: "Feature",
-            properties: { ...baseProps },
-            geometry: child,
-          });
+        for (const [index, child] of geom.geometries.entries()) {
+          out.push(buildExpandedFeature(child, index));
         }
         break;
       default:

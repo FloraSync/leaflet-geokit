@@ -225,6 +225,8 @@
       <a href="/preact-bundled.html">Preact (Bundled)</a>
       <a href="/react-bundled.html">React (Bundled)</a>
       <span class="nav-divider"></span>
+      <a href="/icon-customization.html">Icon Customization</a>
+      <span class="nav-divider"></span>
       <a href="/hooks.html">Tool Hooks</a>
       <a href="/tool-events.html">Tool Events</a>
     </nav>
@@ -377,6 +379,78 @@
       const apiKeyInput = document.getElementById("api-key-input");
       const applyHereButton = document.getElementById("apply-here-settings");
       let mapReady = false;
+
+      const bedBoundaryIcon = svgDataUrl(`
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+          <path d="M5 7l6-3 8 4-1 9-7 3-6-4z" fill="none" stroke="#24533c" stroke-width="2" stroke-linejoin="round"/>
+          <path d="M8 9l7 3M11 5l-1 13" fill="none" stroke="#d47a31" stroke-width="1.7" stroke-linecap="round"/>
+        </svg>
+      `);
+      const fieldMarkerIcon = svgDataUrl(`
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+          <path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z" fill="#d47a31" stroke="#24533c" stroke-width="1.8"/>
+          <circle cx="12" cy="10" r="2.4" fill="#fff8e8"/>
+        </svg>
+      `);
+      const layerZoneIcon = svgDataUrl(`
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="8" fill="none" stroke="#24533c" stroke-width="2"/>
+          <circle cx="12" cy="12" r="4.5" fill="none" stroke="#d47a31" stroke-width="2"/>
+          <circle cx="12" cy="12" r="1.8" fill="#24533c"/>
+        </svg>
+      `);
+      const moveToolIcon = svgDataUrl(`
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+          <path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3" fill="none" stroke="#24533c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      `);
+
+      function svgDataUrl(svg) {
+        return `data:image/svg+xml;utf8,${encodeURIComponent(svg.trim())}`;
+      }
+
+      map.toolButtonConfig = {
+        polygon: {
+          iconUrl: bedBoundaryIcon,
+          iconSize: [20, 20],
+          title: "Draw bed boundary",
+          ariaLabel: "Draw bed boundary tool",
+          className: "geokit-demo-tool geokit-demo-tool--primary",
+        },
+        marker: {
+          iconUrl: fieldMarkerIcon,
+          iconSize: [19, 19],
+          title: "Place field marker",
+          ariaLabel: "Place field marker tool",
+          className: "geokit-demo-tool",
+        },
+        layerCake: {
+          iconUrl: layerZoneIcon,
+          iconSize: [20, 20],
+          title: "Build layered growing zone",
+          ariaLabel: "Build layered growing zone tool",
+          className: "geokit-demo-tool",
+        },
+        move: {
+          iconUrl: moveToolIcon,
+          iconSize: [18, 18],
+          title: "Move mapped feature",
+          ariaLabel: "Move mapped feature tool",
+          className: "geokit-demo-tool",
+        },
+      };
+      map.themeCss = `
+        [data-geokit-tool].geokit-demo-tool {
+          background-color: #fffaf0 !important;
+          border-color: rgba(36, 83, 60, 0.32) !important;
+        }
+        [data-geokit-tool].geokit-demo-tool--primary {
+          background-color: #edf7ef !important;
+        }
+        [data-geokit-tool].geokit-demo-tool:hover {
+          background-color: #e4f0e6 !important;
+        }
+      `;
 
       const STORAGE_KEYS = {
         TILE_PROVIDER: "leaflet-geokit:tile-provider",

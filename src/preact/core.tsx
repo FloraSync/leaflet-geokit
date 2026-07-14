@@ -5,6 +5,8 @@ import type { LeafletDrawMapElement } from "@src/components/LeafletDrawMapElemen
 import type {
   IntegratedToolEventEmitter,
   IntegratedToolHooks,
+  ToolButtonConfig,
+  ToolToolbarGroupConfig,
 } from "@src/types/public";
 import { ensureLeafletGeoKitRegistered } from "@src/shims/ensure-element";
 
@@ -41,6 +43,10 @@ export interface PreactLeafletGeoKitProps {
   toolHooks?: IntegratedToolHooks;
   /** Optional integrated tool event emitter. */
   toolEventEmitter?: IntegratedToolEventEmitter;
+  /** Optional draw/ruler toolbar button customization. */
+  toolButtonConfig?: ToolButtonConfig | null;
+  /** Optional additional toolbar groups rendered over the map. */
+  toolbarGroups?: ToolToolbarGroupConfig[] | null;
 
   /** Initial GeoJSON text to load once on ready. */
   initialGeoJSONText?: string;
@@ -135,6 +141,8 @@ export function createPreactLeafletGeoKit(defaultMode: LeafletMode) {
           element.leafletInstance = props.leafletInstance;
           element.toolHooks = props.toolHooks;
           element.toolEventEmitter = props.toolEventEmitter;
+          element.toolButtonConfig = props.toolButtonConfig;
+          element.toolbarGroups = props.toolbarGroups;
 
           if (props.attributes) {
             applyAttributes(element, props.attributes);
@@ -194,6 +202,8 @@ export function createPreactLeafletGeoKit(defaultMode: LeafletMode) {
       props.leafletInstance,
       props.toolHooks,
       props.toolEventEmitter,
+      props.toolButtonConfig,
+      props.toolbarGroups,
       props.attributes,
       props.initialGeoJSONText,
       props.onChangeText,

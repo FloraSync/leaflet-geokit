@@ -9,9 +9,16 @@ import type {
   IntegratedToolEventEmitter,
   IntegratedToolEventName,
   IntegratedToolHooks,
+  ToolButtonConfig,
+  ToolButtonName,
+  ToolToolbarGroupConfig,
+  ToolTriggerEventDetail,
+  ToolTriggerOptions,
 } from "@src/types/public";
 import { createLogger, type Logger } from "@src/utils/logger";
 import { FeatureStore } from "@src/lib/FeatureStore";
+import { type NormalizedMarkerIconConfig } from "@src/lib/marker-icons";
+import { applyToolButtonConfig } from "@src/lib/tool-buttons";
 import { registerLayerCakeTool } from "@src/lib/draw/toolbar-patch";
 import { DrawCake, ensureDrawCakeRegistered } from "@src/lib/draw/L.Draw.Cake";
 import { ensureDrawMoveRegistered } from "@src/lib/draw/L.Draw.Move";
@@ -24,6 +31,7 @@ import {
   mergePolygons,
   isPolygon,
   isMultiPolygon,
+  normalizeId,
 } from "@src/utils/geojson";
 import { computePreciseDistance, magicRound } from "@src/utils/geodesic";
 import {
@@ -45,6 +53,8 @@ export interface MapControllerCallbacks {
   onEdited?: (detail: { ids: string[]; geoJSON: FeatureCollection }) => void;
   onDeleted?: (detail: { ids: string[]; geoJSON: FeatureCollection }) => void;
   onError?: (detail: { message: string; cause?: unknown }) => void;
+  onTileError?: (error: unknown) => void;
+  onToolTrigger?: (detail: ToolTriggerEventDetail) => void;
 }
 
 export interface MapControllerOptions {
@@ -62,6 +72,12 @@ export interface MapControllerOptions {
   toolHooks?: IntegratedToolHooks;
   /** Optional event emitter for integrated tool lifecycle/events. */
   toolEventEmitter?: IntegratedToolEventEmitter;
+  /** Optional normalized marker icon override. */
+  markerIconConfig?: NormalizedMarkerIconConfig | null;
+  /** Optional draw/ruler toolbar button customization. */
+  toolButtonConfig?: ToolButtonConfig | null;
+  /** Optional additional toolbar groups rendered over the map. */
+  toolbarGroups?: ToolToolbarGroupConfig[] | null;
 }
 
 type CreatedLayerType =
@@ -123,11 +139,16 @@ export class MapController {
   // Context menu for vertex deletion
   private vertexMenuEl: HTMLDivElement | null = null;
   private vertexMenuCleanup: (() => void) | null = null;
+  private vertexEditSurfaceCleanup: (() => void) | null = null;
   private activeCakeSession: LayerCakeManager | null = null;
 
   // Move tool UI elements
   private moveConfirmationUI: HTMLDivElement | null = null;
   private activeMoveHandler: DrawMove | null = null;
+  private markerIconConfig: NormalizedMarkerIconConfig | null = null;
+  private markerIcon: BundledL.Icon | null = null;
+  private toolButtonConfig: ToolButtonConfig | null = null;
+  private toolbarGroups: ToolToolbarGroupConfig[] | null = null;
 
   private emitToolEvent(
     eventName: IntegratedToolEventName,
@@ -168,6 +189,12 @@ export class MapController {
     );
     this.L = this.resolveLeaflet(opts);
     this.store = new FeatureStore(this.logger.child("store"));
+    this.setMarkerIconConfig(opts.markerIconConfig ?? null, {
+      reapplyExistingLayers: false,
+      syncDrawControl: false,
+    });
+    this.toolButtonConfig = opts.toolButtonConfig ?? null;
+    this.toolbarGroups = opts.toolbarGroups ?? null;
     this.logger.debug("ctor", {
       config: opts.map,
       controls: opts.controls,
@@ -186,6 +213,148 @@ export class MapController {
   }): void {
     this.options.toolHooks = options.toolHooks;
     this.options.toolEventEmitter = options.toolEventEmitter;
+  }
+
+  setMarkerIconConfig(
+    config: NormalizedMarkerIconConfig | null,
+    options: {
+      reapplyExistingLayers?: boolean;
+      syncDrawControl?: boolean;
+    } = {},
+  ): void {
+    const { reapplyExistingLayers = true, syncDrawControl = true } = options;
+    this.options.markerIconConfig = config;
+    this.markerIconConfig = config;
+    this.markerIcon = this.createMarkerIcon(config);
+
+    if (syncDrawControl) {
+      this.syncDrawMarkerOptions();
+    }
+
+    if (reapplyExistingLayers) {
+      this.reapplyMarkerIconsToExistingLayers();
+    }
+  }
+
+  setToolButtonConfig(config: ToolButtonConfig | null | undefined): void {
+    this.options.toolButtonConfig = config ?? null;
+    this.toolButtonConfig = config ?? null;
+    this.applyToolButtonCustomizations();
+  }
+
+  setToolbarGroups(groups: ToolToolbarGroupConfig[] | null | undefined): void {
+    this.options.toolbarGroups = groups ?? null;
+    this.toolbarGroups = groups ?? null;
+    this.applyToolButtonCustomizations();
+  }
+
+  activateTool(
+    tool: ToolButtonName,
+    options: ToolTriggerOptions = {},
+  ): boolean {
+    const source = options.source ?? "api";
+
+    try {
+      if (tool === "select") {
+        return this.deactivateTool({ source, groupId: options.groupId });
+      }
+
+      if (tool === "layerStyle") {
+        this.emitToolTrigger({
+          tool,
+          source,
+          groupId: options.groupId,
+          handled: true,
+        });
+        return true;
+      }
+
+      if (tool === "measurementSettings") {
+        this.toggleMeasurementModal(true);
+        this.emitToolTrigger({
+          tool,
+          source,
+          groupId: options.groupId,
+          handled: true,
+        });
+        return true;
+      }
+
+      if (tool === "ruler") {
+        const handled = this.triggerRulerTool();
+        this.emitToolTrigger({
+          tool,
+          source,
+          groupId: options.groupId,
+          handled,
+          error: handled ? undefined : "Ruler control is not available",
+        });
+        return handled;
+      }
+
+      const handler = this.findLeafletDrawHandler(tool);
+      if (!handler || typeof handler.enable !== "function") {
+        this.emitToolTrigger({
+          tool,
+          source,
+          groupId: options.groupId,
+          handled: false,
+          error: `Tool "${tool}" is not available on this map`,
+        });
+        return false;
+      }
+
+      handler.enable();
+      this.emitToolTrigger({
+        tool,
+        source,
+        groupId: options.groupId,
+        handled: true,
+      });
+      return true;
+    } catch (cause) {
+      const message = `Failed to activate tool "${tool}"`;
+      this._error(message, cause);
+      this.emitToolTrigger({
+        tool,
+        source,
+        groupId: options.groupId,
+        handled: false,
+        error: cause instanceof Error ? cause.message : message,
+      });
+      return false;
+    }
+  }
+
+  triggerTool(tool: ToolButtonName, options: ToolTriggerOptions = {}): boolean {
+    return this.activateTool(tool, options);
+  }
+
+  deactivateTool(options: ToolTriggerOptions = {}): boolean {
+    const source = options.source ?? "api";
+
+    try {
+      this.disableActiveToolHandlers();
+      this.toggleMeasurementModal(false);
+      this.emitToolTrigger({
+        tool: "select",
+        source,
+        groupId: options.groupId,
+        handled: true,
+      });
+      return true;
+    } catch (cause) {
+      const message = "Failed to deactivate active map tools";
+      this._error(message, cause);
+      this.emitToolTrigger({
+        tool: "select",
+        source,
+        groupId: options.groupId,
+        handled: false,
+        error: cause instanceof Error ? cause.message : message,
+      });
+      return false;
+    }
   }
 
   private resolveLeaflet(opts: MapControllerOptions): typeof BundledL {
@@ -243,15 +412,23 @@ export class MapController {
       }
       this.map = Lns.map(this.container, {
         zoomControl: true,
+        minZoom,
         preferCanvas,
       }).setView(center, zoom);
 
       // Add tile layer
-      this.setTileLayer({
-        urlTemplate: tileUrl,
-        attribution: tileAttribution ?? "",
-        maxZoom,
-      });
+      this.setTileLayer(
+        {
+          urlTemplate: tileUrl,
+          attribution: tileAttribution ?? "",
+          maxZoom,
+        },
+        {
+          onTileError: (error: unknown) => {
+            this.options.callbacks?.onTileError?.(error);
+          },
+        },
+      );
 
       // FeatureGroup for all drawn layers
       this.drawnItems = Lns.featureGroup().addTo(this.map);
@@ -267,6 +444,8 @@ export class MapController {
       this.applyLayerCakeToolbarIcon();
       this.applyMoveToolbarIcon();
 
+      this.restoreVisibleLayersFromStore();
+
       if (this.options.controls.ruler) {
         this.logger.debug("init:ruler", {
           available: typeof Lns.control.ruler === "function",
@@ -281,11 +460,14 @@ export class MapController {
         }
       }
 
+      this.applyToolButtonCustomizations();
+
       // Patch known Leaflet.draw bugs (e.g., readableArea strict-mode variable)
       this.patchLeafletDrawBugs();
 
       // Patch: reliably allow closing polygons by clicking the first vertex (Shadow DOM safe)
       this.installPolygonFinishPatch();
+      this.installVertexEditSurfaceMenu();
 
       // Ensure Leaflet measures the container after layout
       this.map.invalidateSize();
@@ -313,6 +495,7 @@ export class MapController {
 
   async destroy(): Promise<void> {
     try {
+      applyToolButtonConfig(this.container, null, { toolbarGroups: null });
       if (this.map) {
         this.map.off();
         this.map.remove();
@@ -337,6 +520,12 @@ export class MapController {
     }
     this.vertexMenuEl = null;
     this.vertexMenuCleanup = null;
+    try {
+      this.vertexEditSurfaceCleanup?.();
+    } catch {
+      // Ignore errors when cleaning up vertex edit surface listeners
+    }
+    this.vertexEditSurfaceCleanup = null;
 
     // Cleanup move confirmation UI if present
     try {
@@ -379,14 +568,8 @@ export class MapController {
     // Add new features into store + map layers
     const normalized = expandMultiGeometries(fc);
     const ids = this.store.add(normalized);
-    const layers = this.L.geoJSON(normalized);
-    let i = 0;
-    layers.eachLayer((layer: any) => {
-      (layer as any)._fid = ids[i] ?? ids[ids.length - 1];
-      this.drawnItems!.addLayer(layer);
-      this.installVertexContextMenu(layer);
-      i++;
-    });
+    const layers = this.createGeoJSONLayers(normalized);
+    this.addGeoJSONLayersToDrawnItems(layers);
 
     this.logger.debug("loadGeoJSON", {
       count: normalized.features.length,
@@ -409,21 +592,37 @@ export class MapController {
     if (!this.map || !this.drawnItems) return [];
     const normalized = expandMultiGeometries(fc);
     const ids = this.store.add(normalized);
-    const layers = this.L.geoJSON(normalized);
-    let i = 0;
-    layers.eachLayer((layer: any) => {
-      (layer as any)._fid = ids[i] ?? ids[ids.length - 1];
-      this.drawnItems!.addLayer(layer);
-      this.installVertexContextMenu(layer);
-      i++;
-    });
+    const layers = this.createGeoJSONLayers(normalized);
+    this.addGeoJSONLayersToDrawnItems(layers);
     return ids;
   }
 
   async updateFeature(id: string, feature: Feature): Promise<void> {
+    if (!this.store.has(id)) {
+      this.logger.warn("updateFeature:missing", { id });
+      return;
+    }
+
     this.store.update(id, feature);
-    // Replace layer visually if present: naive approach is to re-add a new layer, but for now we only update store;
-    // a later pass will sync layer geometries precisely.
+
+    if (!this.drawnItems) return;
+
+    this.drawnItems.eachLayer((layer: any) => {
+      if ((layer as any)._fid === id) {
+        this.drawnItems!.removeLayer(layer);
+      }
+    });
+
+    const layers = this.createGeoJSONLayers({
+      type: "FeatureCollection",
+      features: [{ ...feature, id }],
+    });
+
+    layers.eachLayer((layer: any) => {
+      (layer as any)._fid = id;
+      this.drawnItems!.addLayer(layer);
+      this.installVertexContextMenu(layer);
+    });
   }
 
   async removeFeature(id: string): Promise<void> {
@@ -653,7 +852,7 @@ export class MapController {
             },
           }
         : false,
-      marker: controls.marker ? {} : false,
+      marker: controls.marker ? this.buildMarkerDrawOptions() : false,
       move: controls.move
         ? {
             featureGroup: this.drawnItems as any,
@@ -682,6 +881,231 @@ export class MapController {
     }
 
     return { draw, edit } as any;
+  }
+
+  private buildMarkerDrawOptions(): Record<string, unknown> {
+    return this.markerIcon ? { icon: this.markerIcon } : {};
+  }
+
+  private createMarkerIcon(
+    config: NormalizedMarkerIconConfig | null,
+  ): BundledL.Icon | null {
+    if (!config) {
+      return null;
+    }
+
+    return this.L.icon({
+      iconUrl: config.iconUrl,
+      iconRetinaUrl: config.iconRetinaUrl,
+      shadowUrl: config.shadowUrl,
+      iconSize: config.iconSize,
+      iconAnchor: config.iconAnchor,
+      popupAnchor: config.popupAnchor,
+    });
+  }
+
+  private createDefaultMarkerIcon(): BundledL.Icon | null {
+    const DefaultIcon = this.L.Icon?.Default as
+      | (new () => BundledL.Icon)
+      | undefined;
+    return DefaultIcon ? new DefaultIcon() : null;
+  }
+
+  private createGeoJSONLayers(fc: FeatureCollection): BundledL.GeoJSON {
+    return this.L.geoJSON(fc, {
+      pointToLayer: (_feature, latlng) =>
+        this.markerIcon
+          ? this.L.marker(latlng, { icon: this.markerIcon })
+          : this.L.marker(latlng),
+      onEachFeature: (feature, layer) => {
+        const id = normalizeId(feature as Feature);
+        if (id) {
+          (layer as any)._fid = id;
+        }
+      },
+    });
+  }
+
+  private addGeoJSONLayersToDrawnItems(layers: BundledL.GeoJSON): void {
+    if (!this.drawnItems) {
+      return;
+    }
+
+    layers.eachLayer((layer: any) => {
+      this.drawnItems!.addLayer(layer);
+      this.installVertexContextMenu(layer);
+    });
+  }
+
+  private restoreVisibleLayersFromStore(): void {
+    if (!this.drawnItems) {
+      return;
+    }
+
+    const existing = this.store.toFeatureCollection();
+    if (existing.features.length === 0) {
+      return;
+    }
+
+    const layers = this.createGeoJSONLayers(existing);
+    this.addGeoJSONLayersToDrawnItems(layers);
+  }
+
+  private syncDrawMarkerOptions(): void {
+    const drawControl = this.drawControl as {
+      setDrawingOptions?: (options: {
+        marker: Record<string, unknown>;
+      }) => void;
+      options?: { draw?: { marker?: Record<string, unknown> } };
+    } | null;
+    if (!drawControl) {
+      return;
+    }
+
+    const markerOptions = this.buildMarkerDrawOptions();
+    drawControl.options ??= {};
+    drawControl.options.draw ??= {};
+    drawControl.options.draw.marker = markerOptions;
+    drawControl.setDrawingOptions?.({ marker: markerOptions });
+  }
+
+  private reapplyMarkerIconsToExistingLayers(): void {
+    if (!this.drawnItems) {
+      return;
+    }
+
+    const defaultIcon = this.markerIcon ? null : this.createDefaultMarkerIcon();
+    this.drawnItems.eachLayer((layer: any) => {
+      if (
+        typeof layer?.setIcon !== "function" ||
+        typeof layer?.getLatLng !== "function"
+      ) {
+        return;
+      }
+
+      if (this.markerIcon) {
+        layer.setIcon(this.markerIcon);
+        return;
+      }
+
+      if (defaultIcon) {
+        layer.setIcon(defaultIcon);
+      }
+    });
+  }
+
+  private applyToolButtonCustomizations(): void {
+    applyToolButtonConfig(this.container, this.toolButtonConfig, {
+      toolbarGroups: this.toolbarGroups,
+      onTrigger: (tool, context) => {
+        if (context.activate) {
+          this.activateTool(tool, {
+            source: context.source,
+            groupId: context.groupId,
+          });
+          return;
+        }
+
+        this.emitToolTrigger({
+          tool,
+          source: context.source,
+          groupId: context.groupId,
+          handled: true,
+        });
+      },
+    });
+    setTimeout(() => {
+      applyToolButtonConfig(this.container, this.toolButtonConfig, {
+        toolbarGroups: this.toolbarGroups,
+        onTrigger: (tool, context) => {
+          if (context.activate) {
+            this.activateTool(tool, {
+              source: context.source,
+              groupId: context.groupId,
+            });
+            return;
+          }
+
+          this.emitToolTrigger({
+            tool,
+            source: context.source,
+            groupId: context.groupId,
+            handled: true,
+          });
+        },
+      });
+    }, 0);
+  }
+
+  private emitToolTrigger(
+    detail: Omit<ToolTriggerEventDetail, "timestamp">,
+  ): void {
+    this.options.callbacks?.onToolTrigger?.({
+      ...detail,
+      timestamp: Date.now(),
+    });
+  }
+
+  private findLeafletDrawHandler(tool: ToolButtonName): any | null {
+    const drawModeByTool: Partial<Record<ToolButtonName, string>> = {
+      polygon: "polygon",
+      polyline: "polyline",
+      rectangle: "rectangle",
+      circle: "circle",
+      marker: "marker",
+      layerCake: "cake",
+      move: "move",
+    };
+    const editModeByTool: Partial<Record<ToolButtonName, string>> = {
+      edit: "edit",
+      delete: "remove",
+    };
+
+    const drawMode = drawModeByTool[tool];
+    if (drawMode) {
+      return this.drawControl?._toolbars?.draw?._modes?.[drawMode]?.handler;
+    }
+
+    const editMode = editModeByTool[tool];
+    if (editMode) {
+      return this.drawControl?._toolbars?.edit?._modes?.[editMode]?.handler;
+    }
+
+    return null;
+  }
+
+  private disableActiveToolHandlers(): void {
+    const toolbars = this.drawControl?._toolbars;
+    if (!toolbars) return;
+
+    Object.values(toolbars).forEach((toolbar: any) => {
+      Object.values(toolbar?._modes ?? {}).forEach((mode: any) => {
+        const handler = mode?.handler;
+        if (handler && typeof handler.disable === "function") {
+          handler.disable();
+        }
+      });
+    });
+  }
+
+  private triggerRulerTool(): boolean {
+    const ruler = this.rulerControl as
+      | (BundledL.Control.Ruler & {
+          _toggleMeasure?: () => void;
+        })
+      | null;
+    if (typeof ruler?._toggleMeasure === "function") {
+      ruler._toggleMeasure();
+      return true;
+    }
+
+    const button = this.container.querySelector<HTMLElement>(".leaflet-ruler");
+    if (button) {
+      button.click();
+      return true;
+    }
+
+    return false;
   }
 
   private applyLayerCakeToolbarIcon(): void {
@@ -1061,8 +1485,8 @@ export class MapController {
         if (!handler || !handler._enabled) return;
 
         const markers: any[] = handler._markers;
-        // Only activate after 4+ vertices to avoid premature closures on early points
-        if (!Array.isArray(markers) || markers.length < 4) return;
+        // Only activate once a polygon can legally close.
+        if (!Array.isArray(markers) || markers.length < 3) return;
 
         const firstLL = markers[0]?.getLatLng?.();
         if (!firstLL) return;
@@ -1384,6 +1808,77 @@ export class MapController {
 
   // -------- Vertex deletion context menu --------
 
+  private installVertexEditSurfaceMenu(): void {
+    if (!this.map) return;
+
+    try {
+      this.vertexEditSurfaceCleanup?.();
+    } catch {
+      // Ignore errors when replacing vertex edit surface listeners
+    }
+
+    const mapContainer = this.map.getContainer();
+    const handleContext = (event: MouseEvent) => {
+      this.openNearestEditableVertexMenuFromDomEvent(event);
+    };
+    const handleClick = (event: MouseEvent) => {
+      if (event.ctrlKey || event.metaKey) {
+        this.openNearestEditableVertexMenuFromDomEvent(event);
+      }
+    };
+
+    mapContainer.addEventListener("contextmenu", handleContext, {
+      capture: true,
+    });
+    mapContainer.addEventListener("click", handleClick, { capture: true });
+
+    this.vertexEditSurfaceCleanup = () => {
+      mapContainer.removeEventListener("contextmenu", handleContext, {
+        capture: true,
+      });
+      mapContainer.removeEventListener("click", handleClick, { capture: true });
+    };
+  }
+
+  private openNearestEditableVertexMenuFromDomEvent(event: MouseEvent): void {
+    try {
+      if (!this.map || !this.drawnItems) return;
+
+      const containerPt = this.map.mouseEventToContainerPoint(event);
+      const latlng = this.map.containerPointToLatLng(containerPt);
+      let match: { layer: any; pathIndex: number; vertexIndex: number } | null =
+        null;
+
+      this.drawnItems.eachLayer((layer: any) => {
+        if (match) return;
+
+        const editing = (layer as any).editing;
+        const isEditing =
+          editing && typeof editing.enabled === "function" && editing.enabled();
+        if (!isEditing) return;
+
+        const nearest = this.findNearestVertex(layer, latlng, 16);
+        if (!nearest) return;
+
+        match = { layer, ...nearest };
+      });
+
+      if (!match) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      this.showVertexMenu(containerPt, async () => {
+        await this.deleteVertex(
+          match!.layer,
+          match!.pathIndex,
+          match!.vertexIndex,
+        );
+      });
+    } catch (err) {
+      this._error("openNearestEditableVertexMenuFromDomEvent", err);
+    }
+  }
+
   private installVertexContextMenu(layer: any): void {
     if (!layer || typeof layer.on !== "function") return;
     const handleContext = (evt: any) => {
@@ -1499,8 +1994,11 @@ export class MapController {
       };
 
       const onDoc = (e: any) => {
-        // Close if clicking elsewhere
-        if (!menu.contains(e.target)) cleanup();
+        // Close if clicking elsewhere. Shadow DOM retargets events to the
+        // host, so use the composed path before falling back to contains().
+        const path =
+          typeof e.composedPath === "function" ? e.composedPath() : [];
+        if (!path.includes(menu) && !menu.contains(e.target)) cleanup();
       };
 
       window.addEventListener("pointerdown", onDoc, { capture: true });

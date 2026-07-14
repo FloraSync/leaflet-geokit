@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>GeoKit Guardrail Harness</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+
+      body {
+        padding: 16px;
+        box-sizing: border-box;
+        font-family: sans-serif;
+        background: #f4f7f1;
+      }
+
+      #map-shell {
+        height: 600px;
+        width: 100%;
+        border: 1px solid #d7ddd1;
+        border-radius: 16px;
+        overflow: hidden;
+        background: white;
+      }
+
+      leaflet-geokit {
+        display: block;
+        height: 100%;
+        width: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map-shell">
+      <leaflet-geokit
+        id="guardrail-map"
+        draw-polygon
+        draw-rectangle
+        edit-features
+        delete-features
+        draw-ruler
+      ></leaflet-geokit>
+    </div>
+
+    <script type="module">
+      const params = new URLSearchParams(window.location.search);
+      const map = document.getElementById("guardrail-map");
+
+      map?.setAttribute("latitude", params.get("latitude") ?? "39.7392");
+      map?.setAttribute("longitude", params.get("longitude") ?? "-104.9903");
+      map?.setAttribute("zoom", params.get("zoom") ?? "11");
+
+      const metrics = {
+        mountStart: performance.now(),
+        containerVisibleAt: null,
+        readyAt: null,
+        createdAt: null,
+        syncAt: null,
+        syncedFeatureCount: null,
+        tileProviderErrors: [],
+        longTasks: [],
+      };
+      window.__guardrailMetrics = metrics;
+
+      const watchVisibility = () => {
+        const container = map?.shadowRoot?.querySelector(".leaflet-container");
+        if (container instanceof HTMLElement) {
+          const rect = container.getBoundingClientRect();
+          if (
+            metrics.containerVisibleAt === null &&
+            rect.width > 0 &&
+            rect.height > 0
+          ) {
+            metrics.containerVisibleAt = performance.now();
+            return;
+          }
+        }
+        requestAnimationFrame(watchVisibility);
+      };
+      watchVisibility();
+
+      map?.addEventListener(
+        "leaflet-draw:ready",
+        () => {
+          metrics.readyAt = performance.now();
+        },
+        { once: true },
+      );
+
+      map?.addEventListener("tile-provider-error", (event) => {
+        metrics.tileProviderErrors.push({
+          at: performance.now(),
+          detail: event instanceof CustomEvent ? event.detail : null,
+        });
+      });
+
+      if ("PerformanceObserver" in window) {
+        try {
+          const observer = new PerformanceObserver((list) => {
+            for (const entry of list.getEntries()) {
+              metrics.longTasks.push({
+                start: entry.startTime,
+                duration: entry.duration,
+              });
+            }
+          });
+          observer.observe({ entryTypes: ["longtask"] });
+        } catch {
+          // Ignore unsupported longtask observation.
+        }
+      }
+
+      await import("/src/index.ts");
+    </script>
+  </body>
+</html>

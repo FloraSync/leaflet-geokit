@@ -71,6 +71,7 @@ The dev harness is a multi-page environment that allows you to prototype and tes
 - **Bundled WC**: Standard web component with all dependencies included.
 - **External WC**: Web component using external Leaflet/Draw from a CDN.
 - **Preact / React**: First-class wrappers for Preact and React, testing both bundled and external dependency models.
+- **Icon Customization**: Deterministic blank-tile comparison page for default versus custom marker assets, used by the focused Playwright visual gate.
 
 Use the navigation bar at the top of the harness to switch between these environments. This is the best way to verify changes across different framework integrations and dependency models.
 
@@ -182,11 +183,13 @@ Scripts (see [package.json](package.json))
 - npm run dev — Vite dev server
 - npm run build — type declarations + Vite build
 - npm run build:analyze — generate per-target bundle reports in dist/stats/\*.html
-- npm run test:unit — Vitest (happy-dom)
+- npm run test:unit — full Vitest (happy-dom) suite with coverage thresholds
+- npm run test:unit:focused -- tests/path.spec.ts — focused Vitest gate without global coverage thresholds; use this for narrow handoffs where the full suite is not the acceptance gate
 - npm run typecheck — TypeScript noEmit
 - npm run lint — ESLint (strict TS rules)
 - npm run format — Prettier write
-- npm run test:e2e — Playwright (currently a minimal smoke test under e2e/)
+- npm run test:e2e — Playwright coverage for harness smoke, draw runtime, toolbar hooks, and component integration under e2e/
+- npm run test:e2e:polling -- e2e/icon-customization.spec.ts — Playwright with `CHOKIDAR_USEPOLLING=true`; use this on dev hosts that hit Vite `ENOSPC` watcher exhaustion before the browser tests start
 
 Optional workflow tooling
 
@@ -324,16 +327,99 @@ Control editing and deletion of existing features:
 <leaflet-geokit prefer-canvas="false"></leaflet-geokit>
 ```
 
+#### Marker Icon Customization
+
+Customize the marker asset used for both loaded `Point`/`MultiPoint` features and
+new markers created through `draw-marker`:
+
+- **`marker-icon-url`** (string): Required to enable custom markers. Supports absolute URLs, relative URLs, `data:` URLs, and `blob:` URLs.
+- **`marker-icon-retina-url`** (string, optional): High-DPI icon URL. Falls back to `marker-icon-url` when omitted or invalid.
+- **`marker-shadow-url`** (string, optional): Optional marker shadow URL. Dropped when omitted or invalid.
+- **`marker-icon-size`** (string tuple, optional): Icon size as `"width,height"`. Default: `"25,41"`.
+- **`marker-icon-anchor`** (string tuple, optional): Anchor point as `"x,y"`. Default: `"12,41"`.
+- **`marker-popup-anchor`** (string tuple, optional): Popup anchor as `"x,y"`. Default: `"1,-34"`.
+
+```html
+<leaflet-geokit
+  draw-marker
+  marker-icon-url="/icons/field-pin.svg"
+  marker-icon-retina-url="/icons/field-pin@2x.svg"
+  marker-icon-size="32,40"
+  marker-icon-anchor="16,40"
+  marker-popup-anchor="0,-34"
+></leaflet-geokit>
+```
+
+Behavior notes:
+
+- `marker-icon-url` is the activation switch. If it is missing, empty, or invalid, GeoKit keeps the default Leaflet marker.
+- Invalid `marker-icon-retina-url`, `marker-shadow-url`, or tuple attributes degrade individually to safe defaults instead of disabling the map.
+- Relative URLs resolve against `document.baseURI`, so app-served static assets work without extra rewriting.
+- Attribute normalization failures emit [`leaflet-draw:error`](src/types/events.ts:42) with a non-fatal message so hosts can log or surface the problem.
+
+Asset guidance:
+
+- Prefer app-bundled assets, same-origin static files, or vetted `data:`/`blob:` URLs.
+- Avoid passing arbitrary user-supplied or third-party tracking URLs directly into the icon attributes. The browser will fetch those assets at render time, which can leak client network metadata and make the map nondeterministic offline or in tests.
+
 #### Theming & Styling
 
 Customize the visual appearance:
 
 - **`theme-url`** (string, optional): External CSS stylesheet URL to inject into Shadow DOM
 - **`themeCss`** (property only): Inline CSS strings for custom styling
+- **`tool-button-config`** (JSON string, optional): Per-tool toolbar button config for custom icons, labels, and theme classes
+- **`toolbar-groups`** (JSON array, optional): Additional map toolbar groups with independent tool sets and corner placement
 
 ```html
 <leaflet-geokit theme-url="/css/custom-map-theme.css"></leaflet-geokit>
 ```
+
+```html
+<leaflet-geokit
+  draw-polygon
+  draw-marker
+  tool-button-config='{
+    "polygon": {
+      "iconUrl": "/icons/bed-boundary.svg",
+      "title": "Draw bed boundary",
+      "ariaLabel": "Draw bed boundary tool",
+      "popover": {
+        "title": "Boundary",
+        "body": "Trace the active irrigation area and close on the first point."
+      },
+      "className": "fs-map-tool fs-map-tool--primary"
+    },
+    "marker": {
+      "iconUrl": "/icons/field-marker.svg",
+      "title": "Place marker"
+    }
+  }'
+></leaflet-geokit>
+```
+
+```html
+<leaflet-geokit
+  draw-polygon
+  toolbar-groups='[
+    {
+      "id": "irrigation-draw",
+      "position": "bottomright",
+      "tools": ["polygon", "select"]
+    },
+    {
+      "id": "irrigation-style",
+      "position": "topright",
+      "tools": ["layerStyle"]
+    }
+  ]'
+></leaflet-geokit>
+```
+
+GeoKit also tags rendered Leaflet controls with stable `data-geokit-tool`
+attributes, such as `data-geokit-tool="polygon"` and
+`data-geokit-tool="layer-cake"`, so `theme-url` and `themeCss` can target
+buttons without depending on Leaflet's sprite class names.
 
 #### Debugging & Development
 
@@ -370,13 +456,183 @@ map.toolHooks = {
 map.toolEventEmitter = {
   emit: (eventName, detail) => console.log(eventName, detail),
 }; // optional integrated tool event emitter
+map.toolButtonConfig = {
+  polygon: {
+    iconUrl: new URL("./bed-boundary.svg", import.meta.url).toString(),
+    iconHtml: '<svg viewBox="0 0 20 20"><path d="M10 2 3 18h14z" /></svg>',
+    title: "Draw bed boundary",
+    ariaLabel: "Draw bed boundary tool",
+    iconSize: [20, 20],
+    popover: {
+      title: "Boundary",
+      body: "Trace the active irrigation area and close on the first point.",
+    },
+    className: "fs-map-tool fs-map-tool--primary",
+  },
+  layerCake: {
+    iconUrl: new URL("./layer-cake.svg", import.meta.url).toString(),
+    title: "Build layered zone",
+  },
+}; // optional draw/ruler toolbar button customization
+map.toolbarGroups = [
+  {
+    id: "irrigation-draw",
+    position: "bottomright",
+    tools: ["polygon", "select"],
+    ariaLabel: "Irrigation drawing tools",
+  },
+  {
+    id: "irrigation-style",
+    position: "topright",
+    tools: ["layerStyle"],
+    ariaLabel: "Irrigation layer style",
+  },
+]; // optional additional map toolbar groups
 
 // Theming
 map.themeCss = `
   .leaflet-container { font-family: "Inter", sans-serif; }
-  .leaflet-draw-toolbar a { border-radius: 8px; }
+  [data-geokit-tool] { border-radius: 8px; }
+  [data-geokit-tool="polygon"].fs-map-tool--primary { background: #f7fff5; }
 `;
 ```
+
+#### Programmatic Tool Buttons, Popovers, and Groups
+
+The bundled and external entrypoints export `ToolButtonConfig` for host apps
+that need branded, domain-specific map controls. Hosts can provide PNG/SVG URLs,
+trusted inline SVG/HTML (`iconHtml`), or a `renderIcon` function when assigning
+the config as a JavaScript property. `popover` adds point-of-action guidance to
+default Leaflet buttons and configured toolbar-group buttons.
+
+```ts
+import "@florasync/leaflet-geokit";
+import type {
+  ToolButtonConfig,
+  ToolToolbarGroupConfig,
+} from "@florasync/leaflet-geokit";
+
+const toolButtons: ToolButtonConfig = {
+  polygon: {
+    iconUrl: new URL("./bed-boundary.svg", import.meta.url).toString(),
+    title: "Draw bed boundary",
+    ariaLabel: "Draw bed boundary tool",
+    iconSize: [20, 20],
+    popover: {
+      title: "Irrigation boundary",
+      body: "Draw the wetted area. Close on the first point before saving.",
+    },
+    className: "fs-map-tool fs-map-tool--primary",
+  },
+  marker: {
+    iconUrl: new URL("./field-marker.svg", import.meta.url).toString(),
+    title: "Place field marker",
+  },
+};
+
+const toolbarGroups: ToolToolbarGroupConfig[] = [
+  {
+    id: "irrigation-draw",
+    position: "bottomright",
+    tools: ["polygon", "select"],
+    ariaLabel: "Irrigation drawing tools",
+  },
+  {
+    id: "irrigation-style",
+    position: "topright",
+    tools: ["layerStyle"],
+    ariaLabel: "Irrigation layer style",
+  },
+];
+
+map!.toolButtonConfig = toolButtons;
+map!.toolbarGroups = toolbarGroups;
+```
+
+Supported tool keys are `polygon`, `polyline`, `rectangle`, `circle`, `marker`,
+`layerCake`, `move`, `select`, `edit`, `delete`, `ruler`,
+`measurementSettings`, and `layerStyle`. `select` disables active draw/edit
+handlers; `layerStyle` emits a public trigger event for host-owned style panels.
+
+`map.toolButtonConfig` takes precedence over the `tool-button-config` attribute;
+`map.toolbarGroups` takes precedence over the `toolbar-groups` attribute. Set a
+property to `undefined` to return to the attribute, or `null` to clear the
+programmatic config while keeping stable `data-geokit-tool` hooks.
+
+#### External Tool Triggers
+
+Outside DOM controls can activate any configured tool through the public custom
+element API:
+
+```ts
+const map = document.querySelector("leaflet-geokit");
+
+await map!.activateTool("polygon", {
+  source: "external-irrigation-button",
+  groupId: "field-panel",
+});
+
+await map!.deactivateTool({
+  source: "external-irrigation-cancel",
+  groupId: "field-panel",
+});
+
+map!.dispatchEvent(
+  new CustomEvent("leaflet-geokit:activate-tool", {
+    detail: {
+      tool: "polygon",
+      source: "event",
+      groupId: "field-panel",
+    },
+  }),
+);
+```
+
+`triggerTool(tool, options)` remains available as a back-compat alias for
+`activateTool(tool, options)`. `deactivateTool(options)` disables active
+draw/edit handlers and returns the map to `select` mode without requiring host
+code to reach into Leaflet.draw toolbar internals. The legacy
+`leaflet-geokit:trigger-tool` event also remains supported; pass
+`{ action: "deactivate" }` or `{ active: false }` in its detail to use it as a
+deactivate request.
+
+GeoKit emits `leaflet-geokit:tool-trigger-requested`, then either
+`leaflet-geokit:tool-triggered` or
+`leaflet-geokit:tool-trigger-failed`. Event detail includes `tool`, `source`,
+`groupId`, `handled`, `timestamp`, and optional `error`.
+
+See `irrigation-draw-mode.html` for a working integration demo with custom
+icons, popovers, two toolbar groups, an external panel button, and real polygon
+draw activation.
+
+#### Programmatic Marker Icon Override
+
+The bundled and external entrypoints both export `MarkerIconConfig`:
+
+```ts
+import "@florasync/leaflet-geokit";
+import type { MarkerIconConfig } from "@florasync/leaflet-geokit";
+
+const map = document.querySelector("leaflet-geokit");
+
+const fieldPin: MarkerIconConfig = {
+  iconUrl: new URL("./field-pin.svg", import.meta.url).toString(),
+  iconRetinaUrl: new URL("./field-pin@2x.svg", import.meta.url).toString(),
+  iconSize: [32, 40],
+  iconAnchor: [16, 40],
+  popupAnchor: [0, -34],
+};
+
+map!.markerIconConfig = fieldPin;
+```
+
+Precedence and fallback rules:
+
+- `map.markerIconConfig` takes precedence over all `marker-icon-*` HTML attributes.
+- Set `map.markerIconConfig = undefined` to return to attribute-driven configuration.
+- Set `map.markerIconConfig = null` to force default Leaflet markers even if `marker-icon-*` attributes remain on the element.
+- Invalid `iconUrl` disables the override and falls back to default markers. Invalid secondary fields keep the override active but fall back field-by-field to the documented defaults.
+- Existing point features and future `draw-marker` placements both reuse the same normalized icon contract, so loaded data and interactive drawing stay visually consistent.
 
 ### Integrated Tool Hooks & Event Emitter
 
@@ -529,6 +785,7 @@ await map.loadGeoJSON({
 
 - Adds features to existing map data (does not clear)
 - Returns array of assigned stable feature IDs
+- Expands `Multi*` and `GeometryCollection` inputs into one single-geometry feature/id per child part
 - Triggers [`leaflet-draw:ingest`](src/types/events.ts:51) event before adding
 
 ```javascript
@@ -684,6 +941,7 @@ map.addEventListener("leaflet-draw:ready", (e) => {
 **[`leaflet-draw:error`](src/types/events.ts:42)**
 
 - Fired when errors occur (fetch failures, parse errors, etc.)
+- Also used for non-fatal marker icon normalization warnings before GeoKit falls back to defaults
 - Detail: `{ message: string, cause?: unknown }`
 
 ```javascript
@@ -832,6 +1090,7 @@ The component guarantees stable, persistent feature IDs that survive editing ope
 1. **Explicit IDs**: If a feature has `feature.id` property, it's preserved
 2. **Property IDs**: If no `feature.id` but has `properties.id`, that's used
 3. **Generated IDs**: Otherwise, a UUID is generated and stored in `properties.id`
+4. **Multi-geometry normalization**: `MultiPoint`, `MultiLineString`, `MultiPolygon`, and `GeometryCollection` inputs are expanded into single-geometry features. If the source feature already had an ID, each child receives a stable derived ID such as `bed-1::0` and `bed-1::1`
 
 ```javascript
 // Features maintain their IDs through edit cycles

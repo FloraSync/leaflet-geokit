@@ -1,6 +1,6 @@
 {
   "name": "@florasync/leaflet-geokit",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Framework-agnostic Leaflet + Leaflet.draw web component with TypeScript, verbose logging, and tests.",
   "type": "module",
   "main": "./dist/leaflet-geokit.umd.js",
@@ -17,7 +17,7 @@
       "import": "./dist/django/index.js"
     },
     "./external": {
-      "types": "./dist/types/src/external.d.ts",
+      "types": "./dist/types/external.d.ts",
       "import": "./dist/leaflet-geokit.external.es.js"
     },
     "./preact": {
@@ -59,7 +59,7 @@
   "homepage": "https://github.com/FloraSync/leaflet-geokit#readme",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -p tsconfig.json --emitDeclarationOnly && vite build && vite build -c vite.config.external.ts && vite build -c vite.config.django.ts && vite build -c vite.config.preact.ts && vite build -c vite.config.preact-bundled.ts && vite build -c vite.config.react.ts && vite build -c vite.config.react-bundled.ts",
+    "build": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json --emitDeclarationOnly && tsc-alias -p tsconfig.build.json && vite build && vite build -c vite.config.external.ts && vite build -c vite.config.django.ts && vite build -c vite.config.preact.ts && vite build -c vite.config.preact-bundled.ts && vite build -c vite.config.react.ts && vite build -c vite.config.react-bundled.ts",
     "build:analyze": "npm run build:analyze:main && npm run build:analyze:external && npm run build:analyze:django && npm run build:analyze:preact && npm run build:analyze:preact-bundled && npm run build:analyze:react && npm run build:analyze:react-bundled",
     "build:analyze:main": "BUNDLE_ANALYZE=1 BUNDLE_ANALYZE_REPORT=dist/stats/main.html vite build",
     "build:analyze:external": "BUNDLE_ANALYZE=1 BUNDLE_ANALYZE_REPORT=dist/stats/external.html vite build -c vite.config.external.ts",
@@ -76,8 +76,10 @@
     "prettier:check": "prettier --check .",
     "test": "npm run test:unit && npm run test:e2e",
     "test:unit": "vitest run",
+    "test:unit:focused": "vitest run --coverage.enabled=false",
     "test:unit:watch": "vitest",
     "test:e2e": "playwright test",
+    "test:e2e:polling": "CHOKIDAR_USEPOLLING=true playwright test",
     "e2e:install": "playwright install --with-deps",
     "prepare": "husky",
     "spec-kitty:init": "spec-kitty init . --ai claude",
@@ -150,6 +152,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "rollup-plugin-visualizer": "^6.0.5",
+    "tsc-alias": "^1.8.17",
     "typescript": "^5.5.4",
     "vite": "^7.1.4",
     "vitest": "^4.0.18"

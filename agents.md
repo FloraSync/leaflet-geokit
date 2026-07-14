@@ -60,7 +60,7 @@ We don't just write code; we test it thoroughly. Quality assurance is a first-cl
 
 - **Continuous Integration (CI):** Every push/PR triggers a GitHub Actions workflow (see [.github/workflows/ci.yml](.github/workflows/ci.yml)). It runs linting, type checks, and the test suite on Node versions 20 and 24\. In short, if your code doesn't pass our automated checks, it won't get merged. So, it's best to run the same checks locally (as mentioned above) before you push.
 
-- **End-to-End (E2E) Tests:** Currently, we have plans to add Playwright or similar for e2e tests (especially to cover user interactions like drawing shapes and deleting vertices). If you see references to e2e, know that it's on our roadmap. For now, most testing is unit-level, with manual testing via the dev harness for integration behavior.
+- **End-to-End (E2E) Tests:** The repo has active Playwright coverage for interactive map flows (drawing, toolbar actions, and edit operations). Prefer `npm run test:e2e` for full coverage, or `npx playwright test --project=leaflet` for targeted local runs.
 
 - **Write Tests for Your Code:** As a rule of thumb, whenever code is changed or added, accompanying tests should be updated. If you're adding a new utility function, write a quick unit test for it. If you found a bug, write a test that fails before your fix and passes after – this not only proves the fix works, but also guards against regressions down the line. I'm here to assist with writing tests too, so we can tag-team on that\!
 

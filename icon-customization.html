@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>@florasync/leaflet-geokit — Icon Customization</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      :root {
+        color-scheme: light;
+        --page-bg: #f4f0e8;
+        --page-ink: #21312a;
+        --page-ink-soft: #506358;
+        --line: rgba(33, 49, 42, 0.12);
+        --card-bg: rgba(255, 252, 247, 0.94);
+        --card-shadow: 0 20px 44px rgba(44, 63, 53, 0.12);
+        --accent: #cf6b1e;
+        --accent-soft: rgba(207, 107, 30, 0.12);
+        --moss: #456652;
+        --moss-soft: rgba(69, 102, 82, 0.12);
+      }
+
+      html,
+      body {
+        min-height: 100%;
+      }
+
+      body {
+        margin: 0;
+        color: var(--page-ink);
+        font-family:
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        background:
+          radial-gradient(
+            circle at top left,
+            rgba(207, 107, 30, 0.1),
+            transparent 32%
+          ),
+          linear-gradient(180deg, #fbf7f1 0%, var(--page-bg) 100%);
+      }
+
+      .harness-nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 8px 12px;
+        background: #e8e8e8;
+        border-bottom: 1px solid #ccc;
+        font-size: 13px;
+        align-items: center;
+      }
+
+      .harness-nav a {
+        color: #0066cc;
+        text-decoration: none;
+        padding: 2px 8px;
+        border-radius: 4px;
+      }
+
+      .harness-nav a:hover {
+        background: rgba(0, 102, 204, 0.1);
+      }
+
+      .harness-nav a.active {
+        font-weight: 600;
+        color: #333;
+        background: #fff;
+        pointer-events: none;
+        border: 1px solid #ccc;
+      }
+
+      .harness-nav .nav-divider {
+        width: 1px;
+        height: 16px;
+        background: #ccc;
+        margin: 0 4px;
+      }
+
+      .page-shell {
+        padding: 24px;
+        display: grid;
+        gap: 24px;
+      }
+
+      .page-header {
+        display: grid;
+        grid-template-columns: minmax(0, 1.3fr) minmax(280px, 0.8fr);
+        gap: 20px;
+        align-items: start;
+      }
+
+      .page-header__intro,
+      .page-header__summary,
+      .icon-card {
+        border: 1px solid var(--line);
+        background: var(--card-bg);
+        box-shadow: var(--card-shadow);
+        border-radius: 24px;
+      }
+
+      .page-header__intro,
+      .page-header__summary {
+        padding: 22px 24px;
+      }
+
+      .eyebrow,
+      .icon-card__eyebrow {
+        margin: 0 0 8px;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        font-size: 12px;
+        color: var(--moss);
+        font-weight: 700;
+      }
+
+      h1,
+      h2 {
+        margin: 0;
+        line-height: 1.05;
+      }
+
+      h1 {
+        font-size: clamp(2.1rem, 3vw, 3.2rem);
+      }
+
+      h2 {
+        font-size: 1.55rem;
+      }
+
+      .page-header__intro p,
+      .page-header__summary p,
+      .icon-card__copy p,
+      .icon-card__meta dd {
+        color: var(--page-ink-soft);
+        line-height: 1.5;
+      }
+
+      #harness-status {
+        margin: 18px 0 0;
+        padding: 12px 14px;
+        border-radius: 999px;
+        background: var(--moss-soft);
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      #harness-status[data-ready="ready"] {
+        background: rgba(31, 135, 79, 0.12);
+        color: #1f874f;
+      }
+
+      #harness-status[data-ready="error"] {
+        background: rgba(177, 47, 26, 0.12);
+        color: #b12f1a;
+      }
+
+      .page-header__summary ul {
+        margin: 14px 0 0;
+        padding-left: 18px;
+        color: var(--page-ink-soft);
+        line-height: 1.6;
+      }
+
+      .comparison-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 20px;
+      }
+
+      .icon-card {
+        display: grid;
+        grid-template-rows: auto 1fr;
+        gap: 18px;
+        padding: 22px;
+      }
+
+      .icon-card[data-state="loading"] {
+        opacity: 0.86;
+      }
+
+      .icon-card[data-state="error"] {
+        border-color: rgba(177, 47, 26, 0.32);
+      }
+
+      .icon-card__copy {
+        display: grid;
+        gap: 14px;
+      }
+
+      .icon-card__meta {
+        margin: 0;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .icon-card__meta div {
+        padding: 12px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.75);
+        border: 1px solid rgba(33, 49, 42, 0.08);
+      }
+
+      .icon-card__meta dt {
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--moss);
+        font-weight: 700;
+        margin-bottom: 6px;
+      }
+
+      .icon-card__meta dd {
+        margin: 0;
+        font-size: 14px;
+      }
+
+      .icon-card__asset {
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 12px;
+        width: fit-content;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: #82400d;
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .icon-card__asset img {
+        width: 32px;
+        height: auto;
+        display: block;
+      }
+
+      .map-host {
+        min-height: 360px;
+        border-radius: 22px;
+        overflow: hidden;
+        border: 1px solid rgba(33, 49, 42, 0.1);
+        background: linear-gradient(180deg, #f8fbf9 0%, #edf3ef 100%);
+      }
+
+      leaflet-geokit {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+
+      #harness-error {
+        margin: 0;
+        padding: 14px 16px;
+        border-radius: 18px;
+        background: rgba(177, 47, 26, 0.12);
+        color: #b12f1a;
+        border: 1px solid rgba(177, 47, 26, 0.18);
+        font-weight: 600;
+      }
+
+      @media (max-width: 1080px) {
+        .page-header,
+        .comparison-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 720px) {
+        .page-shell {
+          padding: 16px;
+        }
+
+        .page-header__intro,
+        .page-header__summary,
+        .icon-card {
+          padding: 18px;
+          border-radius: 20px;
+        }
+
+        .icon-card__meta {
+          grid-template-columns: 1fr;
+        }
+
+        .map-host {
+          min-height: 300px;
+        }
+      }
+    </style>
+  </head>
+  <body data-ready="loading">
+    <nav class="harness-nav">
+      <a href="/">Bundled WC</a>
+      <a href="/external.html">External WC</a>
+      <span class="nav-divider"></span>
+      <a href="/preact.html">Preact</a>
+      <a href="/react.html">React</a>
+      <span class="nav-divider"></span>
+      <a href="/preact-bundled.html">Preact (Bundled)</a>
+      <a href="/react-bundled.html">React (Bundled)</a>
+      <span class="nav-divider"></span>
+      <a href="/icon-customization.html" class="active">Icon Customization</a>
+      <span class="nav-divider"></span>
+      <a href="/hooks.html">Tool Hooks</a>
+      <a href="/tool-events.html">Tool Events</a>
+    </nav>
+
+    <div class="page-shell">
+      <header class="page-header">
+        <section class="page-header__intro">
+          <p class="eyebrow">Deterministic Visual Gate</p>
+          <h1>Marker icon customization</h1>
+          <p>
+            This harness keeps tiles local, seeds stable point fixtures, and
+            puts the default Leaflet marker next to a custom SVG marker so
+            Playwright can catch broken asset loads, sizing regressions, and
+            silent fallbacks to the stock icon.
+          </p>
+          <p id="harness-status" data-ready="loading">
+            Loading blank-tile comparison maps…
+          </p>
+        </section>
+
+        <aside class="page-header__summary">
+          <p class="eyebrow">What This Page Proves</p>
+          <h2>
+            Loaded markers and draw markers stay on the same icon contract.
+          </h2>
+          <ul>
+            <li>The default reference map keeps the bundled Leaflet marker.</li>
+            <li>
+              The custom reference map seeds a larger SVG icon through marker
+              attributes.
+            </li>
+            <li>
+              The custom map keeps `draw-marker` active so Playwright can place
+              a second marker and verify the draw tool uses the same asset.
+            </li>
+          </ul>
+        </aside>
+      </header>
+
+      <main id="icon-customization-comparison" class="comparison-grid">
+        <article id="default-card" class="icon-card" data-state="loading">
+          <div class="icon-card__copy">
+            <div>
+              <p class="icon-card__eyebrow">Default Marker</p>
+              <h2>Bundled Leaflet baseline</h2>
+            </div>
+            <p>
+              One seeded point rendered with the stock Leaflet marker so the
+              visual diff has a stable fallback reference.
+            </p>
+            <dl class="icon-card__meta">
+              <div>
+                <dt>Expected size</dt>
+                <dd>25 × 41 px</dd>
+              </div>
+              <div>
+                <dt>Interaction</dt>
+                <dd>Read-only fixture</dd>
+              </div>
+            </dl>
+          </div>
+          <div id="default-map-host" class="map-host"></div>
+        </article>
+
+        <article id="custom-card" class="icon-card" data-state="loading">
+          <div class="icon-card__copy">
+            <div>
+              <p class="icon-card__eyebrow">Custom Marker</p>
+              <h2>SVG asset override</h2>
+            </div>
+            <p>
+              The seeded point and any marker drawn from the toolbar should use
+              the same imported SVG asset, not the default Leaflet sprite.
+            </p>
+            <div class="icon-card__asset">
+              <img
+                id="custom-asset-preview"
+                alt="Custom marker asset preview"
+              />
+              Custom marker asset preview
+            </div>
+            <dl class="icon-card__meta">
+              <div>
+                <dt>Expected size</dt>
+                <dd>42 × 56 px</dd>
+              </div>
+              <div>
+                <dt>Interaction</dt>
+                <dd>Marker draw tool enabled</dd>
+              </div>
+            </dl>
+          </div>
+          <div id="custom-map-host" class="map-host"></div>
+        </article>
+      </main>
+
+      <p id="harness-error" hidden></p>
+    </div>
+
+    <script type="module" src="/e2e/icon-customization-harness.ts"></script>
+  </body>
+</html>

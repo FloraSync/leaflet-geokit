@@ -24,7 +24,7 @@ describe("framework runtime externalization", () => {
     const externalExport = (pkg as any).exports?.["./external"];
     expect(externalExport).toBeTruthy();
     expect(externalExport.import).toBe("./dist/leaflet-geokit.external.es.js");
-    expect(externalExport.types).toBe("./dist/types/src/external.d.ts");
+    expect(externalExport.types).toBe("./dist/types/external.d.ts");
   });
 
   it("external build config marks Leaflet stack as external", () => {

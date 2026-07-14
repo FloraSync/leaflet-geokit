@@ -94,6 +94,585 @@ describe("MapController", () => {
     controller.destroy();
   });
 
+  it("adds a configured marker icon to draw marker options", () => {
+    const controller = new MapController({
+      ...opts,
+      markerIconConfig: {
+        iconUrl: "https://example.com/custom-pin.svg",
+        iconRetinaUrl: "https://example.com/custom-pin@2x.svg",
+        iconSize: [32, 40],
+        iconAnchor: [16, 40],
+        popupAnchor: [0, -34],
+      },
+    });
+    const options = (controller as any).buildDrawOptions(opts.controls, false);
+
+    expect(options.draw.marker).toHaveProperty("icon");
+
+    controller.destroy();
+  });
+
+  it("keeps visible layers synchronized when a feature is updated", async () => {
+    const controller = new MapController(opts);
+    await controller.init();
+
+    const [id] = await controller.addFeatures({
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          id: "bed-1",
+          properties: { name: "Original bed" },
+          geometry: {
+            type: "Point",
+            coordinates: [0, 0],
+          },
+        },
+      ],
+    });
+
+    expect(id).toBe("bed-1");
+    expect((controller as any).drawnItems.getLayers()).toHaveLength(1);
+
+    await controller.updateFeature("bed-1", {
+      type: "Feature",
+      properties: { name: "Moved bed" },
+      geometry: {
+        type: "Point",
+        coordinates: [1, 2],
+      },
+    });
+
+    const layers = (controller as any).drawnItems.getLayers() as any[];
+    expect(layers).toHaveLength(1);
+    expect(layers[0]._fid).toBe("bed-1");
+    expect(layers[0].getLatLng()).toMatchObject({ lat: 2, lng: 1 });
+
+    const geoJSON = await controller.getGeoJSON();
+    expect(geoJSON.features[0]).toMatchObject({
+      id: "bed-1",
+      properties: { name: "Moved bed" },
+      geometry: { type: "Point", coordinates: [1, 2] },
+    });
+
+    controller.destroy();
+  });
+
+  it("derives stable child ids when ingesting a multi-geometry feature", async () => {
+    const controller = new MapController(opts);
+    await controller.init();
+
+    const ids = await controller.addFeatures({
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          id: "bed-1",
+          properties: { name: "Bed cluster" },
+          geometry: {
+            type: "MultiPoint",
+            coordinates: [
+              [0, 0],
+              [1, 1],
+            ],
+          },
+        },
+      ],
+    });
+
+    expect(ids).toEqual(["bed-1::0", "bed-1::1"]);
+
+    const layers = (controller as any).drawnItems.getLayers() as any[];
+    expect(layers).toHaveLength(2);
+    expect(layers.map((layer) => layer._fid)).toEqual(ids);
+
+    const geoJSON = await controller.getGeoJSON();
+    expect(geoJSON.features).toHaveLength(2);
+    expect(geoJSON.features.map((feature) => feature.id)).toEqual(ids);
+    expect(
+      geoJSON.features.map((feature) => (feature.properties as any)?.id),
+    ).toEqual(ids);
+
+    controller.destroy();
+  });
+
+  it("restores store-backed layers after destroy and re-init", async () => {
+    const controller = new MapController(opts);
+    await controller.init();
+
+    const ids = await controller.addFeatures({
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          id: "bed-1",
+          properties: { name: "Bed 1" },
+          geometry: {
+            type: "Point",
+            coordinates: [0, 0],
+          },
+        },
+        {
+          type: "Feature",
+          id: "bed-2",
+          properties: { name: "Bed 2" },
+          geometry: {
+            type: "Point",
+            coordinates: [2, 3],
+          },
+        },
+      ],
+    });
+
+    const before = await controller.getGeoJSON();
+    expect((controller as any).drawnItems.getLayers()).toHaveLength(2);
+
+    await controller.destroy();
+    await controller.init();
+
+    const after = await controller.getGeoJSON();
+    const restoredLayers = (controller as any).drawnItems.getLayers() as any[];
+    expect(after).toEqual(before);
+    expect(restoredLayers).toHaveLength(2);
+    expect(restoredLayers.map((layer) => layer._fid)).toEqual(ids);
+
+    controller.destroy();
+  });
+
+  it("decorates toolbar buttons with stable tool hooks and custom icons", () => {
+    container.innerHTML = `
+      <a class="leaflet-draw-draw-polygon" title="Draw a polygon"></a>
+      <a class="leaflet-draw-draw-cake" title="Draw Layer Cake">
+        <span class="leaflet-geokit-cake-icon"></span>
+      </a>
+    `;
+
+    const controller = new MapController({
+      ...opts,
+      toolButtonConfig: {
+        polygon: {
+          iconUrl: "https://example.com/bed-boundary.svg",
+          iconSize: [20, 22],
+          title: "Draw bed boundary",
+          ariaLabel: "Draw bed boundary tool",
+          className: "fs-map-tool fs-map-tool--primary",
+        },
+        layerCake: {
+          iconUrl: "https://example.com/layer-cake.svg",
+        },
+      },
+    });
+
+    (controller as any).applyToolButtonCustomizations();
+
+    const polygonButton = container.querySelector(
+      ".leaflet-draw-draw-polygon",
+    ) as HTMLElement;
+    expect(polygonButton.dataset.geokitTool).toBe("polygon");
+    expect(polygonButton.dataset.geokitCustomToolButton).toBe("true");
+    expect(polygonButton.title).toBe("Draw bed boundary");
+    expect(polygonButton.getAttribute("aria-label")).toBe(
+      "Draw bed boundary tool",
+    );
+    expect(polygonButton.classList.contains("fs-map-tool")).toBe(true);
+    expect(polygonButton.classList.contains("fs-map-tool--primary")).toBe(true);
+
+    const icon = polygonButton.querySelector(
+      ".leaflet-geokit-tool-button-icon img",
+    ) as HTMLImageElement;
+    expect(icon.src).toBe("https://example.com/bed-boundary.svg");
+    expect(icon.parentElement?.style.width).toBe("20px");
+    expect(icon.parentElement?.style.height).toBe("22px");
+
+    const cakeBuiltInIcon = container.querySelector(
+      ".leaflet-geokit-cake-icon",
+    ) as HTMLElement;
+    expect(cakeBuiltInIcon.hidden).toBe(true);
+
+    controller.destroy();
+  });
+
+  it("clears managed toolbar button classes and icons when config is removed", () => {
+    container.innerHTML =
+      '<a class="leaflet-draw-draw-marker" title="Draw a marker"></a>';
+
+    const controller = new MapController({
+      ...opts,
+      toolButtonConfig: {
+        marker: {
+          iconUrl: "https://example.com/marker.svg",
+          title: "Place crop marker",
+          className: "fs-map-tool",
+        },
+      },
+    });
+
+    (controller as any).applyToolButtonCustomizations();
+    controller.setToolButtonConfig(null);
+
+    const markerButton = container.querySelector(
+      ".leaflet-draw-draw-marker",
+    ) as HTMLElement;
+    expect(markerButton.style.getPropertyValue("background-image")).toBe("");
+    expect(markerButton.style.getPropertyValue("position")).toBe("");
+    expect(markerButton.dataset.geokitTool).toBe("marker");
+    expect(markerButton.dataset.geokitCustomToolButton).toBeUndefined();
+    expect(markerButton.classList.contains("fs-map-tool")).toBe(false);
+    expect(markerButton.querySelector(".leaflet-geokit-tool-button-icon")).toBe(
+      null,
+    );
+    expect(markerButton.title).toBe("Draw a marker");
+
+    controller.destroy();
+  });
+
+  it("emits public trigger events for default Leaflet toolbar buttons", () => {
+    container.innerHTML =
+      '<a class="leaflet-draw-draw-polygon" title="Draw a polygon"></a>';
+
+    const onToolTrigger = vi.fn();
+    const controller = new MapController({
+      ...opts,
+      callbacks: { onToolTrigger },
+    });
+
+    (controller as any).applyToolButtonCustomizations();
+
+    const polygonButton = container.querySelector(
+      ".leaflet-draw-draw-polygon",
+    ) as HTMLElement;
+    polygonButton.click();
+
+    expect(onToolTrigger).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tool: "polygon",
+        source: "leaflet-toolbar",
+        handled: true,
+      }),
+    );
+
+    controller.destroy();
+  });
+
+  it("renders independent toolbar groups with popovers and real draw activation", () => {
+    const onToolTrigger = vi.fn();
+    const onPopoverClose = vi.fn();
+    const polygonEnable = vi.fn();
+    const controller = new MapController({
+      ...opts,
+      callbacks: { onToolTrigger },
+      toolButtonConfig: {
+        polygon: {
+          title: "Draw irrigation zone",
+          ariaLabel: "Draw irrigation zone",
+          iconHtml:
+            '<svg viewBox="0 0 20 20" role="img"><path d="M3 15h14L10 4z"/></svg>',
+          popover: {
+            title: "Irrigation boundary",
+            body: "Draw the wetted zone, then close on the first point.",
+            onClose: onPopoverClose,
+          },
+        },
+        layerStyle: {
+          title: "Zone style",
+        },
+      },
+      toolbarGroups: [
+        {
+          id: "irrigation-draw",
+          position: "bottomright",
+          tools: ["polygon"],
+          ariaLabel: "Irrigation drawing tools",
+        },
+        {
+          id: "irrigation-style",
+          position: "topright",
+          tools: ["layerStyle"],
+          ariaLabel: "Irrigation style tools",
+        },
+      ],
+    });
+    (controller as any).drawControl = {
+      _toolbars: {
+        draw: {
+          _modes: {
+            polygon: {
+              handler: {
+                enable: polygonEnable,
+              },
+            },
+          },
+        },
+      },
+    };
+
+    (controller as any).applyToolButtonCustomizations();
+
+    const drawGroup = container.querySelector(
+      '[data-geokit-toolbar-group="irrigation-draw"]',
+    ) as HTMLElement;
+    const styleGroup = container.querySelector(
+      '[data-geokit-toolbar-group="irrigation-style"]',
+    ) as HTMLElement;
+    expect(drawGroup).toBeInstanceOf(HTMLElement);
+    expect(styleGroup).toBeInstanceOf(HTMLElement);
+    expect(drawGroup).not.toBe(styleGroup);
+
+    const polygonButton = drawGroup.querySelector(
+      '[data-geokit-tool="polygon"]',
+    ) as HTMLButtonElement;
+    polygonButton.click();
+
+    expect(polygonEnable).toHaveBeenCalledTimes(1);
+    expect(onToolTrigger).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        tool: "polygon",
+        source: "toolbar",
+        groupId: "irrigation-draw",
+        handled: true,
+      }),
+    );
+    expect(
+      container.querySelector('[data-geokit-tool-popover="true"]')?.textContent,
+    ).toContain("Draw the wetted zone");
+    expect(polygonButton.getAttribute("aria-expanded")).toBe("true");
+
+    const layerStyleButton = styleGroup.querySelector(
+      '[data-geokit-tool="layer-style"]',
+    ) as HTMLButtonElement;
+    layerStyleButton.click();
+    expect(onToolTrigger).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        tool: "layerStyle",
+        source: "toolbar",
+        groupId: "irrigation-style",
+        handled: true,
+      }),
+    );
+    expect(
+      container.querySelector('[data-geokit-tool-popover="true"]'),
+    ).toBeNull();
+    expect(polygonButton.getAttribute("aria-expanded")).toBeNull();
+    expect(onPopoverClose).toHaveBeenCalledTimes(1);
+
+    polygonButton.click();
+    expect(polygonEnable).toHaveBeenCalledTimes(2);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    expect(
+      container.querySelector('[data-geokit-tool-popover="true"]'),
+    ).toBeNull();
+    expect(polygonButton.getAttribute("aria-expanded")).toBeNull();
+    expect(onPopoverClose).toHaveBeenCalledTimes(2);
+
+    expect(onToolTrigger).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        tool: "polygon",
+        source: "toolbar",
+        groupId: "irrigation-draw",
+        handled: true,
+      }),
+    );
+
+    controller.destroy();
+  });
+
+  it("keeps duplicate tool buttons independent across toolbar placements", () => {
+    const onToolTrigger = vi.fn();
+    const polygonEnable = vi.fn();
+    const controller = new MapController({
+      ...opts,
+      callbacks: { onToolTrigger },
+      toolButtonConfig: {
+        polygon: {
+          title: "Draw irrigation zone",
+          popover: {
+            title: "Irrigation boundary",
+            body: "Trace the active irrigation placement.",
+          },
+        },
+      },
+      toolbarGroups: [
+        {
+          id: "irrigation-primary",
+          position: "bottomright",
+          tools: ["polygon"],
+        },
+        {
+          id: "irrigation-secondary",
+          position: "topleft",
+          tools: ["polygon"],
+        },
+      ],
+    });
+    (controller as any).drawControl = {
+      _toolbars: {
+        draw: {
+          _modes: {
+            polygon: {
+              handler: {
+                enable: polygonEnable,
+              },
+            },
+          },
+        },
+      },
+    };
+
+    (controller as any).applyToolButtonCustomizations();
+
+    const primaryGroup = container.querySelector(
+      '[data-geokit-toolbar-group="irrigation-primary"]',
+    ) as HTMLElement;
+    const secondaryGroup = container.querySelector(
+      '[data-geokit-toolbar-group="irrigation-secondary"]',
+    ) as HTMLElement;
+    const primaryButton = primaryGroup.querySelector(
+      '[data-geokit-tool="polygon"]',
+    ) as HTMLButtonElement;
+    const secondaryButton = secondaryGroup.querySelector(
+      '[data-geokit-tool="polygon"]',
+    ) as HTMLButtonElement;
+
+    expect(primaryButton.dataset.geokitToolbarPosition).toBe("bottomright");
+    expect(secondaryButton.dataset.geokitToolbarPosition).toBe("topleft");
+    expect(primaryButton.dataset.geokitToolInstance).not.toBe(
+      secondaryButton.dataset.geokitToolInstance,
+    );
+
+    primaryButton.click();
+
+    expect(polygonEnable).toHaveBeenCalledTimes(1);
+    expect(primaryButton.getAttribute("aria-expanded")).toBe("true");
+    expect(onToolTrigger).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        tool: "polygon",
+        source: "toolbar",
+        groupId: "irrigation-primary",
+        handled: true,
+      }),
+    );
+    expect(
+      container.querySelector<HTMLElement>('[data-geokit-tool-popover="true"]')
+        ?.dataset.geokitToolbarGroup,
+    ).toBe("irrigation-primary");
+
+    secondaryButton.click();
+
+    expect(polygonEnable).toHaveBeenCalledTimes(2);
+    expect(primaryButton.getAttribute("aria-expanded")).toBeNull();
+    expect(secondaryButton.getAttribute("aria-expanded")).toBe("true");
+    expect(
+      container.querySelectorAll('[data-geokit-tool-popover="true"]'),
+    ).toHaveLength(1);
+    expect(
+      container.querySelector<HTMLElement>('[data-geokit-tool-popover="true"]')
+        ?.dataset.geokitToolbarGroup,
+    ).toBe("irrigation-secondary");
+    expect(onToolTrigger).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        tool: "polygon",
+        source: "toolbar",
+        groupId: "irrigation-secondary",
+        handled: true,
+      }),
+    );
+
+    controller.destroy();
+  });
+
+  it("reports failed external triggers when a requested tool is unavailable", () => {
+    const onToolTrigger = vi.fn();
+    const controller = new MapController({
+      ...opts,
+      callbacks: { onToolTrigger },
+    });
+
+    const handled = controller.triggerTool("polygon", {
+      source: "api",
+    });
+
+    expect(handled).toBe(false);
+    expect(onToolTrigger).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tool: "polygon",
+        source: "api",
+        handled: false,
+        error: expect.stringContaining("not available"),
+      }),
+    );
+
+    controller.destroy();
+  });
+
+  it("activates and deactivates draw handlers through the public controller API", () => {
+    const onToolTrigger = vi.fn();
+    const polygonEnable = vi.fn();
+    const polygonDisable = vi.fn();
+    const editDisable = vi.fn();
+    const controller = new MapController({
+      ...opts,
+      callbacks: { onToolTrigger },
+    });
+    (controller as any).drawControl = {
+      _toolbars: {
+        draw: {
+          _modes: {
+            polygon: {
+              handler: {
+                enable: polygonEnable,
+                disable: polygonDisable,
+              },
+            },
+          },
+        },
+        edit: {
+          _modes: {
+            edit: {
+              handler: {
+                disable: editDisable,
+              },
+            },
+          },
+        },
+      },
+    };
+
+    expect(
+      controller.activateTool("polygon", {
+        source: "api",
+        groupId: "external-panel",
+      }),
+    ).toBe(true);
+    expect(polygonEnable).toHaveBeenCalledTimes(1);
+    expect(onToolTrigger).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        tool: "polygon",
+        source: "api",
+        groupId: "external-panel",
+        handled: true,
+      }),
+    );
+
+    expect(
+      controller.deactivateTool({
+        source: "api",
+        groupId: "external-panel",
+      }),
+    ).toBe(true);
+    expect(polygonDisable).toHaveBeenCalledTimes(1);
+    expect(editDisable).toHaveBeenCalledTimes(1);
+    expect(onToolTrigger).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        tool: "select",
+        source: "api",
+        groupId: "external-panel",
+        handled: true,
+      }),
+    );
+
+    controller.destroy();
+  });
+
   it("disables move tool draw options when not requested", () => {
     opts.controls.move = false;
     const controller = new MapController(opts);
@@ -130,6 +709,53 @@ describe("MapController", () => {
       ],
     });
     expect(storeSpy).toHaveBeenCalled();
+    controller.destroy();
+  });
+
+  it("renders loaded points and expanded multipoints through the same custom icon factory", async () => {
+    const controller = new MapController({
+      ...opts,
+      markerIconConfig: {
+        iconUrl: "https://example.com/custom-pin.svg",
+        iconRetinaUrl: "https://example.com/custom-pin@2x.svg",
+        iconSize: [32, 40],
+        iconAnchor: [16, 40],
+        popupAnchor: [0, -34],
+      },
+    });
+    await controller.init();
+    await controller.loadGeoJSON({
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          geometry: { type: "Point", coordinates: [0, 0] },
+          properties: {},
+        },
+        {
+          type: "Feature",
+          geometry: {
+            type: "MultiPoint",
+            coordinates: [
+              [1, 1],
+              [2, 2],
+            ],
+          },
+          properties: {},
+        },
+      ],
+    });
+
+    const pointLayers = (
+      (controller as any).drawnItems.getLayers() as any[]
+    ).filter((layer) => typeof layer?.getLatLng === "function");
+    expect(pointLayers).toHaveLength(3);
+    const firstIcon = (pointLayers[0] as any).options.icon;
+    expect(firstIcon).toBeTruthy();
+    pointLayers.forEach((layer) => {
+      expect((layer as any).options.icon).toBe(firstIcon);
+    });
+
     controller.destroy();
   });
 
@@ -198,6 +824,33 @@ describe("MapController", () => {
       (globalThis as any).L = originalGlobalL;
       controller.destroy();
     }
+  });
+
+  it("uses the injected external Leaflet namespace to create marker icons", () => {
+    const iconSpy = vi.fn((options: any) => L.icon(options));
+    const externalLeaflet = Object.assign({}, L as any, {
+      icon: iconSpy,
+      Control: L.Control,
+      draw: {},
+    });
+
+    const controller = new MapController({
+      ...opts,
+      useExternalLeaflet: true,
+      leaflet: externalLeaflet,
+    });
+
+    expect((controller as any).L).toBe(externalLeaflet);
+    controller.setMarkerIconConfig({
+      iconUrl: "https://example.com/external-pin.svg",
+      iconRetinaUrl: "https://example.com/external-pin@2x.svg",
+      iconSize: [32, 40],
+      iconAnchor: [16, 40],
+      popupAnchor: [0, -34],
+    });
+    expect(iconSpy).toHaveBeenCalledTimes(1);
+
+    controller.destroy();
   });
 
   it("emits integrated tool events to hooks and emitter", () => {

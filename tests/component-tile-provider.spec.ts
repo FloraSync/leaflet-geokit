@@ -71,9 +71,33 @@ describe("LeafletDrawMapElement — tile provider behavior", () => {
     el.setAttribute("api-key", "abc");
     el.setAttribute("tile-provider", "here");
 
-    expect(errorSpy).toHaveBeenCalledOnce();
-    const detail = (errorSpy.mock.calls[0][0] as CustomEvent).detail;
+    expect(errorSpy).toHaveBeenCalled();
+    const detail = (
+      errorSpy.mock.calls[errorSpy.mock.calls.length - 1][0] as CustomEvent
+    ).detail;
     expect(detail.code).toBe("permission_denied");
     expect(detail.provider).toBe("here");
+  });
+
+  it("emits tile-provider-error for default tile-url failures", () => {
+    const el: any = document.createElement(TAG);
+    let onTileError: ((error: unknown) => void) | undefined;
+    el._controller = {
+      setTileLayer: vi.fn((_config: unknown, callbacks?: any) => {
+        onTileError = callbacks?.onTileError;
+      }),
+    };
+
+    const errorSpy = vi.fn();
+    el.addEventListener("tile-provider-error", errorSpy);
+
+    el._updateTileLayer();
+    onTileError?.(new Error("network down"));
+
+    expect(errorSpy).toHaveBeenCalledOnce();
+    const detail = (errorSpy.mock.calls[0][0] as CustomEvent).detail;
+    expect(detail.code).toBe("tile_load_failed");
+    expect(detail.provider).toBe("tile-url");
+    expect(detail.message).toBe("network down");
   });
 });

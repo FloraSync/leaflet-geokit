@@ -34,6 +34,129 @@ export interface MapConfig {
 
 export type MeasurementSystem = "metric" | "imperial";
 
+export type MarkerIconPoint = [number, number];
+
+export interface MarkerIconConfig {
+  /** Required to activate a custom marker icon. Absolute, relative, data:, or blob: URL. */
+  iconUrl: string;
+  /** Optional high-DPI image URL. Falls back to iconUrl when omitted or invalid. */
+  iconRetinaUrl?: string;
+  /** Optional marker shadow image URL. Shadow is dropped when omitted or invalid. */
+  shadowUrl?: string;
+  /** Icon image size in CSS pixels: [width, height]. Defaults to [25, 41]. */
+  iconSize?: MarkerIconPoint;
+  /** Pixel coordinate in the icon image anchored to the map point: [x, y]. Defaults to [12, 41]. */
+  iconAnchor?: MarkerIconPoint;
+  /** Popup anchor relative to iconAnchor: [x, y]. Defaults to [1, -34]. */
+  popupAnchor?: MarkerIconPoint;
+}
+
+export type ToolButtonName =
+  | "polygon"
+  | "polyline"
+  | "rectangle"
+  | "circle"
+  | "marker"
+  | "layerCake"
+  | "move"
+  | "select"
+  | "edit"
+  | "delete"
+  | "ruler"
+  | "measurementSettings"
+  | "layerStyle";
+
+export interface ToolButtonRenderContext {
+  tool: ToolButtonName;
+  groupId?: string;
+  button: HTMLElement;
+}
+
+export type ToolIconRenderer = (
+  context: ToolButtonRenderContext,
+) => HTMLElement | SVGElement | string | null | undefined;
+
+export interface ToolPopoverRenderContext extends ToolButtonRenderContext {
+  popover: HTMLElement;
+}
+
+export interface ToolPopoverConfig {
+  /** Heading text rendered at the top of the popover. */
+  title?: string;
+  /** Plain body copy for point-of-action guidance. */
+  body?: string;
+  /** Trusted host-supplied HTML content. Use only with sanitized/static content. */
+  html?: string;
+  /** Accessible label for the popover dialog. Falls back to title. */
+  ariaLabel?: string;
+  /** Custom renderer for framework-owned popover content. */
+  render?: (
+    context: ToolPopoverRenderContext,
+  ) => HTMLElement | DocumentFragment | string | null | undefined;
+  /** Called after the popover is attached. */
+  onOpen?: (context: ToolPopoverRenderContext) => void;
+  /** Called after the popover is closed. */
+  onClose?: (context: ToolPopoverRenderContext) => void;
+}
+
+export interface ToolButtonStyleConfig {
+  /** URL for the icon rendered inside the Leaflet control button. */
+  iconUrl?: string;
+  /** Trusted inline SVG/HTML icon markup rendered inside the button. */
+  iconHtml?: string;
+  /** Programmatic icon renderer for framework-owned controls. */
+  renderIcon?: ToolIconRenderer;
+  /** Icon box size in CSS pixels. Defaults to [18, 18]. */
+  iconSize?: MarkerIconPoint;
+  /** Tooltip/title text for the button. */
+  title?: string;
+  /** Accessible label. Falls back to title when omitted. */
+  ariaLabel?: string;
+  /** Extra class name(s) added to the button for host theme CSS. */
+  className?: string;
+  /** Optional point-of-action guidance shown when the button is used. */
+  popover?: ToolPopoverConfig;
+}
+
+export type ToolButtonConfig = Partial<
+  Record<ToolButtonName, ToolButtonStyleConfig>
+>;
+
+export type ToolToolbarPosition =
+  | "topleft"
+  | "topright"
+  | "bottomleft"
+  | "bottomright";
+
+export interface ToolToolbarGroupConfig {
+  /** Stable group id used in events and DOM data attributes. */
+  id: string;
+  /** Tools rendered in this group, in order. */
+  tools: ToolButtonName[];
+  /** Leaflet-like map corner placement. Defaults to "topright". */
+  position?: ToolToolbarPosition;
+  /** Accessible toolbar label. */
+  ariaLabel?: string;
+  /** Extra class name(s) added to the toolbar group container. */
+  className?: string;
+  /** Pixel offset from the chosen map corner. Defaults to [10, 10]. */
+  offset?: MarkerIconPoint;
+}
+
+export interface ToolTriggerOptions {
+  /** Source label included in public trigger events. */
+  source?: "api" | "event" | "toolbar" | "leaflet-toolbar" | string;
+  /** Toolbar group id when triggered from a configured toolbar group. */
+  groupId?: string;
+}
+
+export interface ToolTriggerEventDetail extends ToolTriggerOptions {
+  tool: ToolButtonName;
+  handled: boolean;
+  timestamp: number;
+  error?: string;
+}
+
 export type IntegratedToolEventName =
   | "tool:polygon:created"
   | "tool:polyline:created"
@@ -170,6 +293,21 @@ export interface LeafletDrawMapElementAPI {
   useExternalLeaflet?: boolean;
   /** Disable our CSS/icon injection when host supplies styles. */
   skipLeafletStyles?: boolean;
+  /**
+   * Programmatic marker icon override.
+   * `undefined` falls back to marker icon attributes, `null` forces default markers.
+   */
+  markerIconConfig?: MarkerIconConfig | null;
+  /**
+   * Per-tool button customization for Leaflet.draw/ruler controls.
+   * `undefined` falls back to the `tool-button-config` attribute, `null` clears custom button config.
+   */
+  toolButtonConfig?: ToolButtonConfig | null;
+  /**
+   * Additional toolbar groups rendered over the map.
+   * `undefined` falls back to the `toolbar-groups` attribute, `null` clears custom groups.
+   */
+  toolbarGroups?: ToolToolbarGroupConfig[] | null;
 
   /** Optional injection of a pre-existing Leaflet namespace to use instead of bundled import. */
   leafletInstance?: typeof Leaflet;
@@ -229,6 +367,26 @@ export interface LeafletDrawMapElementAPI {
    * Change the measurement system for the Leaflet ruler tool.
    */
   setMeasurementUnits(system: MeasurementSystem): Promise<void>;
+  /**
+   * Programmatically activate a map tool through the public web component API.
+   */
+  activateTool(
+    tool: ToolButtonName,
+    options?: ToolTriggerOptions,
+  ): Promise<boolean>;
+
+  /**
+   * Back-compat alias for activateTool.
+   */
+  triggerTool(
+    tool: ToolButtonName,
+    options?: ToolTriggerOptions,
+  ): Promise<boolean>;
+
+  /**
+   * Deactivate the active draw/edit tool and return the map to select mode.
+   */
+  deactivateTool(options?: ToolTriggerOptions): Promise<boolean>;
 }
 
 // Re-exports for consumers

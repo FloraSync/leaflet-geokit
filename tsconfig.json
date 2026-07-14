@@ -9,6 +9,7 @@
     "jsxImportSource": "preact",
     "strict": true,
     "declaration": true,
+    "outDir": "./dist/types",
     "declarationDir": "./dist/types",
     "sourceMap": true,
     "resolveJsonModule": true,

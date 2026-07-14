@@ -38,12 +38,16 @@ docs/roadmap/*
 
 # Spec Kitty / AI agent runtime directories (non-source artifacts)
 .claude/
+.codex/
 .cursor/
 .gemini/
+.hermes/
 .windsurf/
 .opencode/
 .qwen/
 .github/prompts/
+paperclip-artifacts/
+/florasync-leaflet-geokit-*.tgz
 
 # Spec Kitty generated runtime state
 .kittify/workspaces/

@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="Synthetic irrigation planning tile">
+  <rect width="256" height="256" fill="#eef1e8" />
+  <path d="M0 84H256" stroke="#c6cbbd" stroke-width="7" />
+  <path d="M92 0V256" stroke="#c6cbbd" stroke-width="5" />
+  <path d="M0 88H256" stroke="#fafaf6" stroke-width="3" />
+  <path d="M94 0V256" stroke="#fafaf6" stroke-width="2" />
+  <rect x="8" y="10" width="74" height="62" fill="#cfe8b8" />
+  <rect x="108" y="14" width="60" height="58" fill="#d9e7ad" />
+  <rect x="178" y="18" width="66" height="52" fill="#c9e1be" />
+  <rect x="14" y="110" width="68" height="58" fill="#dce7b9" />
+  <rect x="108" y="108" width="58" height="66" fill="#c4dfb5" />
+  <rect x="178" y="104" width="62" height="68" fill="#e0dcb1" />
+  <rect x="16" y="190" width="68" height="48" fill="#c7e1c5" />
+  <rect x="110" y="194" width="58" height="46" fill="#d4e6b6" />
+  <rect x="180" y="192" width="60" height="48" fill="#cfe5bd" />
+  <path d="M0 154C32 144 54 158 82 150C120 139 150 156 178 146C206 136 224 142 256 134" fill="none" stroke="#75b9c7" stroke-width="4" opacity="0.8" />
+  <g stroke="#9fbe78" stroke-width="1.5" opacity="0.75">
+    <path d="M24 16V66" />
+    <path d="M42 16V66" />
+    <path d="M60 16V66" />
+    <path d="M124 18V68" />
+    <path d="M142 18V68" />
+    <path d="M196 22V66" />
+    <path d="M216 22V66" />
+    <path d="M34 114V164" />
+    <path d="M54 114V164" />
+    <path d="M126 112V170" />
+    <path d="M146 112V170" />
+    <path d="M196 110V168" />
+    <path d="M216 110V168" />
+    <path d="M36 196V234" />
+    <path d="M56 196V234" />
+    <path d="M128 198V236" />
+    <path d="M148 198V236" />
+    <path d="M198 198V236" />
+    <path d="M218 198V236" />
+  </g>
+  <g fill="#5d6d57" font-family="system-ui, sans-serif" font-size="10">
+    <text x="12" y="100">Service road</text>
+    <text x="126" y="151">North ditch</text>
+  </g>
+</svg>

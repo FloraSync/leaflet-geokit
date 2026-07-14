@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Leaflet Geokit Blank Map</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+      body {
+        padding: 20px;
+        font-family: sans-serif;
+      }
+      #map-container {
+        height: 500px;
+        width: 100%;
+        border: 1px solid #ccc;
+      }
+      leaflet-geokit {
+        display: block;
+        height: 100%;
+        width: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map-container">
+      <leaflet-geokit
+        id="blank-map"
+        latitude="45.523062"
+        longitude="-122.676482"
+        zoom="13"
+      ></leaflet-geokit>
+    </div>
+
+    <script type="module">
+      const map = document.getElementById("blank-map");
+      map?.addEventListener("leaflet-draw:ready", () => {
+        window.mapReady = true;
+      });
+      await import("/src/index.ts");
+    </script>
+  </body>
+</html>

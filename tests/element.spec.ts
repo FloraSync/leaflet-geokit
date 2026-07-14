@@ -99,6 +99,320 @@ describe("LeafletDrawMapElement (scaffold)", () => {
     expect(el.toolEventEmitter).toBe(emitter);
   });
 
+  it("observes marker icon customization attributes", () => {
+    const ctor: any = customElements.get(TAG);
+    expect(ctor.observedAttributes).toContain("marker-icon-url");
+    expect(ctor.observedAttributes).toContain("marker-icon-size");
+    expect(ctor.observedAttributes).toContain("marker-popup-anchor");
+  });
+
+  it("observes tool button customization attributes", () => {
+    const ctor: any = customElements.get(TAG);
+    expect(ctor.observedAttributes).toContain("tool-button-config");
+    expect(ctor.observedAttributes).toContain("toolbar-groups");
+  });
+
+  it("prioritizes markerIconConfig over attributes and can return to attributes", () => {
+    const localEl: any = document.createElement(TAG);
+    const setMarkerIconConfig = vi.fn();
+    localEl._controller = { setMarkerIconConfig };
+
+    localEl.setAttribute("marker-icon-url", "https://example.com/attr-pin.svg");
+    expect(setMarkerIconConfig).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        iconUrl: "https://example.com/attr-pin.svg",
+      }),
+    );
+
+    localEl.markerIconConfig = {
+      iconUrl: "https://example.com/property-pin.svg",
+      iconSize: [32, 40],
+      iconAnchor: [16, 40],
+    };
+    expect(setMarkerIconConfig).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        iconUrl: "https://example.com/property-pin.svg",
+        iconSize: [32, 40],
+        iconAnchor: [16, 40],
+      }),
+    );
+
+    localEl.markerIconConfig = null;
+    expect(setMarkerIconConfig).toHaveBeenLastCalledWith(null);
+
+    localEl.markerIconConfig = undefined;
+    expect(setMarkerIconConfig).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        iconUrl: "https://example.com/attr-pin.svg",
+      }),
+    );
+  });
+
+  it("emits a non-fatal error and falls back to default markers for invalid marker-icon-url", () => {
+    const localEl: any = document.createElement(TAG);
+    const setMarkerIconConfig = vi.fn();
+    const errorSpy = vi.fn();
+    localEl._controller = { setMarkerIconConfig };
+    localEl.addEventListener("leaflet-draw:error", errorSpy);
+
+    localEl.setAttribute("marker-icon-url", "http://[");
+
+    expect(setMarkerIconConfig).toHaveBeenLastCalledWith(null);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy.mock.calls[0][0].detail.message).toContain(
+      "marker-icon-url",
+    );
+  });
+
+  it("keeps marker icon customization active when skipLeafletStyles is true", () => {
+    const localEl: any = document.createElement(TAG);
+    const setMarkerIconConfig = vi.fn();
+    localEl._controller = {
+      setMarkerIconConfig,
+      destroy: vi.fn(() => Promise.resolve()),
+      init: vi.fn(() => Promise.resolve()),
+    };
+    localEl.skipLeafletStyles = true;
+
+    localEl.setAttribute("marker-icon-url", "https://example.com/host-pin.svg");
+
+    expect(setMarkerIconConfig).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        iconUrl: "https://example.com/host-pin.svg",
+      }),
+    );
+  });
+
+  it("syncs tool button config from attributes and property overrides", () => {
+    const localEl: any = document.createElement(TAG);
+    const setToolButtonConfig = vi.fn();
+    localEl._controller = { setToolButtonConfig };
+
+    localEl.setAttribute(
+      "tool-button-config",
+      JSON.stringify({
+        polygon: {
+          iconUrl: "https://example.com/polygon.svg",
+          title: "Draw bed boundary",
+        },
+      }),
+    );
+    expect(setToolButtonConfig).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        polygon: expect.objectContaining({
+          iconUrl: "https://example.com/polygon.svg",
+          title: "Draw bed boundary",
+        }),
+      }),
+    );
+
+    localEl.toolButtonConfig = {
+      marker: {
+        iconUrl: "https://example.com/marker.svg",
+        ariaLabel: "Place field marker",
+      },
+    };
+    expect(setToolButtonConfig).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        marker: expect.objectContaining({
+          iconUrl: "https://example.com/marker.svg",
+          ariaLabel: "Place field marker",
+        }),
+      }),
+    );
+
+    localEl.toolButtonConfig = null;
+    expect(setToolButtonConfig).toHaveBeenLastCalledWith(null);
+
+    localEl.toolButtonConfig = undefined;
+    expect(setToolButtonConfig).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        polygon: expect.objectContaining({
+          iconUrl: "https://example.com/polygon.svg",
+        }),
+      }),
+    );
+  });
+
+  it("syncs toolbar groups from attributes and property overrides", () => {
+    const localEl: any = document.createElement(TAG);
+    const setToolbarGroups = vi.fn();
+    localEl._controller = { setToolbarGroups };
+
+    localEl.setAttribute(
+      "toolbar-groups",
+      JSON.stringify([
+        {
+          id: "irrigation-draw",
+          position: "bottomright",
+          tools: ["polygon", "select"],
+        },
+      ]),
+    );
+    expect(setToolbarGroups).toHaveBeenLastCalledWith([
+      expect.objectContaining({
+        id: "irrigation-draw",
+        position: "bottomright",
+        tools: ["polygon", "select"],
+      }),
+    ]);
+
+    localEl.toolbarGroups = [
+      {
+        id: "irrigation-style",
+        position: "topright",
+        tools: ["layerStyle"],
+      },
+    ];
+    expect(setToolbarGroups).toHaveBeenLastCalledWith([
+      expect.objectContaining({
+        id: "irrigation-style",
+        tools: ["layerStyle"],
+      }),
+    ]);
+
+    localEl.toolbarGroups = null;
+    expect(setToolbarGroups).toHaveBeenLastCalledWith(null);
+
+    localEl.toolbarGroups = undefined;
+    expect(setToolbarGroups).toHaveBeenLastCalledWith([
+      expect.objectContaining({
+        id: "irrigation-draw",
+      }),
+    ]);
+  });
+
+  it("emits a non-fatal error and clears toolbar groups for invalid JSON attributes", () => {
+    const localEl: any = document.createElement(TAG);
+    const setToolbarGroups = vi.fn();
+    const errorSpy = vi.fn();
+    localEl._controller = { setToolbarGroups };
+    localEl.addEventListener("leaflet-draw:error", errorSpy);
+
+    localEl.setAttribute("toolbar-groups", "{not-json");
+
+    expect(setToolbarGroups).toHaveBeenLastCalledWith(null);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy.mock.calls[0][0].detail.message).toContain(
+      "toolbar-groups",
+    );
+  });
+
+  it("exposes activateTool through public request/result events", async () => {
+    const localEl: any = document.createElement(TAG);
+    const activateTool = vi.fn((tool, options) => {
+      localEl._emitToolTriggerResult({
+        tool,
+        source: options.source,
+        groupId: options.groupId,
+        handled: true,
+        timestamp: 123,
+      });
+      return true;
+    });
+    localEl._controller = { activateTool };
+
+    const requested = vi.fn();
+    const triggered = vi.fn();
+    localEl.addEventListener(
+      "leaflet-geokit:tool-trigger-requested",
+      requested,
+    );
+    localEl.addEventListener("leaflet-geokit:tool-triggered", triggered);
+
+    const handled = await localEl.activateTool("polygon", {
+      source: "api",
+      groupId: "external-irrigation-button",
+    });
+
+    expect(handled).toBe(true);
+    expect(activateTool).toHaveBeenCalledWith("polygon", {
+      source: "api",
+      groupId: "external-irrigation-button",
+    });
+    expect(requested).toHaveBeenCalledWith(
+      expect.objectContaining({
+        detail: expect.objectContaining({
+          tool: "polygon",
+          source: "api",
+          groupId: "external-irrigation-button",
+          handled: false,
+        }),
+      }),
+    );
+    expect(triggered).toHaveBeenCalledWith(
+      expect.objectContaining({
+        detail: expect.objectContaining({
+          tool: "polygon",
+          source: "api",
+          groupId: "external-irrigation-button",
+          handled: true,
+        }),
+      }),
+    );
+  });
+
+  it("keeps triggerTool as an alias and exposes deactivateTool", async () => {
+    const localEl: any = document.createElement(TAG);
+    const activateTool = vi.fn((tool, options) => {
+      localEl._emitToolTriggerResult({
+        tool,
+        source: options.source,
+        groupId: options.groupId,
+        handled: true,
+        timestamp: 123,
+      });
+      return true;
+    });
+    const deactivateTool = vi.fn((options) => {
+      localEl._emitToolTriggerResult({
+        tool: "select",
+        source: options.source,
+        groupId: options.groupId,
+        handled: true,
+        timestamp: 124,
+      });
+      return true;
+    });
+    localEl._controller = { activateTool, deactivateTool };
+
+    const handled = await localEl.triggerTool("polygon", {
+      source: "api",
+      groupId: "alias-panel",
+    });
+    expect(handled).toBe(true);
+    expect(activateTool).toHaveBeenCalledWith("polygon", {
+      source: "api",
+      groupId: "alias-panel",
+    });
+
+    const deactivated = await localEl.deactivateTool({
+      source: "api",
+      groupId: "alias-panel",
+    });
+    expect(deactivated).toBe(true);
+    expect(deactivateTool).toHaveBeenCalledWith({
+      source: "api",
+      groupId: "alias-panel",
+    });
+  });
+
+  it("emits a non-fatal error and clears tool button config for invalid JSON attributes", () => {
+    const localEl: any = document.createElement(TAG);
+    const setToolButtonConfig = vi.fn();
+    const errorSpy = vi.fn();
+    localEl._controller = { setToolButtonConfig };
+    localEl.addEventListener("leaflet-draw:error", errorSpy);
+
+    localEl.setAttribute("tool-button-config", "{not-json");
+
+    expect(setToolButtonConfig).toHaveBeenLastCalledWith(null);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy.mock.calls[0][0].detail.message).toContain(
+      "tool-button-config",
+    );
+  });
+
   it("updates active controller tool observers when hook props change", () => {
     const originalController = el._controller;
     const setToolObservers = vi.fn();

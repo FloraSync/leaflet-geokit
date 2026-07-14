@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>@florasync/leaflet-geokit - Irrigation Draw Mode</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      html,
+      body {
+        height: 100%;
+      }
+
+      body {
+        margin: 0;
+        display: grid;
+        grid-template-rows: auto 1fr;
+        color: #1f2d26;
+        font-family:
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        background: #f6f7f2;
+      }
+
+      .harness-nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 8px 12px;
+        background: #e8e8e8;
+        border-bottom: 1px solid #ccc;
+        font-size: 13px;
+        align-items: center;
+      }
+
+      .harness-nav a {
+        color: #0066cc;
+        text-decoration: none;
+        padding: 2px 8px;
+        border-radius: 4px;
+      }
+
+      .harness-nav a.active {
+        font-weight: 600;
+        color: #333;
+        background: #fff;
+        pointer-events: none;
+        border: 1px solid #ccc;
+      }
+
+      .nav-divider {
+        width: 1px;
+        height: 16px;
+        background: #ccc;
+        margin: 0 4px;
+      }
+
+      main {
+        display: grid;
+        grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+        min-height: 0;
+      }
+
+      aside {
+        display: grid;
+        align-content: start;
+        gap: 14px;
+        padding: 16px;
+        border-right: 1px solid rgba(31, 45, 38, 0.14);
+        background: #fff;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 1.3rem;
+        line-height: 1.2;
+      }
+
+      p {
+        margin: 0;
+        color: #4c5c53;
+        line-height: 1.45;
+      }
+
+      .action-stack {
+        display: grid;
+        gap: 10px;
+      }
+
+      button {
+        min-height: 40px;
+        border: 1px solid #b7c7ba;
+        border-radius: 6px;
+        background: #f9fbf7;
+        color: #1f2d26;
+        font: inherit;
+        font-weight: 650;
+        cursor: pointer;
+      }
+
+      button.primary {
+        background: #246b45;
+        color: #fff;
+        border-color: #246b45;
+      }
+
+      #status {
+        min-height: 22px;
+        padding: 8px 10px;
+        border: 1px solid rgba(31, 45, 38, 0.14);
+        border-radius: 6px;
+        background: #f6f7f2;
+        font-size: 13px;
+      }
+
+      leaflet-geokit {
+        display: block;
+        width: 100%;
+        height: 100%;
+        min-height: 520px;
+      }
+
+      @media (max-width: 760px) {
+        main {
+          grid-template-columns: 1fr;
+          grid-template-rows: auto minmax(520px, 1fr);
+        }
+
+        aside {
+          border-right: 0;
+          border-bottom: 1px solid rgba(31, 45, 38, 0.14);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <nav class="harness-nav">
+      <a href="/">Bundled WC</a>
+      <a href="/external.html">External WC</a>
+      <span class="nav-divider"></span>
+      <a href="/preact.html">Preact</a>
+      <a href="/react.html">React</a>
+      <span class="nav-divider"></span>
+      <a href="/icon-customization.html">Icon Customization</a>
+      <a href="/irrigation-draw-mode.html" class="active">Irrigation Draw</a>
+      <span class="nav-divider"></span>
+      <a href="/hooks.html">Tool Hooks</a>
+      <a href="/tool-events.html">Tool Events</a>
+    </nav>
+
+    <main>
+      <aside>
+        <h1>Irrigation draw mode</h1>
+        <p>
+          Synthetic field demo for external draw activation, grouped map tools,
+          and point-of-action guidance.
+        </p>
+        <div class="action-stack">
+          <button id="external-draw" type="button" class="primary">
+            Draw irrigation zone from panel
+          </button>
+          <button id="clear" type="button">Clear drawn zones</button>
+        </div>
+        <div id="status" aria-live="polite">Waiting for map...</div>
+      </aside>
+
+      <leaflet-geokit
+        id="irrigation-map"
+        latitude="0"
+        longitude="0"
+        zoom="16"
+        tile-url="/synthetic-irrigation-tile.svg"
+        tile-attribution="Synthetic irrigation demo tile"
+        draw-polygon
+        edit-features
+        delete-features
+        draw-marker
+        draw-ruler
+      ></leaflet-geokit>
+    </main>
+
+    <script type="module">
+      import "/src/index.ts";
+
+      const map = document.getElementById("irrigation-map");
+      const status = document.getElementById("status");
+      const zoneIcon = `
+        <svg viewBox="0 0 24 24" role="img" aria-hidden="true">
+          <path fill="#246b45" d="M12 2 3 20h18L12 2z"></path>
+          <path fill="#9fd3a9" d="M12 7 7.5 17h9L12 7z"></path>
+        </svg>
+      `;
+      const styleIcon = `
+        <svg viewBox="0 0 24 24" role="img" aria-hidden="true">
+          <path fill="#264653" d="M5 5h14v4H5z"></path>
+          <path fill="#2a9d8f" d="M5 10h14v4H5z"></path>
+          <path fill="#e9c46a" d="M5 15h14v4H5z"></path>
+        </svg>
+      `;
+
+      map.toolButtonConfig = {
+        polygon: {
+          title: "Draw irrigation zone",
+          ariaLabel: "Draw irrigation zone",
+          iconHtml: zoneIcon,
+          iconSize: [22, 22],
+          popover: {
+            title: "Irrigation boundary",
+            body: "Trace the wetted area. Close on the first point before saving.",
+          },
+        },
+        select: {
+          title: "Select zone",
+          ariaLabel: "Select irrigation zone",
+        },
+        layerStyle: {
+          title: "Zone style",
+          ariaLabel: "Open irrigation zone style",
+          iconHtml: styleIcon,
+          popover: {
+            title: "Layer style",
+            body: "Style controls stay outside geometry editing so boundaries remain clear.",
+          },
+        },
+      };
+
+      map.toolbarGroups = [
+        {
+          id: "irrigation-draw",
+          position: "bottomright",
+          tools: ["polygon", "select"],
+          ariaLabel: "Irrigation drawing tools",
+          offset: [16, 16],
+        },
+        {
+          id: "irrigation-style",
+          position: "topright",
+          tools: ["layerStyle"],
+          ariaLabel: "Irrigation layer style",
+          offset: [16, 76],
+        },
+      ];
+
+      function setStatus(text) {
+        status.textContent = text;
+      }
+
+      map.addEventListener("leaflet-draw:ready", () => {
+        window.irrigationMapReady = true;
+        setStatus("Map ready. Use the panel button or map toolbar to draw.");
+      });
+
+      map.addEventListener("leaflet-geokit:tool-triggered", (event) => {
+        window.lastIrrigationToolTrigger = event.detail;
+        setStatus(
+          `${event.detail.tool} activated from ${event.detail.source}${
+            event.detail.groupId ? ` (${event.detail.groupId})` : ""
+          }`,
+        );
+      });
+
+      map.addEventListener("leaflet-geokit:tool-trigger-failed", (event) => {
+        window.lastIrrigationToolTrigger = event.detail;
+        setStatus(`${event.detail.tool} failed: ${event.detail.error}`);
+      });
+
+      document.getElementById("external-draw").addEventListener("click", () => {
+        void map.activateTool("polygon", {
+          source: "external-irrigation-button",
+          groupId: "external-panel",
+        });
+      });
+
+      document.getElementById("clear").addEventListener("click", () => {
+        void map.deactivateTool({
+          source: "external-irrigation-clear",
+          groupId: "external-panel",
+        });
+        void map.clearLayers();
+        setStatus("Drawn zones cleared.");
+      });
+    </script>
+  </body>
+</html>
