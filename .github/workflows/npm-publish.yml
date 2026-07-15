@@ -60,7 +60,7 @@ jobs:
           fi
 
       - name: Publish
-        run: npm publish --access public
+        run: npm publish --access public --provenance
 
       - name: Tag release
         run: git tag "v${{ steps.package.outputs.version }}"
