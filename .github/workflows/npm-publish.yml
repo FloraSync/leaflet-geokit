@@ -36,18 +36,29 @@ jobs:
       - name: Validate
         run: npm run release:dry
 
+      - name: Read package version
+        id: package
+        run: echo "version=$(node -p 'require(\"./package.json\").version')" >> "$GITHUB_OUTPUT"
+
       - name: Configure git
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Bump minor version
-        run: 'npm version minor -m "chore(release): v%s"'
+      - name: Ensure release tag does not already exist
+        run: |
+          if git rev-parse "v${{ steps.package.outputs.version }}" >/dev/null 2>&1; then
+            echo "Tag v${{ steps.package.outputs.version }} already exists."
+            exit 1
+          fi
 
       - name: Publish
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Push commit and tags
-        run: git push --follow-tags
+      - name: Tag release
+        run: git tag "v${{ steps.package.outputs.version }}"
+
+      - name: Push tag
+        run: git push origin "v${{ steps.package.outputs.version }}"
