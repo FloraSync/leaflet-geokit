@@ -14,15 +14,20 @@ concurrency:
   group: release-candidate-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+
 jobs:
   validate:
-    name: Validate package candidate
+    name: Validate release candidate
     runs-on: ubuntu-latest
     env:
       HUSKY: 0
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node 24.x
         uses: actions/setup-node@v4
@@ -35,3 +40,34 @@ jobs:
 
       - name: Validate release candidate
         run: npm run release:dry
+
+      - name: Install Playwright browsers
+        run: npm run e2e:install
+
+      - name: Run E2E checks
+        run: npm run test:e2e
+
+  promote-main:
+    name: Fast-forward main to develop
+    runs-on: ubuntu-latest
+    needs: validate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    steps:
+      - name: Checkout develop
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Verify main can fast-forward
+        run: |
+          git fetch origin main develop
+          git merge-base --is-ancestor origin/main origin/develop
+
+      - name: Promote develop tip to main
+        run: git push origin origin/develop:main
