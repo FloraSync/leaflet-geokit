@@ -46,11 +46,18 @@ npm publish --access public
 
 For scoped packages (e.g., `@florasync/leaflet-geokit`), `--access public` is required the first time.
 
-## Optional: Publish via GitHub Actions (main only)
+## Release branch pipeline
+
+- `develop` is the release-candidate lane. Push or merge candidate work there first.
+- `Release Candidate` (`.github/workflows/release-candidate.yml`) runs `npm run release:dry` on `develop` pushes, relevant PRs, and manual dispatch.
+- After review, merge `develop` to `main`. Do not publish from `develop`.
+- `Publish (npm)` (`.github/workflows/npm-publish.yml`) is manual-only and must be dispatched on `main` after the candidate is accepted.
+
+## Optional: Publish via GitHub Actions (manual main only)
 
 - Add `NPM_TOKEN` as a GitHub Actions secret (an npm access token with publish rights for `@florasync`).
 - Run the `Publish (npm)` workflow (`.github/workflows/npm-publish.yml`) on the `main` branch.
-- The workflow bumps the **minor** version, publishes to npm, then pushes the version commit + tag back to `main`.
+- The workflow validates the package, publishes the existing `package.json` version to npm, then pushes the matching `v<version>` tag back to `main`.
 
 ## 4) Verify install as a consumer
 

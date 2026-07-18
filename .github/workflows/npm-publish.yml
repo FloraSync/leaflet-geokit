@@ -2,9 +2,6 @@ name: Publish (npm)
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
 
 concurrency:
   group: publish-npm
@@ -16,11 +13,11 @@ permissions:
 
 jobs:
   publish:
-    name: Publish to npm (main only)
+    name: Publish to npm (manual main only)
     runs-on: ubuntu-latest
     env:
       HUSKY: 0
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, 'chore(release):'))
+    if: github.ref == 'refs/heads/main'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,6 +43,15 @@ jobs:
       - name: Read package version
         id: package
         run: echo "version=$(node -p 'require(\"./package.json\").version')" >> "$GITHUB_OUTPUT"
+
+      - name: Verify npm token is configured
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "NPM_TOKEN is missing. Add an npm automation token with @florasync publish rights before dispatching this workflow."
+            exit 1
+          fi
 
       - name: Configure git
         run: |
