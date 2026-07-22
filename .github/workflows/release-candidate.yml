@@ -45,7 +45,7 @@ jobs:
         run: npm run e2e:install
 
       - name: Run E2E checks
-        run: npm run test:e2e
+        run: npx playwright test --config playwright.release.config.ts
 
   promote-main:
     name: Fast-forward main to develop

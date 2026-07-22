@@ -49,7 +49,7 @@ For scoped packages (e.g., `@florasync/leaflet-geokit`), `--access public` is re
 ## Release branch pipeline
 
 - `develop` is the release-candidate lane. Push or merge candidate work there first.
-- `Release Candidate` (`.github/workflows/release-candidate.yml`) runs `npm run release:dry` and Playwright E2E checks on `develop` pushes, relevant PRs, and manual dispatch.
+- `Release Candidate` (`.github/workflows/release-candidate.yml`) runs `npm run release:dry` and Playwright E2E checks through `playwright.release.config.ts` on `develop` pushes, relevant PRs, and manual dispatch.
 - On a successful `develop` push run, the workflow fast-forwards `main` to the same `develop` tip after verifying `main` is an ancestor of `develop`.
 - Do not publish from `develop`.
 - `Publish (npm)` (`.github/workflows/npm-publish.yml`) is manual-only and must be dispatched on `main` after the candidate is accepted.
