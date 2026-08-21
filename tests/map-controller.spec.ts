@@ -75,6 +75,34 @@ describe("MapController", () => {
     controller.destroy();
   });
 
+  it("reports structured init failures through onError", async () => {
+    const onError = vi.fn();
+    const controller = new MapController({
+      ...opts,
+      callbacks: { onError },
+    });
+
+    vi.spyOn(controller as any, "patchLeafletDrawBugs").mockImplementation(
+      () => {
+        throw new Error("boom");
+      },
+    );
+
+    await controller.init();
+
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: "map_init_failed",
+        message: "Failed to initialize Leaflet map",
+        recoverable: false,
+        cause: expect.any(Error),
+        timestamp: expect.any(Number),
+      }),
+    );
+
+    controller.destroy();
+  });
+
   it("disables delete when requested", async () => {
     opts.controls.delete = false;
     const controller = new MapController(opts);

@@ -1,5 +1,6 @@
 import type { Feature, FeatureCollection, Geometry } from "geojson";
 import type { LogLevel } from "@src/utils/logger";
+import type { StatusEventDetail } from "@src/types/events";
 import type * as Leaflet from "leaflet";
 
 /**
@@ -123,10 +124,7 @@ export type ToolButtonConfig = Partial<
 >;
 
 export type ToolToolbarPosition =
-  | "topleft"
-  | "topright"
-  | "bottomleft"
-  | "bottomright";
+  "topleft" | "topright" | "bottomleft" | "bottomright";
 
 export interface ToolToolbarGroupConfig {
   /** Stable group id used in events and DOM data attributes. */
@@ -324,6 +322,9 @@ export interface LeafletDrawMapElementAPI {
 
   /** API key for authenticated providers */
   apiKey?: string;
+
+  /** Durable readiness/loading/error snapshot mirrored by `leaflet-geokit:status`. */
+  readonly status: StatusEventDetail;
 
   // Methods
   getGeoJSON(): Promise<FeatureCollection>;

@@ -15,6 +15,7 @@ import type {
   ToolTriggerEventDetail,
   ToolTriggerOptions,
 } from "@src/types/public";
+import type { ErrorEventDetail } from "@src/types/events";
 import { createLogger, type Logger } from "@src/utils/logger";
 import { FeatureStore } from "@src/lib/FeatureStore";
 import { type NormalizedMarkerIconConfig } from "@src/lib/marker-icons";
@@ -52,7 +53,7 @@ export interface MapControllerCallbacks {
   }) => void;
   onEdited?: (detail: { ids: string[]; geoJSON: FeatureCollection }) => void;
   onDeleted?: (detail: { ids: string[]; geoJSON: FeatureCollection }) => void;
-  onError?: (detail: { message: string; cause?: unknown }) => void;
+  onError?: (detail: ErrorEventDetail) => void;
   onTileError?: (error: unknown) => void;
   onToolTrigger?: (detail: ToolTriggerEventDetail) => void;
 }
@@ -81,11 +82,7 @@ export interface MapControllerOptions {
 }
 
 type CreatedLayerType =
-  | "polygon"
-  | "polyline"
-  | "rectangle"
-  | "circle"
-  | "marker";
+  "polygon" | "polyline" | "rectangle" | "circle" | "marker";
 
 const CREATED_LAYER_EVENT_BY_TYPE: Record<
   CreatedLayerType,
@@ -489,7 +486,10 @@ export class MapController {
       const b = this.store.bounds();
       this.options.callbacks?.onReady?.(b ? { bounds: b } : {});
     } catch (err) {
-      this._error("Failed to initialize Leaflet map", err);
+      this._error("Failed to initialize Leaflet map", err, {
+        code: "map_init_failed",
+        recoverable: false,
+      });
     }
   }
 
@@ -906,8 +906,7 @@ export class MapController {
 
   private createDefaultMarkerIcon(): BundledL.Icon | null {
     const DefaultIcon = this.L.Icon?.Default as
-      | (new () => BundledL.Icon)
-      | undefined;
+      (new () => BundledL.Icon) | undefined;
     return DefaultIcon ? new DefaultIcon() : null;
   }
 
@@ -1801,9 +1800,21 @@ export class MapController {
     });
   }
 
-  private _error(message: string, cause: unknown): void {
-    this.logger.error("error", { message, cause });
-    this.options.callbacks?.onError?.({ message, cause });
+  private _error(
+    message: string,
+    cause: unknown,
+    options?: { code?: string; recoverable?: boolean },
+  ): void {
+    const detail: ErrorEventDetail = {
+      code: options?.code ?? "controller_error",
+      message,
+      recoverable: options?.recoverable ?? true,
+      cause,
+      timestamp: Date.now(),
+    };
+
+    this.logger.error("error", detail);
+    this.options.callbacks?.onError?.(detail);
   }
 
   // -------- Vertex deletion context menu --------

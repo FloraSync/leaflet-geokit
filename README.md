@@ -424,7 +424,7 @@ buttons without depending on Leaflet's sprite class names.
 #### Debugging & Development
 
 - **`log-level`** (string): Control console logging verbosity. Options: `trace`, `debug`, `info`, `warn`, `error`, `silent`. Default: `"debug"`
-- **`dev-overlay`** (boolean): Reserved for future development overlay features
+- **`dev-overlay`** (boolean): Reserved compatibility flag. No overlay UI ships in `0.8.x`.
 
 ```html
 <leaflet-geokit log-level="info"></leaflet-geokit>
@@ -775,9 +775,7 @@ console.log(`${data.features.length} features on map`);
 ```javascript
 await map.loadGeoJSON({
   type: "FeatureCollection",
-  features: [
-    /* ... */
-  ],
+  features: [/* ... */],
 });
 ```
 
@@ -812,9 +810,7 @@ await map.clearLayers();
 await map.updateFeature(featureId, {
   type: "Feature",
   properties: { name: "Updated" },
-  geometry: {
-    /* ... */
-  },
+  geometry: {/* ... */},
 });
 ```
 
@@ -927,9 +923,41 @@ The component emits typed CustomEvents that can be listened to for real-time upd
 
 #### Core Lifecycle Events
 
-**[`leaflet-draw:ready`](src/types/events.ts:7)**
+**[`leaflet-geokit:status`](src/types/events.ts)**
 
-- Fired when map is fully initialized and ready for interaction
+- Fired whenever the public readiness/loading/error snapshot changes
+- Also mirrored on the element as `map.status`
+- Detail: `{ state, ready, busy, featureCount, lastEvent?, lastError?, timestamp }`
+
+```javascript
+map.addEventListener("leaflet-geokit:status", (e) => {
+  const { state, featureCount, lastError } = e.detail;
+  console.log("GeoKit status:", state, featureCount, lastError?.code);
+});
+
+console.log(map.status.state); // 'uninitialized' | 'initializing' | 'ready' | 'loading' | 'error'
+```
+
+**[`leaflet-geokit:diagnostic`](src/types/events.ts)**
+
+- Fired for recoverable and fatal diagnostics
+- Recoverable diagnostics keep `status.state` at `ready` when the map remains usable
+- Detail: `{ code, message, recoverable, severity, state, cause?, timestamp }`
+
+```javascript
+map.addEventListener("leaflet-geokit:diagnostic", (e) => {
+  if (e.detail.recoverable) {
+    console.warn("Recoverable GeoKit issue:", e.detail.code, e.detail.message);
+    return;
+  }
+
+  console.error("Fatal GeoKit issue:", e.detail.code, e.detail.message);
+});
+```
+
+**[`leaflet-draw:ready`](src/types/events.ts)**
+
+- Compatibility event fired when the map is fully initialized and ready for interaction
 - Detail: `{ bounds?: [[number, number], [number, number]] }`
 
 ```javascript
@@ -938,21 +966,26 @@ map.addEventListener("leaflet-draw:ready", (e) => {
 });
 ```
 
-**[`leaflet-draw:error`](src/types/events.ts:42)**
+**[`leaflet-draw:error`](src/types/events.ts)**
 
-- Fired when errors occur (fetch failures, parse errors, etc.)
-- Also used for non-fatal marker icon normalization warnings before GeoKit falls back to defaults
-- Detail: `{ message: string, cause?: unknown }`
+- Fired when GeoKit hits a typed error condition (fetch failures, parse errors, init failures, config warnings)
+- Recoverable warnings still emit here for backward compatibility
+- Detail: `{ code, message, recoverable, cause?, timestamp }`
 
 ```javascript
 map.addEventListener("leaflet-draw:error", (e) => {
-  console.error("Map error:", e.detail.message, e.detail.cause);
+  console.error(
+    "Map error:",
+    e.detail.code,
+    e.detail.message,
+    e.detail.recoverable,
+  );
 });
 ```
 
 #### Drawing & Editing Events
 
-**[`leaflet-draw:created`](src/types/events.ts:15)**
+**[`leaflet-draw:created`](src/types/events.ts)**
 
 - Fired when user creates a new feature via drawing tools
 - Detail: `{ id: string, layerType: string, geoJSON: Feature }`
@@ -968,7 +1001,7 @@ map.addEventListener('leaflet-draw:created', (e) => {
 });
 ```
 
-**[`leaflet-draw:edited`](src/types/events.ts:25)**
+**[`leaflet-draw:edited`](src/types/events.ts)**
 
 - Fired when user modifies existing features via edit tools
 - Detail: `{ ids: string[], geoJSON: FeatureCollection }`
@@ -987,7 +1020,7 @@ map.addEventListener('leaflet-draw:edited', (e) => {
 });
 ```
 
-**[`leaflet-draw:deleted`](src/types/events.ts:34)**
+**[`leaflet-draw:deleted`](src/types/events.ts)**
 
 - Fired when user deletes features via delete tools
 - Detail: `{ ids: string[], geoJSON: FeatureCollection }`
@@ -1007,7 +1040,7 @@ map.addEventListener('leaflet-draw:deleted', (e) => {
 
 #### Data Flow Events
 
-**[`leaflet-draw:ingest`](src/types/events.ts:51)**
+**[`leaflet-draw:ingest`](src/types/events.ts)**
 
 - Fired BEFORE data is loaded/added to the map
 - Detail: `{ fc: FeatureCollection, mode: 'load' | 'add' }`
@@ -1034,7 +1067,7 @@ map.addEventListener("leaflet-draw:ingest", (e) => {
 });
 ```
 
-**[`leaflet-draw:export`](src/types/events.ts:57)**
+**[`leaflet-draw:export`](src/types/events.ts)**
 
 - Fired when [`exportGeoJSON()`](src/components/LeafletDrawMapElement.ts:459) method is called
 - Detail: `{ geoJSON: FeatureCollection, featureCount: number }`
@@ -1056,32 +1089,16 @@ map.addEventListener("leaflet-draw:export", (e) => {
 });
 ```
 
-#### Extended Tool Events
-
-**`leaflet-draw:drawstart`** / **`leaflet-draw:drawstop`**
-
-- Fired when drawing mode starts/stops
-- Useful for UI state management
-
-**`leaflet-draw:editstart`** / **`leaflet-draw:editstop`**
-
-- Fired when edit mode starts/stops
+#### Merge and Tool Events
 
 **`leaflet-draw:merged`**
 
 - Fired after successful polygon merge operation
 - Detail includes merge statistics and result
 
-```javascript
-// Show/hide UI elements based on draw state
-map.addEventListener("leaflet-draw:drawstart", () => {
-  document.querySelector("#toolbar").classList.add("drawing-active");
-});
-
-map.addEventListener("leaflet-draw:drawstop", () => {
-  document.querySelector("#toolbar").classList.remove("drawing-active");
-});
-```
+GeoKit `0.8.x` does not emit public draw/edit start-stop lifecycle events.
+Use `leaflet-geokit:status` for readiness/loading coordination and the
+`leaflet-geokit:tool-*` events for host-triggered tool actions.
 
 ### Feature ID Management
 
@@ -1431,11 +1448,9 @@ SSR
 
 Planned enhancements
 
-- Dev overlay (opt-in) to visualize state, counts, and last event payloads
 - Geometry-level layer sync for updateFeature without re-add
 - Playwright e2e and CI workflows
 - Advanced import providers (files, streams) and output format adapters
-- Theming hooks for overlay UI
 
 Versioning and releases
 

@@ -1,5 +1,37 @@
 import type { Feature, FeatureCollection } from "geojson";
 
+export type GeoKitStatusState =
+  "uninitialized" | "initializing" | "ready" | "loading" | "error";
+
+export interface GeoKitDiagnosticSummary {
+  code: string;
+  message: string;
+  recoverable: boolean;
+  timestamp: number;
+}
+
+/**
+ * Details for the 'leaflet-geokit:status' event and the element `status` getter.
+ */
+export interface StatusEventDetail {
+  state: GeoKitStatusState;
+  ready: boolean;
+  busy: boolean;
+  featureCount: number;
+  lastEvent?: string;
+  lastError?: GeoKitDiagnosticSummary;
+  timestamp: number;
+}
+
+/**
+ * Details for the 'leaflet-geokit:diagnostic' event.
+ */
+export interface DiagnosticEventDetail extends GeoKitDiagnosticSummary {
+  severity: "info" | "warn" | "error";
+  state: GeoKitStatusState;
+  cause?: unknown;
+}
+
 /**
  * Details for the 'leaflet-draw:ready' event.
  * bounds: optional southwest/northeast LatLng pairs.
@@ -39,8 +71,7 @@ export interface DeletedEventDetail {
 /**
  * Details for error events emitted as 'leaflet-draw:error'.
  */
-export interface ErrorEventDetail {
-  message: string;
+export interface ErrorEventDetail extends GeoKitDiagnosticSummary {
   cause?: unknown;
 }
 
@@ -72,8 +103,9 @@ export const DrawEvent = {
   Error: "leaflet-draw:error",
   Ingest: "leaflet-draw:ingest",
   Export: "leaflet-draw:export",
-  DrawStart: "leaflet-draw:drawstart",
-  DrawStop: "leaflet-draw:drawstop",
-  EditStart: "leaflet-draw:editstart",
-  EditStop: "leaflet-draw:editstop",
+} as const;
+
+export const GeoKitEvent = {
+  Status: "leaflet-geokit:status",
+  Diagnostic: "leaflet-geokit:diagnostic",
 } as const;

@@ -25,7 +25,7 @@ This document specifies the end-to-end architecture for a framework-agnostic, Ty
 
 - Public API remains framework-agnostic (Custom Element + DOM events + methods).
 - First-class wrappers provided for **Preact** and **React** to simplify framework integration.
-- Internals leverage TypeScript to enforce contracts; a dev overlay UI is planned.
+- Internals leverage TypeScript to enforce contracts; diagnostics ship via public status/error events rather than an overlay UI.
 - Separation of concerns:
   - Custom Element host [LeafletDrawMapElement](src/components/LeafletDrawMapElement.ts:1)
   - Map lifecycle + Leaflet.draw bridge [MapController](src/lib/MapController.ts:1)
@@ -38,14 +38,11 @@ This document specifies the end-to-end architecture for a framework-agnostic, Ty
 ```mermaid
 flowchart LR
   A[LeafletDrawMapElement (Custom Element)] --> B[MapController]
-  %% Dev overlay planned
-  %% A --> C[LeafletDrawMapView (Preact Dev Overlay)]
   B --> D[Leaflet Map + Leaflet.draw]
   B --> E[FeatureStore]
   E <--> D
   B -->|dispatch CustomEvent| A
   A -->|attributes/props| B
-  %% C -->|status/diagnostics| A
 ```
 
 ### State sketch
@@ -55,14 +52,14 @@ stateDiagram-v2
   [*] --> uninitialized
   uninitialized --> initializing
   initializing --> ready
-  ready --> loadingData
-  loadingData --> ready
-  ready --> drawing
-  drawing --> ready
-  ready --> editing
-  editing --> ready
+  ready --> loading
+  loading --> ready
   [*] --> error
-  any --> error
+  initializing --> error
+  note right of ready
+    Recoverable diagnostics keep the map usable
+    and surface through status.lastError / diagnostic events.
+  end note
 ```
 
 ## Public API
@@ -81,7 +78,7 @@ All interactions occur via the Custom Element host [LeafletDrawMapElement](src/c
 - Behavior
   - read-only (boolean)
   - log-level: "trace" | "debug" | "info" | "warn" | "error" | "silent"
-  - dev-overlay (boolean; reserved for future)
+  - dev-overlay (boolean; reserved compatibility flag, no overlay implementation)
   - theme-url (string, optional): external CSS to inject into Shadow DOM
 
 Attributes reflect to typed properties defined on [LeafletDrawMapElement](src/components/LeafletDrawMapElement.ts:1).
@@ -98,6 +95,7 @@ Attributes reflect to typed properties defined on [LeafletDrawMapElement](src/co
 - LeafletDrawMapElement.readOnly: boolean
 - LeafletDrawMapElement.logLevel: LogLevel
 - LeafletDrawMapElement.devOverlay: boolean
+- LeafletDrawMapElement.status: StatusEventDetail
 - LeafletDrawMapElement.themeCss: string
 
 ### Methods
@@ -117,6 +115,8 @@ All methods log inputs/outputs and timing (debug level) via [createLogger()](src
 
 ### Events
 
+- 'leaflet-geokit:status' → StatusEventDetail
+- 'leaflet-geokit:diagnostic' → DiagnosticEventDetail
 - 'leaflet-draw:ready' → ReadyEventDetail
 - 'leaflet-draw:created' → CreatedEventDetail
 - 'leaflet-draw:edited' → EditedEventDetail
@@ -124,7 +124,7 @@ All methods log inputs/outputs and timing (debug level) via [createLogger()](src
 - 'leaflet-draw:error' → ErrorEventDetail
 - 'leaflet-draw:ingest' → { fc: FeatureCollection, mode: 'load'|'add' } — dispatched before features are added; listeners can mutate detail.fc to transform input
 
-Verbose lifecycle events (drawstart/drawstop/editstart/editstop) are planned but not emitted in this repo.
+Public draw/edit start-stop lifecycle events are intentionally out of scope in this repo.
 
 Event detail types live in [events.ts](src/types/events.ts:1) and are documented for consumers.
 
@@ -166,13 +166,13 @@ Event detail types live in [events.ts](src/types/events.ts:1) and are documented
     - [bounds(): L.LatLngBounds | null](src/lib/FeatureStore.ts:1)
   - Maintains bidirectional maps: id → L.Layer and L.Layer → id to translate edit/delete events
 
-### Dev Overlay (planned)
+### Dev Overlay
 
-- A dev/status overlay is planned but not implemented in this repo.
+- `dev-overlay` remains a reserved compatibility flag only. Runtime diagnostics are exposed through `leaflet-geokit:status` and `leaflet-geokit:diagnostic`.
 
 ### State
 
-- [MapState](src/state/types.ts:1) exists for potential future overlay/state reporting.
+- Public state snapshots are exposed as [StatusEventDetail](src/types/events.ts:1) on the element `status` getter and `leaflet-geokit:status` events.
 
 ### Logging
 
