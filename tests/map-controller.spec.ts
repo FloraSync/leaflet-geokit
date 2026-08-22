@@ -266,10 +266,9 @@ describe("MapController", () => {
 
     expect(addedIds).toEqual(["bed-2"]);
     expect((controller as any).drawnItems.getLayers()).toHaveLength(2);
-    expect((await controller.getGeoJSON()).features.map((feature) => feature.id)).toEqual([
-      "bed-1",
-      "bed-2",
-    ]);
+    expect(
+      (await controller.getGeoJSON()).features.map((feature) => feature.id),
+    ).toEqual(["bed-1", "bed-2"]);
 
     const replacementIds = await controller.importGeoJSON({
       type: "FeatureCollection",
@@ -288,9 +287,9 @@ describe("MapController", () => {
 
     expect(replacementIds).toEqual(["bed-3"]);
     expect((controller as any).drawnItems.getLayers()).toHaveLength(1);
-    expect((await controller.getGeoJSON()).features.map((feature) => feature.id)).toEqual([
-      "bed-3",
-    ]);
+    expect(
+      (await controller.getGeoJSON()).features.map((feature) => feature.id),
+    ).toEqual(["bed-3"]);
 
     controller.destroy();
   });

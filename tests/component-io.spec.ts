@@ -140,5 +140,4 @@ describe("LeafletDrawMapElement — IO helpers", () => {
       fitToData: true,
     });
   });
-
 });

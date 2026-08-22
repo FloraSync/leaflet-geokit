@@ -563,10 +563,7 @@ export class MapController {
   async exportGeoJSON(
     options: GeoJSONExportOptions = {},
   ): Promise<FeatureCollection> {
-    return adaptFeatureCollectionForExport(
-      await this.getGeoJSON(),
-      options,
-    );
+    return adaptFeatureCollectionForExport(await this.getGeoJSON(), options);
   }
 
   async importGeoJSON(
