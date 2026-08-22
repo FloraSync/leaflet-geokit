@@ -766,8 +766,25 @@ const data = await map.getGeoJSON();
 console.log(`${data.features.length} features on map`);
 ```
 
+**[`importGeoJSON(fc, options?)`](src/components/LeafletDrawMapElement.ts)**: Promise<string[]>
+
+- Explicit import contract for host apps: `behavior: "replace" | "add"`
+- `replace` clears existing data before ingest; `add` preserves existing map data
+- `fitToData` is optional and defaults to `false` for direct programmatic imports
+- Returns array of assigned stable feature IDs
+- Triggers [`leaflet-draw:ingest`](src/types/events.ts:51) event before import (`mode: "load"` for replace, `mode: "add"` for additive imports)
+
+```javascript
+const ids = await map.importGeoJSON(newFeatures, {
+  behavior: "add",
+  fitToData: true,
+});
+console.log("Imported features with IDs:", ids);
+```
+
 **[`loadGeoJSON(fc)`](src/components/LeafletDrawMapElement.ts:390)**: Promise<void>
 
+- Back-compat alias for `importGeoJSON(fc, { behavior: "replace" })`
 - Clears existing data and loads new FeatureCollection
 - Does NOT auto-fit the view (use [`fitBoundsToData()`](src/components/LeafletDrawMapElement.ts:428) separately)
 - Triggers [`leaflet-draw:ingest`](src/types/events.ts:51) event before loading
@@ -781,6 +798,7 @@ await map.loadGeoJSON({
 
 **[`addFeatures(fc)`](src/components/LeafletDrawMapElement.ts:406)**: Promise<string[]>
 
+- Back-compat alias for `importGeoJSON(fc, { behavior: "add" })`
 - Adds features to existing map data (does not clear)
 - Returns array of assigned stable feature IDs
 - Expands `Multi*` and `GeometryCollection` inputs into one single-geometry feature/id per child part
@@ -860,36 +878,43 @@ await map.fitBounds(
 
 #### Data Import Helpers
 
-**[`loadGeoJSONFromUrl(url)`](src/components/LeafletDrawMapElement.ts:510)**: Promise<void>
+**[`loadGeoJSONFromUrl(url, options?)`](src/components/LeafletDrawMapElement.ts:510)**: Promise<void>
 
-- Fetches GeoJSON from URL and loads it
+- Fetches GeoJSON from URL and imports it with explicit `behavior: "replace" | "add"`
 - Expects `application/json` content type
-- Automatically fits view to loaded data
-- Emits error events on fetch/parse failures
+- Defaults to `behavior: "replace"` and `fitToData: true` for file/URL style imports
+- Emits error events on fetch/parse/import failures
 
 ```javascript
-await map.loadGeoJSONFromUrl("/api/geodata.json");
+await map.loadGeoJSONFromUrl("/api/geodata.json", {
+  behavior: "add",
+});
 ```
 
-**[`loadGeoJSONFromText(text)`](src/components/LeafletDrawMapElement.ts:533)**: Promise<void>
+**[`loadGeoJSONFromText(text, options?)`](src/components/LeafletDrawMapElement.ts:533)**: Promise<void>
 
-- Parses GeoJSON from text string and loads it
-- Automatically fits view to loaded data
-- Emits error events on parse failures
+- Parses GeoJSON from text string and imports it with explicit `behavior: "replace" | "add"`
+- Defaults to `behavior: "replace"` and `fitToData: true`
+- Emits error events on parse/import failures
 
 ```javascript
 const text = await file.text();
-await map.loadGeoJSONFromText(text);
+await map.loadGeoJSONFromText(text, {
+  behavior: "replace",
+});
 ```
 
-**[`exportGeoJSON()`](src/components/LeafletDrawMapElement.ts:459)**: Promise<FeatureCollection>
+**[`exportGeoJSON(options?)`](src/components/LeafletDrawMapElement.ts:459)**: Promise<FeatureCollection>
 
 - Exports current data and emits [`leaflet-draw:export`](src/types/events.ts:57) event
-- Returns the FeatureCollection for convenience
-- Useful for triggering export workflows
+- Defaults to `adapter: "editing"`, which preserves the current editable single-geometry feature state
+- `adapter: "source"` opt-in re-merges stable derived sibling IDs like `bed-1::0` / `bed-1::1` back into source-like `Multi*` or `GeometryCollection` output
+- Source export is intentionally opt-in because sibling property divergence is resolved by reusing the first child properties
 
 ```javascript
-const exported = await map.exportGeoJSON();
+const exported = await map.exportGeoJSON({
+  adapter: "source",
+});
 // Listen for the event to trigger download/save workflows
 ```
 
@@ -1108,6 +1133,7 @@ The component guarantees stable, persistent feature IDs that survive editing ope
 2. **Property IDs**: If no `feature.id` but has `properties.id`, that's used
 3. **Generated IDs**: Otherwise, a UUID is generated and stored in `properties.id`
 4. **Multi-geometry normalization**: `MultiPoint`, `MultiLineString`, `MultiPolygon`, and `GeometryCollection` inputs are expanded into single-geometry features. If the source feature already had an ID, each child receives a stable derived ID such as `bed-1::0` and `bed-1::1`
+5. **Opt-in source export**: `exportGeoJSON({ adapter: "source" })` best-effort re-merges those stable derived siblings into source-like `Multi*`/`GeometryCollection` output for hosts that want source-shaped files back
 
 ```javascript
 // Features maintain their IDs through edit cycles
@@ -1210,7 +1236,9 @@ C. Load from text (e.g., user paste or file input)
 
 ```js
 const text = await file.text();
-await el.loadGeoJSONFromText(text);
+await el.loadGeoJSONFromText(text, {
+  behavior: "add", // or "replace" to clear existing map data first
+});
 ```
 
 D. Programmatic CRUD with ids

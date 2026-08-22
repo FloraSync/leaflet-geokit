@@ -1,5 +1,8 @@
 import type { Feature, FeatureCollection } from "geojson";
 import type {
+  GeoJSONImportBehavior,
+  GeoJSONImportOptions,
+  GeoJSONExportOptions,
   LeafletDrawMapElementAPI,
   MapConfig,
   DrawControlsConfig,
@@ -1094,49 +1097,33 @@ export class LeafletDrawMapElement
     return this._controller.getGeoJSON();
   }
 
-  async loadGeoJSON(fc: FeatureCollection): Promise<void> {
-    this._logger.debug("loadGeoJSON", { features: fc?.features?.length ?? 0 });
-    if (!this._controller) return;
+  async importGeoJSON(
+    fc: FeatureCollection,
+    options: GeoJSONImportOptions = {},
+  ): Promise<string[]> {
+    const behavior = options.behavior ?? "replace";
+    this._logger.debug("importGeoJSON", {
+      behavior,
+      fitToData: options.fitToData ?? false,
+      features: fc?.features?.length ?? 0,
+    });
+    if (!this._controller) return [];
 
     const previousStatus = this.status;
-    this._setStatus({
-      state: "loading",
-      ready: previousStatus.ready,
-      busy: true,
-      featureCount: previousStatus.featureCount,
-      lastEvent: DrawEvent.Ingest,
-      lastError: null,
-    });
+    this._setImportLoadingStatus(previousStatus);
+    return this._performImport(
+      fc,
+      options,
+      previousStatus,
+      behavior === "add"
+        ? "Failed to add GeoJSON features to the map"
+        : "Failed to load GeoJSON into the map",
+    );
+  }
 
-    const detail = { fc, mode: "load" as const };
-    this.dispatchEvent(new CustomEvent(DrawEvent.Ingest, { detail }));
-    const finalFc =
-      detail.fc && detail.fc.type === "FeatureCollection" ? detail.fc : fc;
-
-    try {
-      await this._controller.loadGeoJSON(finalFc, false);
-      await this._syncStatusFromController({
-        state: "ready",
-        ready: true,
-        busy: false,
-        lastEvent: DrawEvent.Ingest,
-        clearLastError: true,
-      });
-    } catch (cause) {
-      this._emitError(
-        {
-          code: "data_load_failed",
-          message: "Failed to load GeoJSON into the map",
-          recoverable: true,
-          cause,
-        },
-        {
-          state: previousStatus.ready ? "ready" : previousStatus.state,
-          featureCount: previousStatus.featureCount,
-        },
-      );
-      throw cause;
-    }
+  async loadGeoJSON(fc: FeatureCollection): Promise<void> {
+    this._logger.debug("loadGeoJSON", { features: fc?.features?.length ?? 0 });
+    await this.importGeoJSON(fc, { behavior: "replace" });
   }
 
   async clearLayers(): Promise<void> {
@@ -1155,48 +1142,7 @@ export class LeafletDrawMapElement
 
   async addFeatures(fc: FeatureCollection): Promise<string[]> {
     this._logger.debug("addFeatures", { count: fc?.features?.length ?? 0 });
-    if (!this._controller) return [];
-
-    const previousStatus = this.status;
-    this._setStatus({
-      state: "loading",
-      ready: previousStatus.ready,
-      busy: true,
-      featureCount: previousStatus.featureCount,
-      lastEvent: DrawEvent.Ingest,
-      lastError: null,
-    });
-
-    const detail = { fc, mode: "add" as const };
-    this.dispatchEvent(new CustomEvent(DrawEvent.Ingest, { detail }));
-    const finalFc =
-      detail.fc && detail.fc.type === "FeatureCollection" ? detail.fc : fc;
-
-    try {
-      const ids = await this._controller.addFeatures(finalFc);
-      await this._syncStatusFromController({
-        state: "ready",
-        ready: true,
-        busy: false,
-        lastEvent: DrawEvent.Ingest,
-        clearLastError: true,
-      });
-      return ids;
-    } catch (cause) {
-      this._emitError(
-        {
-          code: "data_add_failed",
-          message: "Failed to add GeoJSON features to the map",
-          recoverable: true,
-          cause,
-        },
-        {
-          state: previousStatus.ready ? "ready" : previousStatus.state,
-          featureCount: previousStatus.featureCount,
-        },
-      );
-      throw cause;
-    }
+    return this.importGeoJSON(fc, { behavior: "add" });
   }
 
   async updateFeature(id: string, feature: Feature): Promise<void> {
@@ -1249,11 +1195,18 @@ export class LeafletDrawMapElement
     }
   }
 
-  async exportGeoJSON(): Promise<FeatureCollection> {
-    this._logger.debug("exportGeoJSON");
+  async exportGeoJSON(
+    options: GeoJSONExportOptions = {},
+  ): Promise<FeatureCollection> {
+    const adapter = options.adapter ?? "editing";
+    this._logger.debug("exportGeoJSON", { adapter });
     if (!this._controller) return { type: "FeatureCollection", features: [] };
-    const fc = await this._controller.getGeoJSON();
-    const detail = { geoJSON: fc, featureCount: fc.features.length };
+    const fc = await this._exportWithController(options);
+    const detail = {
+      geoJSON: fc,
+      featureCount: fc.features.length,
+      adapter,
+    };
     this.dispatchEvent(new CustomEvent(DrawEvent.Export, { detail }));
     return fc;
   }
@@ -1449,19 +1402,20 @@ export class LeafletDrawMapElement
     });
   }
 
-  async loadGeoJSONFromUrl(url: string): Promise<void> {
-    this._logger.debug("loadGeoJSONFromUrl", { url });
+  async loadGeoJSONFromUrl(
+    url: string,
+    options: GeoJSONImportOptions = {},
+  ): Promise<void> {
+    const behavior = options.behavior ?? "replace";
+    this._logger.debug("loadGeoJSONFromUrl", {
+      url,
+      behavior,
+      fitToData: options.fitToData ?? true,
+    });
     if (!this._controller) return;
 
     const previousStatus = this.status;
-    this._setStatus({
-      state: "loading",
-      ready: previousStatus.ready,
-      busy: true,
-      featureCount: previousStatus.featureCount,
-      lastEvent: DrawEvent.Ingest,
-      lastError: null,
-    });
+    this._setImportLoadingStatus(previousStatus);
 
     let res: Response;
     try {
@@ -1522,50 +1476,33 @@ export class LeafletDrawMapElement
       throw err;
     }
 
-    const detail = { fc: data, mode: "load" as const };
-    this.dispatchEvent(new CustomEvent(DrawEvent.Ingest, { detail }));
-    const finalFc =
-      detail.fc && detail.fc.type === "FeatureCollection" ? detail.fc : data;
-
-    try {
-      await this._controller.loadGeoJSON(finalFc, true);
-      await this._syncStatusFromController({
-        state: "ready",
-        ready: true,
-        busy: false,
-        lastEvent: DrawEvent.Ingest,
-        clearLastError: true,
-      });
-    } catch (cause) {
-      this._emitError(
-        {
-          code: "data_load_failed",
-          message: `Failed to load GeoJSON from ${url}`,
-          recoverable: true,
-          cause,
-        },
-        {
-          state: previousStatus.ready ? "ready" : previousStatus.state,
-          featureCount: previousStatus.featureCount,
-        },
-      );
-      throw cause;
-    }
+    await this._performImport(
+      data,
+      {
+        behavior,
+        fitToData: options.fitToData ?? true,
+      },
+      previousStatus,
+      behavior === "add"
+        ? `Failed to add GeoJSON from ${url}`
+        : `Failed to load GeoJSON from ${url}`,
+    );
   }
 
-  async loadGeoJSONFromText(text: string): Promise<void> {
-    this._logger.debug("loadGeoJSONFromText", { length: text?.length ?? 0 });
+  async loadGeoJSONFromText(
+    text: string,
+    options: GeoJSONImportOptions = {},
+  ): Promise<void> {
+    const behavior = options.behavior ?? "replace";
+    this._logger.debug("loadGeoJSONFromText", {
+      behavior,
+      fitToData: options.fitToData ?? true,
+      length: text?.length ?? 0,
+    });
     if (!this._controller) return;
 
     const previousStatus = this.status;
-    this._setStatus({
-      state: "loading",
-      ready: previousStatus.ready,
-      busy: true,
-      featureCount: previousStatus.featureCount,
-      lastEvent: DrawEvent.Ingest,
-      lastError: null,
-    });
+    this._setImportLoadingStatus(previousStatus);
 
     let data: FeatureCollection;
     try {
@@ -1586,13 +1523,51 @@ export class LeafletDrawMapElement
       );
       throw err;
     }
-    const detail = { fc: data, mode: "load" as const };
+
+    await this._performImport(
+      data,
+      {
+        behavior,
+        fitToData: options.fitToData ?? true,
+      },
+      previousStatus,
+      behavior === "add"
+        ? "Failed to add parsed GeoJSON into the map"
+        : "Failed to load parsed GeoJSON into the map",
+    );
+  }
+
+  private _setImportLoadingStatus(previousStatus: StatusEventDetail): void {
+    this._setStatus({
+      state: "loading",
+      ready: previousStatus.ready,
+      busy: true,
+      featureCount: previousStatus.featureCount,
+      lastEvent: DrawEvent.Ingest,
+      lastError: null,
+    });
+  }
+
+  private async _performImport(
+    fc: FeatureCollection,
+    options: GeoJSONImportOptions,
+    previousStatus: StatusEventDetail,
+    failureMessage: string,
+  ): Promise<string[]> {
+    const behavior = options.behavior ?? "replace";
+    const detail = {
+      fc,
+      mode: (behavior === "add" ? "add" : "load") as "load" | "add",
+    };
     this.dispatchEvent(new CustomEvent(DrawEvent.Ingest, { detail }));
     const finalFc =
-      detail.fc && detail.fc.type === "FeatureCollection" ? detail.fc : data;
+      detail.fc && detail.fc.type === "FeatureCollection" ? detail.fc : fc;
 
     try {
-      await this._controller.loadGeoJSON(finalFc, true);
+      const ids = await this._importWithController(finalFc, {
+        behavior,
+        fitToData: options.fitToData ?? false,
+      });
       await this._syncStatusFromController({
         state: "ready",
         ready: true,
@@ -1600,11 +1575,12 @@ export class LeafletDrawMapElement
         lastEvent: DrawEvent.Ingest,
         clearLastError: true,
       });
+      return ids;
     } catch (cause) {
       this._emitError(
         {
-          code: "data_load_failed",
-          message: "Failed to load parsed GeoJSON into the map",
+          code: behavior === "add" ? "data_add_failed" : "data_load_failed",
+          message: failureMessage,
           recoverable: true,
           cause,
         },
@@ -1615,6 +1591,53 @@ export class LeafletDrawMapElement
       );
       throw cause;
     }
+  }
+
+  private async _importWithController(
+    fc: FeatureCollection,
+    options: GeoJSONImportOptions,
+  ): Promise<string[]> {
+    if (!this._controller) return [];
+
+    const behavior = options.behavior ?? "replace";
+    const fitToData = options.fitToData ?? false;
+    const maybeController = this._controller as MapController & {
+      importGeoJSON?: (
+        fc: FeatureCollection,
+        options?: GeoJSONImportOptions,
+      ) => Promise<string[]>;
+    };
+
+    if (typeof maybeController.importGeoJSON === "function") {
+      return maybeController.importGeoJSON(fc, { behavior, fitToData });
+    }
+
+    if (behavior === "add") {
+      return maybeController.addFeatures(fc);
+    }
+
+    await maybeController.loadGeoJSON(fc, fitToData);
+    return [];
+  }
+
+  private async _exportWithController(
+    options: GeoJSONExportOptions,
+  ): Promise<FeatureCollection> {
+    if (!this._controller) {
+      return { type: "FeatureCollection", features: [] };
+    }
+
+    const maybeController = this._controller as MapController & {
+      exportGeoJSON?: (
+        options?: GeoJSONExportOptions,
+      ) => Promise<FeatureCollection>;
+    };
+
+    if (typeof maybeController.exportGeoJSON === "function") {
+      return maybeController.exportGeoJSON(options);
+    }
+
+    return maybeController.getGeoJSON();
   }
   // Helpers
   private _currentConfig(): MapConfig {

@@ -33,8 +33,8 @@
 
 **Tests & Tooling**
 
-- **Unit tests won’t catch runtime issues:** Tests run in `happy-dom` and append the element, but Leaflet init errors are swallowed; methods are mostly no‑ops when controller is null. Impact: green tests despite runtime regressions. Suggest: add tests that assert controller readiness or mock Leaflet to exercise draw flows.
-- **Playwright coverage is limited** `test:e2e` uses Playwright. There is minimal coverage to check the CSS injection but not much else.
+- **Unit tests won’t catch every browser runtime issue:** Tests run in `happy-dom`, so Leaflet/browser integration still needs Playwright coverage for draw/edit/delete behavior. Current focused gates cover marker icons, draw runtime, edit vertex delete, performance, and irrigation draw mode; keep them release-blocking instead of relying on unit tests alone.
+- **Local Playwright artifact ownership can block the normal runner:** Root-owned `test-results/.last-run.json` or Vite cache files can fail before tests execute. Use the tracked `.wip` audit config workaround or fix artifact ownership before interpreting a Playwright startup failure as product failure.
 
 **Types & Declarations**
 
@@ -59,8 +59,7 @@
 **Recommendations (Prioritized)**
 
 - Fix default fit behavior for `loadGeoJSON` and/or implement `fit-to-data-on-load` attribute.
-- Correct id mapping by assigning `_fid` in `onEachFeature` and maintaining layer↔id maps.
-- Preserve and reload current data across controller re‑inits; coalesce rapid changes.
-- Implement or remove dev overlay references; align docs with current capabilities.
-- Add a realistic test that mocks Leaflet and validates draw→event→store flows; prune non‑existent e2e scripts or add minimal specs.
+- Wire exported draw/edit lifecycle events or remove them from the advertised public event surface.
+- Expose an explicit readiness promise/state and improve safe parse-error detail for host diagnostics.
+- Coalesce rapid attribute-change re-init calls to avoid lifecycle race flicker.
 - Clean up type shims and stale documentation references to avoid confusion.

@@ -4,6 +4,8 @@ import "leaflet-ruler";
 import type { Feature, FeatureCollection } from "geojson";
 import type {
   DrawControlsConfig,
+  GeoJSONExportOptions,
+  GeoJSONImportOptions,
   MapConfig,
   MeasurementSystem,
   IntegratedToolEventEmitter,
@@ -28,6 +30,7 @@ import { LayerCakeManager } from "@src/lib/layer-cake/LayerCakeManager";
 import layerCakeIconSvg from "@src/assets/layer-cake.svg?raw";
 import moveToolIconSvg from "@src/assets/move-tool.svg?raw";
 import {
+  adaptFeatureCollectionForExport,
   expandMultiGeometries,
   mergePolygons,
   isPolygon,
@@ -557,28 +560,52 @@ export class MapController {
     return this.store.toFeatureCollection();
   }
 
-  async loadGeoJSON(
-    fc: FeatureCollection,
-    fitToData: boolean = false,
-  ): Promise<void> {
-    if (!this.map || !this.drawnItems) return;
-    // Clear existing
-    await this.clearLayers();
+  async exportGeoJSON(
+    options: GeoJSONExportOptions = {},
+  ): Promise<FeatureCollection> {
+    return adaptFeatureCollectionForExport(
+      await this.getGeoJSON(),
+      options,
+    );
+  }
 
-    // Add new features into store + map layers
+  async importGeoJSON(
+    fc: FeatureCollection,
+    options: GeoJSONImportOptions = {},
+  ): Promise<string[]> {
+    if (!this.map || !this.drawnItems) return [];
+
+    const behavior = options.behavior ?? "replace";
+    if (behavior === "replace") {
+      await this.clearLayers();
+    }
+
     const normalized = expandMultiGeometries(fc);
     const ids = this.store.add(normalized);
     const layers = this.createGeoJSONLayers(normalized);
     this.addGeoJSONLayersToDrawnItems(layers);
 
-    this.logger.debug("loadGeoJSON", {
+    this.logger.debug("importGeoJSON", {
+      behavior,
       count: normalized.features.length,
       ids,
     });
 
-    if (fitToData) {
+    if (options.fitToData) {
       await this.fitBoundsToData();
     }
+
+    return ids;
+  }
+
+  async loadGeoJSON(
+    fc: FeatureCollection,
+    fitToData: boolean = false,
+  ): Promise<void> {
+    await this.importGeoJSON(fc, {
+      behavior: "replace",
+      fitToData,
+    });
   }
 
   async clearLayers(): Promise<void> {
@@ -589,12 +616,7 @@ export class MapController {
   }
 
   async addFeatures(fc: FeatureCollection): Promise<string[]> {
-    if (!this.map || !this.drawnItems) return [];
-    const normalized = expandMultiGeometries(fc);
-    const ids = this.store.add(normalized);
-    const layers = this.createGeoJSONLayers(normalized);
-    this.addGeoJSONLayersToDrawnItems(layers);
-    return ids;
+    return this.importGeoJSON(fc, { behavior: "add" });
   }
 
   async updateFeature(id: string, feature: Feature): Promise<void> {

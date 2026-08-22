@@ -53,9 +53,8 @@ describe("LeafletDrawMapElement — event hooks", () => {
     });
   });
 
-  it("exportGeoJSON dispatches export event with featureCount", async () => {
+  it("exportGeoJSON dispatches export event with featureCount and adapter", async () => {
     const el: any = document.createElement(TAG);
-    // Stub controller
     const fc = {
       type: "FeatureCollection",
       features: [
@@ -66,15 +65,16 @@ describe("LeafletDrawMapElement — event hooks", () => {
         },
       ],
     };
-    el._controller = { getGeoJSON: vi.fn().mockResolvedValue(fc) };
+    el._controller = { exportGeoJSON: vi.fn().mockResolvedValue(fc) };
 
     const spy = vi.fn();
     el.addEventListener("leaflet-draw:export", spy);
-    const out = await el.exportGeoJSON();
+    const out = await el.exportGeoJSON({ adapter: "source" });
     expect(out).toEqual(fc);
     expect(spy).toHaveBeenCalledOnce();
     const detail = (spy.mock.calls[0][0] as CustomEvent).detail;
     expect(detail.featureCount).toBe(1);
+    expect(detail.adapter).toBe("source");
   });
 
   it("ingest handler can mutate data before load/add", async () => {

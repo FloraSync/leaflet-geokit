@@ -1,4 +1,5 @@
 import type { Feature, FeatureCollection } from "geojson";
+import type { GeoJSONExportAdapter } from "@src/utils/geojson";
 
 export type GeoKitStatusState =
   "uninitialized" | "initializing" | "ready" | "loading" | "error";
@@ -90,6 +91,7 @@ export interface IngestEventDetail {
 export interface ExportEventDetail {
   geoJSON: FeatureCollection;
   featureCount: number;
+  adapter: GeoJSONExportAdapter;
 }
 
 /**

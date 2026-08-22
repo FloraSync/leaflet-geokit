@@ -1,6 +1,12 @@
 import type { Feature, FeatureCollection, Geometry } from "geojson";
 import type { LogLevel } from "@src/utils/logger";
 import type { StatusEventDetail } from "@src/types/events";
+import type {
+  GeoJSONExportAdapter,
+  GeoJSONExportOptions,
+  GeoJSONImportBehavior,
+  GeoJSONImportOptions,
+} from "@src/utils/geojson";
 import type * as Leaflet from "leaflet";
 
 /**
@@ -328,6 +334,10 @@ export interface LeafletDrawMapElementAPI {
 
   // Methods
   getGeoJSON(): Promise<FeatureCollection>;
+  importGeoJSON(
+    fc: FeatureCollection,
+    options?: GeoJSONImportOptions,
+  ): Promise<string[]>;
   loadGeoJSON(fc: FeatureCollection): Promise<void>;
   clearLayers(): Promise<void>;
   addFeatures(fc: FeatureCollection): Promise<string[]>;
@@ -345,13 +355,19 @@ export interface LeafletDrawMapElementAPI {
   setView(lat: number, lng: number, zoom?: number): Promise<void>;
 
   // Convenience methods
-  loadGeoJSONFromUrl(url: string): Promise<void>;
-  loadGeoJSONFromText(text: string): Promise<void>;
+  loadGeoJSONFromUrl(
+    url: string,
+    options?: GeoJSONImportOptions,
+  ): Promise<void>;
+  loadGeoJSONFromText(
+    text: string,
+    options?: GeoJSONImportOptions,
+  ): Promise<void>;
   /**
    * Emits 'leaflet-draw:export' with the current FeatureCollection.
    * Returns the exported FeatureCollection for convenience.
    */
-  exportGeoJSON(): Promise<FeatureCollection>;
+  exportGeoJSON(options?: GeoJSONExportOptions): Promise<FeatureCollection>;
 
   /**
    * Merge all visible polygon layers into a single polygon.
@@ -392,3 +408,9 @@ export interface LeafletDrawMapElementAPI {
 
 // Re-exports for consumers
 export type { Feature, FeatureCollection, Geometry };
+export type {
+  GeoJSONExportAdapter,
+  GeoJSONExportOptions,
+  GeoJSONImportBehavior,
+  GeoJSONImportOptions,
+};

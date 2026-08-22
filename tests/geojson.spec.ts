@@ -7,6 +7,7 @@ import {
   bboxOfFeatureCollection,
   bboxToBoundsPair,
   expandMultiGeometries,
+  adaptFeatureCollectionForExport,
 } from "@src/utils/geojson";
 
 describe("utils/geojson", () => {
@@ -184,5 +185,81 @@ describe("utils/geojson", () => {
       out.features.filter((f) => f.properties && (f.properties as any).d === 4)
         .length,
     ).toBe(2);
+  });
+
+  it("adapts expanded sibling features back to source-like multi geometry output", () => {
+    const expanded = expandMultiGeometries({
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          id: "bed-1",
+          properties: { name: "Bed cluster" },
+          geometry: {
+            type: "MultiPoint",
+            coordinates: [
+              [0, 0],
+              [1, 1],
+            ],
+          },
+        },
+      ],
+    });
+
+    const exported = adaptFeatureCollectionForExport(expanded, {
+      adapter: "source",
+    });
+
+    expect(exported.features).toHaveLength(1);
+    expect(exported.features[0]).toMatchObject({
+      id: "bed-1",
+      properties: {
+        id: "bed-1",
+        name: "Bed cluster",
+      },
+      geometry: {
+        type: "MultiPoint",
+        coordinates: [
+          [0, 0],
+          [1, 1],
+        ],
+      },
+    });
+  });
+
+  it("collapses a surviving expanded child back to its base id for source export", () => {
+    const exported = adaptFeatureCollectionForExport(
+      {
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            id: "bed-1::1",
+            properties: {
+              id: "bed-1::1",
+              name: "Bed cluster",
+            },
+            geometry: {
+              type: "Point",
+              coordinates: [1, 1],
+            },
+          },
+        ],
+      },
+      { adapter: "source" },
+    );
+
+    expect(exported.features).toHaveLength(1);
+    expect(exported.features[0]).toMatchObject({
+      id: "bed-1",
+      properties: {
+        id: "bed-1",
+        name: "Bed cluster",
+      },
+      geometry: {
+        type: "Point",
+        coordinates: [1, 1],
+      },
+    });
   });
 });
