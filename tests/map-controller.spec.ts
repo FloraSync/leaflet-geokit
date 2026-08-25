@@ -439,6 +439,71 @@ describe("MapController", () => {
     controller.destroy();
   });
 
+  it("renders custom toolbar groups with icon buttons, hides duplicate Leaflet toolbars, and emits save", async () => {
+    container.innerHTML = `
+      <div class="leaflet-draw-toolbar"><a class="leaflet-draw-draw-polygon" title="Draw a polygon"></a></div>
+      <a class="leaflet-ruler" title="Measure"></a>
+    `;
+    const onToolTrigger = vi.fn();
+    const onSaved = vi.fn();
+    const controller = new MapController({
+      ...opts,
+      callbacks: { onToolTrigger, onSaved },
+      toolbarGroups: [
+        {
+          id: "grower-tools",
+          tools: ["polygon", "select", "save"],
+          position: "topright",
+        },
+      ],
+    });
+
+    (controller as any).applyToolButtonCustomizations();
+
+    expect(container.hasAttribute("data-geokit-default-toolbar-hidden")).toBe(
+      true,
+    );
+    expect(
+      (container.querySelector(".leaflet-draw-toolbar") as HTMLElement).style
+        .display,
+    ).toBe("none");
+    expect(
+      (container.querySelector(".leaflet-ruler") as HTMLElement).style.display,
+    ).toBe("none");
+
+    const saveButton = container.querySelector(
+      '[data-geokit-toolbar-group="grower-tools"] [data-geokit-tool="save"]',
+    ) as HTMLButtonElement;
+    expect(saveButton).toBeTruthy();
+    expect(saveButton.querySelector("svg")).toBeTruthy();
+    expect(saveButton.textContent?.trim()).toBe("");
+
+    saveButton.click();
+
+    expect(onSaved).toHaveBeenCalledWith({
+      geoJSON: { type: "FeatureCollection", features: [] },
+      featureCount: 0,
+    });
+    expect(onToolTrigger).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        tool: "save",
+        handled: true,
+        groupId: "grower-tools",
+      }),
+    );
+
+    controller.setToolbarGroups(null);
+    expect(container.hasAttribute("data-geokit-default-toolbar-hidden")).toBe(
+      false,
+    );
+    expect(
+      (container.querySelector(".leaflet-draw-toolbar") as HTMLElement).style
+        .display,
+    ).toBe("");
+
+    controller.destroy();
+  });
+
   it("clears managed toolbar button classes and icons when config is removed", () => {
     container.innerHTML =
       '<a class="leaflet-draw-draw-marker" title="Draw a marker"></a>';

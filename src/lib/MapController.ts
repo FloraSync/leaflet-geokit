@@ -59,6 +59,10 @@ export interface MapControllerCallbacks {
   onError?: (detail: ErrorEventDetail) => void;
   onTileError?: (error: unknown) => void;
   onToolTrigger?: (detail: ToolTriggerEventDetail) => void;
+  onSaved?: (detail: {
+    geoJSON: FeatureCollection;
+    featureCount: number;
+  }) => void;
 }
 
 export interface MapControllerOptions {
@@ -257,6 +261,25 @@ export class MapController {
     try {
       if (tool === "select") {
         return this.deactivateTool({ source, groupId: options.groupId });
+      }
+
+      if (tool === "save") {
+        const geoJSON = this.store.toFeatureCollection();
+        this.options.callbacks?.onSaved?.({
+          geoJSON,
+          featureCount: geoJSON.features.length,
+        });
+        this.emitToolEvent("tool:save", {
+          geoJSON,
+          featureCount: geoJSON.features.length,
+        });
+        this.emitToolTrigger({
+          tool,
+          source,
+          groupId: options.groupId,
+          handled: true,
+        });
+        return true;
       }
 
       if (tool === "layerStyle") {

@@ -369,7 +369,7 @@ Customize the visual appearance:
 - **`theme-url`** (string, optional): External CSS stylesheet URL to inject into Shadow DOM
 - **`themeCss`** (property only): Inline CSS strings for custom styling
 - **`tool-button-config`** (JSON string, optional): Per-tool toolbar button config for custom icons, labels, and theme classes
-- **`toolbar-groups`** (JSON array, optional): Additional map toolbar groups with independent tool sets and corner placement
+- **`toolbar-groups`** (JSON array, optional): Additional map toolbar groups with independent tool sets and corner placement. Custom groups hide the built-in Leaflet.draw/ruler toolbars by default so duplicate controls do not sit underneath branded buttons; set `hideDefaultToolbar: false` on a group only when the native toolbar should remain visible.
 
 ```html
 <leaflet-geokit theme-url="/css/custom-map-theme.css"></leaflet-geokit>
@@ -405,7 +405,7 @@ Customize the visual appearance:
     {
       "id": "irrigation-draw",
       "position": "bottomright",
-      "tools": ["polygon", "select"]
+      "tools": ["polygon", "select", "save"]
     },
     {
       "id": "irrigation-style",
@@ -478,7 +478,7 @@ map.toolbarGroups = [
   {
     id: "irrigation-draw",
     position: "bottomright",
-    tools: ["polygon", "select"],
+    tools: ["polygon", "select", "save"],
     ariaLabel: "Irrigation drawing tools",
   },
   {
@@ -534,7 +534,7 @@ const toolbarGroups: ToolToolbarGroupConfig[] = [
   {
     id: "irrigation-draw",
     position: "bottomright",
-    tools: ["polygon", "select"],
+    tools: ["polygon", "select", "save"],
     ariaLabel: "Irrigation drawing tools",
   },
   {
@@ -551,8 +551,10 @@ map!.toolbarGroups = toolbarGroups;
 
 Supported tool keys are `polygon`, `polyline`, `rectangle`, `circle`, `marker`,
 `layerCake`, `move`, `select`, `edit`, `delete`, `ruler`,
-`measurementSettings`, and `layerStyle`. `select` disables active draw/edit
-handlers; `layerStyle` emits a public trigger event for host-owned style panels.
+`measurementSettings`, `layerStyle`, and `save`. `select` disables active draw/edit
+handlers; `layerStyle` emits a public trigger event for host-owned style panels;
+`save` emits `leaflet-draw:export` with the current editable GeoJSON for host
+persistence.
 
 `map.toolButtonConfig` takes precedence over the `tool-button-config` attribute;
 `map.toolbarGroups` takes precedence over the `toolbar-groups` attribute. Set a
@@ -602,8 +604,8 @@ GeoKit emits `leaflet-geokit:tool-trigger-requested`, then either
 `groupId`, `handled`, `timestamp`, and optional `error`.
 
 See `irrigation-draw-mode.html` for a working integration demo with custom
-icons, popovers, two toolbar groups, an external panel button, and real polygon
-draw activation.
+icons, popovers, two toolbar groups, an external panel button, real polygon
+draw activation, and a custom save button.
 
 #### Programmatic Marker Icon Override
 

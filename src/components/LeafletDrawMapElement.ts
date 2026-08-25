@@ -297,6 +297,25 @@ export class LeafletDrawMapElement
         onToolTrigger: (detail) => {
           this._emitToolTriggerResult(detail);
         },
+        onSaved: (detail) => {
+          this.dispatchEvent(
+            new CustomEvent(DrawEvent.Export, {
+              detail: {
+                geoJSON: detail.geoJSON,
+                featureCount: detail.featureCount,
+                adapter: "editing",
+              },
+            }),
+          );
+          this._setStatus({
+            state: "ready",
+            ready: true,
+            busy: false,
+            featureCount: detail.featureCount,
+            lastEvent: DrawEvent.Export,
+            lastError: null,
+          });
+        },
       },
       leaflet: this._leafletInstance ?? undefined,
       useExternalLeaflet: this._useExternalLeaflet,

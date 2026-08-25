@@ -179,4 +179,61 @@ describe("LeafletDrawMapElement — event hooks", () => {
       },
     });
   });
+  it("custom save tool exports current GeoJSON and updates status", async () => {
+    const el: any = document.createElement(TAG);
+    const fc = {
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          properties: { name: "North bed" },
+          geometry: { type: "Point", coordinates: [0, 0] },
+        },
+      ],
+    };
+    el._controller = {
+      activateTool: vi.fn((tool, options) => {
+        el._emitToolTriggerResult({
+          tool,
+          source: options.source,
+          groupId: options.groupId,
+          handled: true,
+          timestamp: 123,
+        });
+        el.dispatchEvent(
+          new CustomEvent("leaflet-draw:export", {
+            detail: { geoJSON: fc, featureCount: 1, adapter: "editing" },
+          }),
+        );
+        el._setStatus({
+          state: "ready",
+          ready: true,
+          busy: false,
+          featureCount: 1,
+          lastEvent: "leaflet-draw:export",
+          lastError: null,
+        });
+        return true;
+      }),
+    };
+
+    const exports = vi.fn();
+    el.addEventListener("leaflet-draw:export", exports);
+
+    await expect(
+      el.activateTool("save", { source: "toolbar", groupId: "grower-tools" }),
+    ).resolves.toBe(true);
+
+    expect(exports).toHaveBeenCalledOnce();
+    expect((exports.mock.calls[0][0] as CustomEvent).detail).toMatchObject({
+      featureCount: 1,
+      adapter: "editing",
+      geoJSON: fc,
+    });
+    expect(el.status).toMatchObject({
+      state: "ready",
+      featureCount: 1,
+      lastEvent: "leaflet-draw:export",
+    });
+  });
 });

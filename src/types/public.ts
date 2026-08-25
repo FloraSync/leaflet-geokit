@@ -71,7 +71,8 @@ export type ToolButtonName =
   | "delete"
   | "ruler"
   | "measurementSettings"
-  | "layerStyle";
+  | "layerStyle"
+  | "save";
 
 export interface ToolButtonRenderContext {
   tool: ToolButtonName;
@@ -145,6 +146,11 @@ export interface ToolToolbarGroupConfig {
   className?: string;
   /** Pixel offset from the chosen map corner. Defaults to [10, 10]. */
   offset?: MarkerIconPoint;
+  /**
+   * Hide the built-in Leaflet.draw/ruler toolbars while this custom group is present.
+   * Defaults to true so custom buttons are the only visible map tool chrome.
+   */
+  hideDefaultToolbar?: boolean;
 }
 
 export interface ToolTriggerOptions {
@@ -174,7 +180,8 @@ export type IntegratedToolEventName =
   | "tool:move:cancelled"
   | "tool:edit:applied"
   | "tool:delete:applied"
-  | "tool:ruler:units-changed";
+  | "tool:ruler:units-changed"
+  | "tool:save";
 
 export type IntegratedToolHooks = Partial<
   Record<IntegratedToolEventName, (detail: unknown) => void>
