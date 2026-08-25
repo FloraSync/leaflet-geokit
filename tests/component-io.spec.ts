@@ -106,4 +106,38 @@ describe("LeafletDrawMapElement — IO helpers", () => {
     await el.loadGeoJSONFromText(JSON.stringify(sourceFc));
     expect(loadSpy).toHaveBeenCalledWith(sourceFc, true);
   });
+
+  it("loadGeoJSONFromUrl supports add behavior for host-managed imports", async () => {
+    const el: any = document.createElement(TAG);
+    const importSpy = vi.fn().mockResolvedValue(["bed-1"]);
+    el._controller = { importGeoJSON: importSpy };
+
+    const mockFc = { type: "FeatureCollection", features: [] };
+    mockFetch(async () => ({
+      ok: true,
+      json: async () => mockFc,
+    }));
+
+    await el.loadGeoJSONFromUrl("/foo.json", { behavior: "add" });
+    expect(importSpy).toHaveBeenCalledWith(mockFc, {
+      behavior: "add",
+      fitToData: true,
+    });
+  });
+
+  it("loadGeoJSONFromText supports add behavior for host-managed imports", async () => {
+    const el: any = document.createElement(TAG);
+    const importSpy = vi.fn().mockResolvedValue(["bed-1"]);
+    el._controller = { importGeoJSON: importSpy };
+
+    const sourceFc = { type: "FeatureCollection", features: [] };
+    await el.loadGeoJSONFromText(JSON.stringify(sourceFc), {
+      behavior: "add",
+    });
+
+    expect(importSpy).toHaveBeenCalledWith(sourceFc, {
+      behavior: "add",
+      fitToData: true,
+    });
+  });
 });

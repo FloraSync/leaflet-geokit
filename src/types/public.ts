@@ -1,5 +1,12 @@
 import type { Feature, FeatureCollection, Geometry } from "geojson";
 import type { LogLevel } from "@src/utils/logger";
+import type { StatusEventDetail } from "@src/types/events";
+import type {
+  GeoJSONExportAdapter,
+  GeoJSONExportOptions,
+  GeoJSONImportBehavior,
+  GeoJSONImportOptions,
+} from "@src/utils/geojson";
 import type * as Leaflet from "leaflet";
 
 /**
@@ -64,7 +71,8 @@ export type ToolButtonName =
   | "delete"
   | "ruler"
   | "measurementSettings"
-  | "layerStyle";
+  | "layerStyle"
+  | "save";
 
 export interface ToolButtonRenderContext {
   tool: ToolButtonName;
@@ -123,10 +131,7 @@ export type ToolButtonConfig = Partial<
 >;
 
 export type ToolToolbarPosition =
-  | "topleft"
-  | "topright"
-  | "bottomleft"
-  | "bottomright";
+  "topleft" | "topright" | "bottomleft" | "bottomright";
 
 export interface ToolToolbarGroupConfig {
   /** Stable group id used in events and DOM data attributes. */
@@ -141,6 +146,11 @@ export interface ToolToolbarGroupConfig {
   className?: string;
   /** Pixel offset from the chosen map corner. Defaults to [10, 10]. */
   offset?: MarkerIconPoint;
+  /**
+   * Hide the built-in Leaflet.draw/ruler toolbars while this custom group is present.
+   * Defaults to true so custom buttons are the only visible map tool chrome.
+   */
+  hideDefaultToolbar?: boolean;
 }
 
 export interface ToolTriggerOptions {
@@ -170,7 +180,8 @@ export type IntegratedToolEventName =
   | "tool:move:cancelled"
   | "tool:edit:applied"
   | "tool:delete:applied"
-  | "tool:ruler:units-changed";
+  | "tool:ruler:units-changed"
+  | "tool:save";
 
 export type IntegratedToolHooks = Partial<
   Record<IntegratedToolEventName, (detail: unknown) => void>
@@ -325,8 +336,15 @@ export interface LeafletDrawMapElementAPI {
   /** API key for authenticated providers */
   apiKey?: string;
 
+  /** Durable readiness/loading/error snapshot mirrored by `leaflet-geokit:status`. */
+  readonly status: StatusEventDetail;
+
   // Methods
   getGeoJSON(): Promise<FeatureCollection>;
+  importGeoJSON(
+    fc: FeatureCollection,
+    options?: GeoJSONImportOptions,
+  ): Promise<string[]>;
   loadGeoJSON(fc: FeatureCollection): Promise<void>;
   clearLayers(): Promise<void>;
   addFeatures(fc: FeatureCollection): Promise<string[]>;
@@ -344,13 +362,19 @@ export interface LeafletDrawMapElementAPI {
   setView(lat: number, lng: number, zoom?: number): Promise<void>;
 
   // Convenience methods
-  loadGeoJSONFromUrl(url: string): Promise<void>;
-  loadGeoJSONFromText(text: string): Promise<void>;
+  loadGeoJSONFromUrl(
+    url: string,
+    options?: GeoJSONImportOptions,
+  ): Promise<void>;
+  loadGeoJSONFromText(
+    text: string,
+    options?: GeoJSONImportOptions,
+  ): Promise<void>;
   /**
    * Emits 'leaflet-draw:export' with the current FeatureCollection.
    * Returns the exported FeatureCollection for convenience.
    */
-  exportGeoJSON(): Promise<FeatureCollection>;
+  exportGeoJSON(options?: GeoJSONExportOptions): Promise<FeatureCollection>;
 
   /**
    * Merge all visible polygon layers into a single polygon.
@@ -391,3 +415,9 @@ export interface LeafletDrawMapElementAPI {
 
 // Re-exports for consumers
 export type { Feature, FeatureCollection, Geometry };
+export type {
+  GeoJSONExportAdapter,
+  GeoJSONExportOptions,
+  GeoJSONImportBehavior,
+  GeoJSONImportOptions,
+};

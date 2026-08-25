@@ -4,6 +4,8 @@ import "leaflet-ruler";
 import type { Feature, FeatureCollection } from "geojson";
 import type {
   DrawControlsConfig,
+  GeoJSONExportOptions,
+  GeoJSONImportOptions,
   MapConfig,
   MeasurementSystem,
   IntegratedToolEventEmitter,
@@ -15,6 +17,7 @@ import type {
   ToolTriggerEventDetail,
   ToolTriggerOptions,
 } from "@src/types/public";
+import type { ErrorEventDetail } from "@src/types/events";
 import { createLogger, type Logger } from "@src/utils/logger";
 import { FeatureStore } from "@src/lib/FeatureStore";
 import { type NormalizedMarkerIconConfig } from "@src/lib/marker-icons";
@@ -27,6 +30,7 @@ import { LayerCakeManager } from "@src/lib/layer-cake/LayerCakeManager";
 import layerCakeIconSvg from "@src/assets/layer-cake.svg?raw";
 import moveToolIconSvg from "@src/assets/move-tool.svg?raw";
 import {
+  adaptFeatureCollectionForExport,
   expandMultiGeometries,
   mergePolygons,
   isPolygon,
@@ -52,9 +56,13 @@ export interface MapControllerCallbacks {
   }) => void;
   onEdited?: (detail: { ids: string[]; geoJSON: FeatureCollection }) => void;
   onDeleted?: (detail: { ids: string[]; geoJSON: FeatureCollection }) => void;
-  onError?: (detail: { message: string; cause?: unknown }) => void;
+  onError?: (detail: ErrorEventDetail) => void;
   onTileError?: (error: unknown) => void;
   onToolTrigger?: (detail: ToolTriggerEventDetail) => void;
+  onSaved?: (detail: {
+    geoJSON: FeatureCollection;
+    featureCount: number;
+  }) => void;
 }
 
 export interface MapControllerOptions {
@@ -81,11 +89,7 @@ export interface MapControllerOptions {
 }
 
 type CreatedLayerType =
-  | "polygon"
-  | "polyline"
-  | "rectangle"
-  | "circle"
-  | "marker";
+  "polygon" | "polyline" | "rectangle" | "circle" | "marker";
 
 const CREATED_LAYER_EVENT_BY_TYPE: Record<
   CreatedLayerType,
@@ -257,6 +261,25 @@ export class MapController {
     try {
       if (tool === "select") {
         return this.deactivateTool({ source, groupId: options.groupId });
+      }
+
+      if (tool === "save") {
+        const geoJSON = this.store.toFeatureCollection();
+        this.options.callbacks?.onSaved?.({
+          geoJSON,
+          featureCount: geoJSON.features.length,
+        });
+        this.emitToolEvent("tool:save", {
+          geoJSON,
+          featureCount: geoJSON.features.length,
+        });
+        this.emitToolTrigger({
+          tool,
+          source,
+          groupId: options.groupId,
+          handled: true,
+        });
+        return true;
       }
 
       if (tool === "layerStyle") {
@@ -489,7 +512,10 @@ export class MapController {
       const b = this.store.bounds();
       this.options.callbacks?.onReady?.(b ? { bounds: b } : {});
     } catch (err) {
-      this._error("Failed to initialize Leaflet map", err);
+      this._error("Failed to initialize Leaflet map", err, {
+        code: "map_init_failed",
+        recoverable: false,
+      });
     }
   }
 
@@ -557,28 +583,49 @@ export class MapController {
     return this.store.toFeatureCollection();
   }
 
-  async loadGeoJSON(
-    fc: FeatureCollection,
-    fitToData: boolean = false,
-  ): Promise<void> {
-    if (!this.map || !this.drawnItems) return;
-    // Clear existing
-    await this.clearLayers();
+  async exportGeoJSON(
+    options: GeoJSONExportOptions = {},
+  ): Promise<FeatureCollection> {
+    return adaptFeatureCollectionForExport(await this.getGeoJSON(), options);
+  }
 
-    // Add new features into store + map layers
+  async importGeoJSON(
+    fc: FeatureCollection,
+    options: GeoJSONImportOptions = {},
+  ): Promise<string[]> {
+    if (!this.map || !this.drawnItems) return [];
+
+    const behavior = options.behavior ?? "replace";
+    if (behavior === "replace") {
+      await this.clearLayers();
+    }
+
     const normalized = expandMultiGeometries(fc);
     const ids = this.store.add(normalized);
     const layers = this.createGeoJSONLayers(normalized);
     this.addGeoJSONLayersToDrawnItems(layers);
 
-    this.logger.debug("loadGeoJSON", {
+    this.logger.debug("importGeoJSON", {
+      behavior,
       count: normalized.features.length,
       ids,
     });
 
-    if (fitToData) {
+    if (options.fitToData) {
       await this.fitBoundsToData();
     }
+
+    return ids;
+  }
+
+  async loadGeoJSON(
+    fc: FeatureCollection,
+    fitToData: boolean = false,
+  ): Promise<void> {
+    await this.importGeoJSON(fc, {
+      behavior: "replace",
+      fitToData,
+    });
   }
 
   async clearLayers(): Promise<void> {
@@ -589,12 +636,7 @@ export class MapController {
   }
 
   async addFeatures(fc: FeatureCollection): Promise<string[]> {
-    if (!this.map || !this.drawnItems) return [];
-    const normalized = expandMultiGeometries(fc);
-    const ids = this.store.add(normalized);
-    const layers = this.createGeoJSONLayers(normalized);
-    this.addGeoJSONLayersToDrawnItems(layers);
-    return ids;
+    return this.importGeoJSON(fc, { behavior: "add" });
   }
 
   async updateFeature(id: string, feature: Feature): Promise<void> {
@@ -906,8 +948,7 @@ export class MapController {
 
   private createDefaultMarkerIcon(): BundledL.Icon | null {
     const DefaultIcon = this.L.Icon?.Default as
-      | (new () => BundledL.Icon)
-      | undefined;
+      (new () => BundledL.Icon) | undefined;
     return DefaultIcon ? new DefaultIcon() : null;
   }
 
@@ -1801,9 +1842,21 @@ export class MapController {
     });
   }
 
-  private _error(message: string, cause: unknown): void {
-    this.logger.error("error", { message, cause });
-    this.options.callbacks?.onError?.({ message, cause });
+  private _error(
+    message: string,
+    cause: unknown,
+    options?: { code?: string; recoverable?: boolean },
+  ): void {
+    const detail: ErrorEventDetail = {
+      code: options?.code ?? "controller_error",
+      message,
+      recoverable: options?.recoverable ?? true,
+      cause,
+      timestamp: Date.now(),
+    };
+
+    this.logger.error("error", detail);
+    this.options.callbacks?.onError?.(detail);
   }
 
   // -------- Vertex deletion context menu --------

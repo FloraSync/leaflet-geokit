@@ -124,5 +124,21 @@ test.describe("irrigation draw mode harness", () => {
 
     await drawTriangleFromActiveTool(page);
     await expect.poll(() => currentFeatureCount(page)).toBe(1);
+
+    await page
+      .locator(
+        '[data-geokit-toolbar-group="irrigation-draw"] [data-geokit-tool="save"]',
+      )
+      .click();
+
+    await expect
+      .poll(() => page.evaluate(() => (window as any).lastIrrigationExport))
+      .toMatchObject({
+        featureCount: 1,
+        adapter: "editing",
+      });
+    await expect(page.locator("#status")).toContainText(
+      "Saved 1 irrigation feature.",
+    );
   });
 });

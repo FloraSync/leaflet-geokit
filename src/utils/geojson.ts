@@ -8,6 +8,19 @@ import type {
   GeoJsonProperties,
 } from "geojson";
 
+export type GeoJSONImportBehavior = "replace" | "add";
+
+export interface GeoJSONImportOptions {
+  behavior?: GeoJSONImportBehavior;
+  fitToData?: boolean;
+}
+
+export type GeoJSONExportAdapter = "editing" | "source";
+
+export interface GeoJSONExportOptions {
+  adapter?: GeoJSONExportAdapter;
+}
+
 export type BBox = [
   minLng: number,
   minLat: number,
@@ -20,6 +33,89 @@ export function normalizeId(feature: Feature): string | undefined {
   const id = (feature as any).id ?? (feature.properties as any)?.id;
   if (id == null) return undefined;
   return String(id);
+}
+
+const EXPANDED_CHILD_ID_PATTERN = /^(.*)::(\d+)$/;
+
+interface ExpandedFeatureEntry {
+  baseId: string;
+  childIndex: number;
+  feature: Feature;
+}
+
+function parseExpandedChildId(feature: Feature): ExpandedFeatureEntry | null {
+  const id = normalizeId(feature);
+  if (!id) return null;
+
+  const match = EXPANDED_CHILD_ID_PATTERN.exec(id);
+  if (!match) return null;
+
+  return {
+    baseId: match[1],
+    childIndex: Number(match[2]),
+    feature,
+  };
+}
+
+function buildCollapsedProperties(
+  baseId: string,
+  properties: GeoJsonProperties | null | undefined,
+): GeoJsonProperties {
+  const next =
+    properties && typeof properties === "object" ? { ...properties } : {};
+  (next as Record<string, unknown>).id = baseId;
+  return next;
+}
+
+function collapseExpandedFeatureGroup(
+  baseId: string,
+  entries: ExpandedFeatureEntry[],
+): Feature {
+  const sorted = [...entries].sort((left, right) => {
+    return left.childIndex - right.childIndex;
+  });
+  const first = sorted[0]!.feature;
+  const properties = buildCollapsedProperties(baseId, first.properties);
+  const geometries = sorted
+    .map((entry) => entry.feature.geometry)
+    .filter((geometry): geometry is Geometry => geometry != null);
+
+  let geometry: Geometry;
+  if (geometries.length === 0) {
+    geometry = {
+      type: "GeometryCollection",
+      geometries: [],
+    };
+  } else if (geometries.length === 1) {
+    geometry = geometries[0]!;
+  } else if (geometries.every((candidate) => candidate.type === "Point")) {
+    geometry = {
+      type: "MultiPoint",
+      coordinates: geometries.map((candidate) => candidate.coordinates),
+    };
+  } else if (geometries.every((candidate) => candidate.type === "LineString")) {
+    geometry = {
+      type: "MultiLineString",
+      coordinates: geometries.map((candidate) => candidate.coordinates),
+    };
+  } else if (geometries.every((candidate) => candidate.type === "Polygon")) {
+    geometry = {
+      type: "MultiPolygon",
+      coordinates: geometries.map((candidate) => candidate.coordinates),
+    };
+  } else {
+    geometry = {
+      type: "GeometryCollection",
+      geometries,
+    };
+  }
+
+  return {
+    type: "Feature",
+    id: baseId,
+    properties,
+    geometry,
+  };
 }
 
 /**
@@ -202,6 +298,50 @@ export function expandMultiGeometries(
     }
   }
   return { type: "FeatureCollection", features: out };
+}
+
+export function adaptFeatureCollectionForExport(
+  fc: FeatureCollection,
+  options: GeoJSONExportOptions = {},
+): FeatureCollection {
+  const adapter = options.adapter ?? "editing";
+  if (adapter !== "source") return fc;
+
+  const grouped = new Map<string, ExpandedFeatureEntry[]>();
+  for (const feature of fc.features) {
+    const parsed = parseExpandedChildId(feature);
+    if (!parsed) continue;
+
+    const existing = grouped.get(parsed.baseId);
+    if (existing) {
+      existing.push(parsed);
+    } else {
+      grouped.set(parsed.baseId, [parsed]);
+    }
+  }
+
+  if (grouped.size === 0) return fc;
+
+  const emittedBaseIds = new Set<string>();
+  const features: Feature[] = [];
+  for (const feature of fc.features) {
+    const parsed = parseExpandedChildId(feature);
+    if (!parsed) {
+      features.push(feature);
+      continue;
+    }
+
+    if (emittedBaseIds.has(parsed.baseId)) continue;
+    emittedBaseIds.add(parsed.baseId);
+    features.push(
+      collapseExpandedFeatureGroup(parsed.baseId, grouped.get(parsed.baseId)!),
+    );
+  }
+
+  return {
+    type: "FeatureCollection",
+    features,
+  };
 }
 
 /**

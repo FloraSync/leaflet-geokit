@@ -369,7 +369,7 @@ Customize the visual appearance:
 - **`theme-url`** (string, optional): External CSS stylesheet URL to inject into Shadow DOM
 - **`themeCss`** (property only): Inline CSS strings for custom styling
 - **`tool-button-config`** (JSON string, optional): Per-tool toolbar button config for custom icons, labels, and theme classes
-- **`toolbar-groups`** (JSON array, optional): Additional map toolbar groups with independent tool sets and corner placement
+- **`toolbar-groups`** (JSON array, optional): Additional map toolbar groups with independent tool sets and corner placement. Custom groups hide the built-in Leaflet.draw/ruler toolbars by default so duplicate controls do not sit underneath branded buttons; set `hideDefaultToolbar: false` on a group only when the native toolbar should remain visible.
 
 ```html
 <leaflet-geokit theme-url="/css/custom-map-theme.css"></leaflet-geokit>
@@ -405,7 +405,7 @@ Customize the visual appearance:
     {
       "id": "irrigation-draw",
       "position": "bottomright",
-      "tools": ["polygon", "select"]
+      "tools": ["polygon", "select", "save"]
     },
     {
       "id": "irrigation-style",
@@ -424,7 +424,7 @@ buttons without depending on Leaflet's sprite class names.
 #### Debugging & Development
 
 - **`log-level`** (string): Control console logging verbosity. Options: `trace`, `debug`, `info`, `warn`, `error`, `silent`. Default: `"debug"`
-- **`dev-overlay`** (boolean): Reserved for future development overlay features
+- **`dev-overlay`** (boolean): Reserved compatibility flag. No overlay UI ships in `0.8.x`.
 
 ```html
 <leaflet-geokit log-level="info"></leaflet-geokit>
@@ -478,7 +478,7 @@ map.toolbarGroups = [
   {
     id: "irrigation-draw",
     position: "bottomright",
-    tools: ["polygon", "select"],
+    tools: ["polygon", "select", "save"],
     ariaLabel: "Irrigation drawing tools",
   },
   {
@@ -534,7 +534,7 @@ const toolbarGroups: ToolToolbarGroupConfig[] = [
   {
     id: "irrigation-draw",
     position: "bottomright",
-    tools: ["polygon", "select"],
+    tools: ["polygon", "select", "save"],
     ariaLabel: "Irrigation drawing tools",
   },
   {
@@ -551,8 +551,10 @@ map!.toolbarGroups = toolbarGroups;
 
 Supported tool keys are `polygon`, `polyline`, `rectangle`, `circle`, `marker`,
 `layerCake`, `move`, `select`, `edit`, `delete`, `ruler`,
-`measurementSettings`, and `layerStyle`. `select` disables active draw/edit
-handlers; `layerStyle` emits a public trigger event for host-owned style panels.
+`measurementSettings`, `layerStyle`, and `save`. `select` disables active draw/edit
+handlers; `layerStyle` emits a public trigger event for host-owned style panels;
+`save` emits `leaflet-draw:export` with the current editable GeoJSON for host
+persistence.
 
 `map.toolButtonConfig` takes precedence over the `tool-button-config` attribute;
 `map.toolbarGroups` takes precedence over the `toolbar-groups` attribute. Set a
@@ -602,8 +604,8 @@ GeoKit emits `leaflet-geokit:tool-trigger-requested`, then either
 `groupId`, `handled`, `timestamp`, and optional `error`.
 
 See `irrigation-draw-mode.html` for a working integration demo with custom
-icons, popovers, two toolbar groups, an external panel button, and real polygon
-draw activation.
+icons, popovers, two toolbar groups, an external panel button, real polygon
+draw activation, and a custom save button.
 
 #### Programmatic Marker Icon Override
 
@@ -766,8 +768,25 @@ const data = await map.getGeoJSON();
 console.log(`${data.features.length} features on map`);
 ```
 
+**[`importGeoJSON(fc, options?)`](src/components/LeafletDrawMapElement.ts)**: Promise<string[]>
+
+- Explicit import contract for host apps: `behavior: "replace" | "add"`
+- `replace` clears existing data before ingest; `add` preserves existing map data
+- `fitToData` is optional and defaults to `false` for direct programmatic imports
+- Returns array of assigned stable feature IDs
+- Triggers [`leaflet-draw:ingest`](src/types/events.ts:51) event before import (`mode: "load"` for replace, `mode: "add"` for additive imports)
+
+```javascript
+const ids = await map.importGeoJSON(newFeatures, {
+  behavior: "add",
+  fitToData: true,
+});
+console.log("Imported features with IDs:", ids);
+```
+
 **[`loadGeoJSON(fc)`](src/components/LeafletDrawMapElement.ts:390)**: Promise<void>
 
+- Back-compat alias for `importGeoJSON(fc, { behavior: "replace" })`
 - Clears existing data and loads new FeatureCollection
 - Does NOT auto-fit the view (use [`fitBoundsToData()`](src/components/LeafletDrawMapElement.ts:428) separately)
 - Triggers [`leaflet-draw:ingest`](src/types/events.ts:51) event before loading
@@ -775,14 +794,13 @@ console.log(`${data.features.length} features on map`);
 ```javascript
 await map.loadGeoJSON({
   type: "FeatureCollection",
-  features: [
-    /* ... */
-  ],
+  features: [/* ... */],
 });
 ```
 
 **[`addFeatures(fc)`](src/components/LeafletDrawMapElement.ts:406)**: Promise<string[]>
 
+- Back-compat alias for `importGeoJSON(fc, { behavior: "add" })`
 - Adds features to existing map data (does not clear)
 - Returns array of assigned stable feature IDs
 - Expands `Multi*` and `GeometryCollection` inputs into one single-geometry feature/id per child part
@@ -812,9 +830,7 @@ await map.clearLayers();
 await map.updateFeature(featureId, {
   type: "Feature",
   properties: { name: "Updated" },
-  geometry: {
-    /* ... */
-  },
+  geometry: {/* ... */},
 });
 ```
 
@@ -864,36 +880,43 @@ await map.fitBounds(
 
 #### Data Import Helpers
 
-**[`loadGeoJSONFromUrl(url)`](src/components/LeafletDrawMapElement.ts:510)**: Promise<void>
+**[`loadGeoJSONFromUrl(url, options?)`](src/components/LeafletDrawMapElement.ts:510)**: Promise<void>
 
-- Fetches GeoJSON from URL and loads it
+- Fetches GeoJSON from URL and imports it with explicit `behavior: "replace" | "add"`
 - Expects `application/json` content type
-- Automatically fits view to loaded data
-- Emits error events on fetch/parse failures
+- Defaults to `behavior: "replace"` and `fitToData: true` for file/URL style imports
+- Emits error events on fetch/parse/import failures
 
 ```javascript
-await map.loadGeoJSONFromUrl("/api/geodata.json");
+await map.loadGeoJSONFromUrl("/api/geodata.json", {
+  behavior: "add",
+});
 ```
 
-**[`loadGeoJSONFromText(text)`](src/components/LeafletDrawMapElement.ts:533)**: Promise<void>
+**[`loadGeoJSONFromText(text, options?)`](src/components/LeafletDrawMapElement.ts:533)**: Promise<void>
 
-- Parses GeoJSON from text string and loads it
-- Automatically fits view to loaded data
-- Emits error events on parse failures
+- Parses GeoJSON from text string and imports it with explicit `behavior: "replace" | "add"`
+- Defaults to `behavior: "replace"` and `fitToData: true`
+- Emits error events on parse/import failures
 
 ```javascript
 const text = await file.text();
-await map.loadGeoJSONFromText(text);
+await map.loadGeoJSONFromText(text, {
+  behavior: "replace",
+});
 ```
 
-**[`exportGeoJSON()`](src/components/LeafletDrawMapElement.ts:459)**: Promise<FeatureCollection>
+**[`exportGeoJSON(options?)`](src/components/LeafletDrawMapElement.ts:459)**: Promise<FeatureCollection>
 
 - Exports current data and emits [`leaflet-draw:export`](src/types/events.ts:57) event
-- Returns the FeatureCollection for convenience
-- Useful for triggering export workflows
+- Defaults to `adapter: "editing"`, which preserves the current editable single-geometry feature state
+- `adapter: "source"` opt-in re-merges stable derived sibling IDs like `bed-1::0` / `bed-1::1` back into source-like `Multi*` or `GeometryCollection` output
+- Source export is intentionally opt-in because sibling property divergence is resolved by reusing the first child properties
 
 ```javascript
-const exported = await map.exportGeoJSON();
+const exported = await map.exportGeoJSON({
+  adapter: "source",
+});
 // Listen for the event to trigger download/save workflows
 ```
 
@@ -927,9 +950,41 @@ The component emits typed CustomEvents that can be listened to for real-time upd
 
 #### Core Lifecycle Events
 
-**[`leaflet-draw:ready`](src/types/events.ts:7)**
+**[`leaflet-geokit:status`](src/types/events.ts)**
 
-- Fired when map is fully initialized and ready for interaction
+- Fired whenever the public readiness/loading/error snapshot changes
+- Also mirrored on the element as `map.status`
+- Detail: `{ state, ready, busy, featureCount, lastEvent?, lastError?, timestamp }`
+
+```javascript
+map.addEventListener("leaflet-geokit:status", (e) => {
+  const { state, featureCount, lastError } = e.detail;
+  console.log("GeoKit status:", state, featureCount, lastError?.code);
+});
+
+console.log(map.status.state); // 'uninitialized' | 'initializing' | 'ready' | 'loading' | 'error'
+```
+
+**[`leaflet-geokit:diagnostic`](src/types/events.ts)**
+
+- Fired for recoverable and fatal diagnostics
+- Recoverable diagnostics keep `status.state` at `ready` when the map remains usable
+- Detail: `{ code, message, recoverable, severity, state, cause?, timestamp }`
+
+```javascript
+map.addEventListener("leaflet-geokit:diagnostic", (e) => {
+  if (e.detail.recoverable) {
+    console.warn("Recoverable GeoKit issue:", e.detail.code, e.detail.message);
+    return;
+  }
+
+  console.error("Fatal GeoKit issue:", e.detail.code, e.detail.message);
+});
+```
+
+**[`leaflet-draw:ready`](src/types/events.ts)**
+
+- Compatibility event fired when the map is fully initialized and ready for interaction
 - Detail: `{ bounds?: [[number, number], [number, number]] }`
 
 ```javascript
@@ -938,21 +993,26 @@ map.addEventListener("leaflet-draw:ready", (e) => {
 });
 ```
 
-**[`leaflet-draw:error`](src/types/events.ts:42)**
+**[`leaflet-draw:error`](src/types/events.ts)**
 
-- Fired when errors occur (fetch failures, parse errors, etc.)
-- Also used for non-fatal marker icon normalization warnings before GeoKit falls back to defaults
-- Detail: `{ message: string, cause?: unknown }`
+- Fired when GeoKit hits a typed error condition (fetch failures, parse errors, init failures, config warnings)
+- Recoverable warnings still emit here for backward compatibility
+- Detail: `{ code, message, recoverable, cause?, timestamp }`
 
 ```javascript
 map.addEventListener("leaflet-draw:error", (e) => {
-  console.error("Map error:", e.detail.message, e.detail.cause);
+  console.error(
+    "Map error:",
+    e.detail.code,
+    e.detail.message,
+    e.detail.recoverable,
+  );
 });
 ```
 
 #### Drawing & Editing Events
 
-**[`leaflet-draw:created`](src/types/events.ts:15)**
+**[`leaflet-draw:created`](src/types/events.ts)**
 
 - Fired when user creates a new feature via drawing tools
 - Detail: `{ id: string, layerType: string, geoJSON: Feature }`
@@ -968,7 +1028,7 @@ map.addEventListener('leaflet-draw:created', (e) => {
 });
 ```
 
-**[`leaflet-draw:edited`](src/types/events.ts:25)**
+**[`leaflet-draw:edited`](src/types/events.ts)**
 
 - Fired when user modifies existing features via edit tools
 - Detail: `{ ids: string[], geoJSON: FeatureCollection }`
@@ -987,7 +1047,7 @@ map.addEventListener('leaflet-draw:edited', (e) => {
 });
 ```
 
-**[`leaflet-draw:deleted`](src/types/events.ts:34)**
+**[`leaflet-draw:deleted`](src/types/events.ts)**
 
 - Fired when user deletes features via delete tools
 - Detail: `{ ids: string[], geoJSON: FeatureCollection }`
@@ -1007,7 +1067,7 @@ map.addEventListener('leaflet-draw:deleted', (e) => {
 
 #### Data Flow Events
 
-**[`leaflet-draw:ingest`](src/types/events.ts:51)**
+**[`leaflet-draw:ingest`](src/types/events.ts)**
 
 - Fired BEFORE data is loaded/added to the map
 - Detail: `{ fc: FeatureCollection, mode: 'load' | 'add' }`
@@ -1034,7 +1094,7 @@ map.addEventListener("leaflet-draw:ingest", (e) => {
 });
 ```
 
-**[`leaflet-draw:export`](src/types/events.ts:57)**
+**[`leaflet-draw:export`](src/types/events.ts)**
 
 - Fired when [`exportGeoJSON()`](src/components/LeafletDrawMapElement.ts:459) method is called
 - Detail: `{ geoJSON: FeatureCollection, featureCount: number }`
@@ -1056,32 +1116,16 @@ map.addEventListener("leaflet-draw:export", (e) => {
 });
 ```
 
-#### Extended Tool Events
-
-**`leaflet-draw:drawstart`** / **`leaflet-draw:drawstop`**
-
-- Fired when drawing mode starts/stops
-- Useful for UI state management
-
-**`leaflet-draw:editstart`** / **`leaflet-draw:editstop`**
-
-- Fired when edit mode starts/stops
+#### Merge and Tool Events
 
 **`leaflet-draw:merged`**
 
 - Fired after successful polygon merge operation
 - Detail includes merge statistics and result
 
-```javascript
-// Show/hide UI elements based on draw state
-map.addEventListener("leaflet-draw:drawstart", () => {
-  document.querySelector("#toolbar").classList.add("drawing-active");
-});
-
-map.addEventListener("leaflet-draw:drawstop", () => {
-  document.querySelector("#toolbar").classList.remove("drawing-active");
-});
-```
+GeoKit `0.8.x` does not emit public draw/edit start-stop lifecycle events.
+Use `leaflet-geokit:status` for readiness/loading coordination and the
+`leaflet-geokit:tool-*` events for host-triggered tool actions.
 
 ### Feature ID Management
 
@@ -1091,6 +1135,7 @@ The component guarantees stable, persistent feature IDs that survive editing ope
 2. **Property IDs**: If no `feature.id` but has `properties.id`, that's used
 3. **Generated IDs**: Otherwise, a UUID is generated and stored in `properties.id`
 4. **Multi-geometry normalization**: `MultiPoint`, `MultiLineString`, `MultiPolygon`, and `GeometryCollection` inputs are expanded into single-geometry features. If the source feature already had an ID, each child receives a stable derived ID such as `bed-1::0` and `bed-1::1`
+5. **Opt-in source export**: `exportGeoJSON({ adapter: "source" })` best-effort re-merges those stable derived siblings into source-like `Multi*`/`GeometryCollection` output for hosts that want source-shaped files back
 
 ```javascript
 // Features maintain their IDs through edit cycles
@@ -1193,7 +1238,9 @@ C. Load from text (e.g., user paste or file input)
 
 ```js
 const text = await file.text();
-await el.loadGeoJSONFromText(text);
+await el.loadGeoJSONFromText(text, {
+  behavior: "add", // or "replace" to clear existing map data first
+});
 ```
 
 D. Programmatic CRUD with ids
@@ -1431,11 +1478,9 @@ SSR
 
 Planned enhancements
 
-- Dev overlay (opt-in) to visualize state, counts, and last event payloads
 - Geometry-level layer sync for updateFeature without re-add
 - Playwright e2e and CI workflows
 - Advanced import providers (files, streams) and output format adapters
-- Theming hooks for overlay UI
 
 Versioning and releases
 

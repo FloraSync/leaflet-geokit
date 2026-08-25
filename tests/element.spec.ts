@@ -78,6 +78,36 @@ describe("LeafletDrawMapElement (scaffold)", () => {
     expect(el.devOverlay).toBe(true);
   });
 
+  it("emits status snapshots while connecting and settles on a ready status getter", async () => {
+    const localEl: any = document.createElement(TAG);
+    const seenStates: string[] = [];
+
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error("Timed out waiting for ready status"));
+      }, 2000);
+
+      localEl.addEventListener("leaflet-geokit:status", (e: CustomEvent) => {
+        seenStates.push(e.detail.state);
+        if (e.detail.state === "ready") {
+          clearTimeout(timeout);
+          resolve();
+        }
+      });
+
+      document.body.appendChild(localEl);
+    });
+
+    expect(seenStates).toContain("initializing");
+    expect(localEl.status).toMatchObject({
+      state: "ready",
+      ready: true,
+      busy: false,
+    });
+
+    document.body.removeChild(localEl);
+  });
+
   it("reflects external Leaflet-related properties", () => {
     el.useExternalLeaflet = true;
     expect(el.useExternalLeaflet).toBe(true);

@@ -1,5 +1,8 @@
 import type { Feature, FeatureCollection } from "geojson";
 import type {
+  GeoJSONImportBehavior,
+  GeoJSONImportOptions,
+  GeoJSONExportOptions,
   LeafletDrawMapElementAPI,
   MapConfig,
   DrawControlsConfig,
@@ -14,6 +17,15 @@ import type {
   ToolTriggerEventDetail,
   ToolTriggerOptions,
 } from "@src/types/public";
+import {
+  DrawEvent,
+  GeoKitEvent,
+  type DiagnosticEventDetail,
+  type ErrorEventDetail,
+  type GeoKitDiagnosticSummary,
+  type GeoKitStatusState,
+  type StatusEventDetail,
+} from "@src/types/events";
 import { createLogger, type Logger, type LogLevel } from "@src/utils/logger";
 import { applyLeafletStylingIfNeeded } from "@src/lib/leaflet-assets";
 import { MapController } from "@src/lib/MapController";
@@ -77,6 +89,13 @@ export class LeafletDrawMapElement
   private _markerIconConfig: MarkerIconConfig | null | undefined;
   private _toolButtonConfig: ToolButtonConfig | null | undefined;
   private _toolbarGroups: ToolToolbarGroupConfig[] | null | undefined;
+  private _status: StatusEventDetail = {
+    state: "uninitialized",
+    ready: false,
+    busy: false,
+    featureCount: 0,
+    timestamp: Date.now(),
+  };
 
   private _externalToolTriggerListener = (event: Event): void => {
     const detail = (event as CustomEvent).detail as
@@ -104,8 +123,7 @@ export class LeafletDrawMapElement
 
   private _externalToolDeactivateListener = (event: Event): void => {
     const detail = (event as CustomEvent).detail as
-      | ToolTriggerOptions
-      | undefined;
+      ToolTriggerOptions | undefined;
 
     void this.deactivateTool({
       source: detail?.source ?? "event",
@@ -186,6 +204,15 @@ export class LeafletDrawMapElement
   // Lifecycle
   async connectedCallback(): Promise<void> {
     this._logger.debug("connectedCallback", this._currentConfig());
+    this._setStatus({
+      state: "initializing",
+      ready: false,
+      busy: true,
+      featureCount: 0,
+      lastEvent: "connected",
+      lastError: null,
+    });
+
     // Inject Leaflet CSS/icons unless skipped
     applyLeafletStylingIfNeeded({
       root: this._root,
@@ -203,25 +230,57 @@ export class LeafletDrawMapElement
       logger: this._logger.child("controller"),
       callbacks: {
         onReady: (detail) => {
-          this.dispatchEvent(new CustomEvent("leaflet-draw:ready", { detail }));
+          this.dispatchEvent(new CustomEvent(DrawEvent.Ready, { detail }));
+          void this._syncStatusFromController({
+            state: "ready",
+            ready: true,
+            busy: false,
+            lastEvent: DrawEvent.Ready,
+            clearLastError: true,
+          });
         },
         onCreated: (detail) => {
-          this.dispatchEvent(
-            new CustomEvent("leaflet-draw:created", { detail }),
-          );
+          this.dispatchEvent(new CustomEvent(DrawEvent.Created, { detail }));
+          this._setStatus({
+            state: "ready",
+            ready: true,
+            busy: false,
+            featureCount: this._status.featureCount + 1,
+            lastEvent: DrawEvent.Created,
+            lastError: null,
+          });
         },
         onEdited: (detail) => {
-          this.dispatchEvent(
-            new CustomEvent("leaflet-draw:edited", { detail }),
-          );
+          this.dispatchEvent(new CustomEvent(DrawEvent.Edited, { detail }));
+          this._setStatus({
+            state: "ready",
+            ready: true,
+            busy: false,
+            featureCount: detail.geoJSON.features.length,
+            lastEvent: DrawEvent.Edited,
+            lastError: null,
+          });
         },
         onDeleted: (detail) => {
-          this.dispatchEvent(
-            new CustomEvent("leaflet-draw:deleted", { detail }),
-          );
+          this.dispatchEvent(new CustomEvent(DrawEvent.Deleted, { detail }));
+          this._setStatus({
+            state: "ready",
+            ready: true,
+            busy: false,
+            featureCount: detail.geoJSON.features.length,
+            lastEvent: DrawEvent.Deleted,
+            lastError: null,
+          });
         },
         onError: (detail) => {
-          this.dispatchEvent(new CustomEvent("leaflet-draw:error", { detail }));
+          this._emitError(detail, {
+            state: detail.recoverable
+              ? this._status.ready
+                ? "ready"
+                : this._status.state
+              : "error",
+            lastEvent: DrawEvent.Error,
+          });
         },
         onTileError: (error) => {
           if (this._tileProvider) {
@@ -237,6 +296,25 @@ export class LeafletDrawMapElement
         },
         onToolTrigger: (detail) => {
           this._emitToolTriggerResult(detail);
+        },
+        onSaved: (detail) => {
+          this.dispatchEvent(
+            new CustomEvent(DrawEvent.Export, {
+              detail: {
+                geoJSON: detail.geoJSON,
+                featureCount: detail.featureCount,
+                adapter: "editing",
+              },
+            }),
+          );
+          this._setStatus({
+            state: "ready",
+            ready: true,
+            busy: false,
+            featureCount: detail.featureCount,
+            lastEvent: DrawEvent.Export,
+            lastError: null,
+          });
         },
       },
       leaflet: this._leafletInstance ?? undefined,
@@ -263,6 +341,10 @@ export class LeafletDrawMapElement
 
     await this._controller.init();
 
+    if (this._status.state === "error") {
+      return;
+    }
+
     if (this._tileProvider) {
       this._updateTileLayer();
     }
@@ -286,6 +368,14 @@ export class LeafletDrawMapElement
       "leaflet-geokit:deactivate-tool",
       this._externalToolDeactivateListener,
     );
+    this._setStatus({
+      state: "uninitialized",
+      ready: false,
+      busy: false,
+      featureCount: 0,
+      lastEvent: "disconnected",
+      lastError: null,
+    });
   }
   // Observed attributes and reflection
   static get observedAttributes(): string[] {
@@ -556,6 +646,7 @@ export class LeafletDrawMapElement
     provider: string,
   ): void {
     this._logger.error(`Tile provider error (${code}): ${message}`);
+    const timestamp = Date.now();
 
     this.dispatchEvent(
       new CustomEvent("tile-provider-error", {
@@ -564,9 +655,23 @@ export class LeafletDrawMapElement
           code,
           message,
           provider,
-          timestamp: Date.now(),
+          timestamp,
         },
       }),
+    );
+
+    this._emitDiagnostic(
+      {
+        code,
+        message,
+        recoverable: true,
+        severity: "warn",
+        timestamp,
+      },
+      {
+        state: this._status.ready ? "ready" : this._status.state,
+        lastEvent: "tile-provider-error",
+      },
     );
 
     const maybeController = this._controller as MapController & {
@@ -619,10 +724,16 @@ export class LeafletDrawMapElement
 
   private _effectiveMarkerIconConfig(): NormalizedMarkerIconConfig | null {
     const reportError = (message: string, cause?: unknown) => {
-      this.dispatchEvent(
-        new CustomEvent("leaflet-draw:error", {
-          detail: { message, cause },
-        }),
+      this._emitError(
+        {
+          code: "invalid_marker_icon_config",
+          message,
+          recoverable: true,
+          cause,
+        },
+        {
+          state: this._status.ready ? "ready" : this._status.state,
+        },
       );
     };
 
@@ -684,13 +795,16 @@ export class LeafletDrawMapElement
       }
       return parsed as ToolButtonConfig;
     } catch (cause) {
-      this.dispatchEvent(
-        new CustomEvent("leaflet-draw:error", {
-          detail: {
-            message: "Failed to parse tool-button-config",
-            cause,
-          },
-        }),
+      this._emitError(
+        {
+          code: "invalid_tool_button_config",
+          message: "Failed to parse tool-button-config",
+          recoverable: true,
+          cause,
+        },
+        {
+          state: this._status.ready ? "ready" : this._status.state,
+        },
       );
       return null;
     }
@@ -728,13 +842,16 @@ export class LeafletDrawMapElement
       }
       return parsed as ToolToolbarGroupConfig[];
     } catch (cause) {
-      this.dispatchEvent(
-        new CustomEvent("leaflet-draw:error", {
-          detail: {
-            message: "Failed to parse toolbar-groups",
-            cause,
-          },
-        }),
+      this._emitError(
+        {
+          code: "invalid_toolbar_groups",
+          message: "Failed to parse toolbar-groups",
+          recoverable: true,
+          cause,
+        },
+        {
+          state: this._status.ready ? "ready" : this._status.state,
+        },
       );
       return null;
     }
@@ -843,6 +960,10 @@ export class LeafletDrawMapElement
     if (this._controller) {
       this._updateTileLayer();
     }
+  }
+
+  get status(): StatusEventDetail {
+    return this._cloneStatus(this._status);
   }
 
   get tileAttribution(): string | undefined {
@@ -995,30 +1116,52 @@ export class LeafletDrawMapElement
     return this._controller.getGeoJSON();
   }
 
+  async importGeoJSON(
+    fc: FeatureCollection,
+    options: GeoJSONImportOptions = {},
+  ): Promise<string[]> {
+    const behavior = options.behavior ?? "replace";
+    this._logger.debug("importGeoJSON", {
+      behavior,
+      fitToData: options.fitToData ?? false,
+      features: fc?.features?.length ?? 0,
+    });
+    if (!this._controller) return [];
+
+    const previousStatus = this.status;
+    this._setImportLoadingStatus(previousStatus);
+    return this._performImport(
+      fc,
+      options,
+      previousStatus,
+      behavior === "add"
+        ? "Failed to add GeoJSON features to the map"
+        : "Failed to load GeoJSON into the map",
+    );
+  }
+
   async loadGeoJSON(fc: FeatureCollection): Promise<void> {
     this._logger.debug("loadGeoJSON", { features: fc?.features?.length ?? 0 });
-    if (!this._controller) return;
-    const detail = { fc, mode: "load" as const };
-    this.dispatchEvent(new CustomEvent("leaflet-draw:ingest", { detail }));
-    const finalFc =
-      detail.fc && detail.fc.type === "FeatureCollection" ? detail.fc : fc;
-    await this._controller.loadGeoJSON(finalFc, false);
+    await this.importGeoJSON(fc, { behavior: "replace" });
   }
 
   async clearLayers(): Promise<void> {
     this._logger.debug("clearLayers");
     if (!this._controller) return;
     await this._controller.clearLayers();
+    this._setStatus({
+      state: "ready",
+      ready: true,
+      busy: false,
+      featureCount: 0,
+      lastEvent: "clearLayers",
+      lastError: null,
+    });
   }
 
   async addFeatures(fc: FeatureCollection): Promise<string[]> {
     this._logger.debug("addFeatures", { count: fc?.features?.length ?? 0 });
-    if (!this._controller) return [];
-    const detail = { fc, mode: "add" as const };
-    this.dispatchEvent(new CustomEvent("leaflet-draw:ingest", { detail }));
-    const finalFc =
-      detail.fc && detail.fc.type === "FeatureCollection" ? detail.fc : fc;
-    return this._controller.addFeatures(finalFc);
+    return this.importGeoJSON(fc, { behavior: "add" });
   }
 
   async updateFeature(id: string, feature: Feature): Promise<void> {
@@ -1031,6 +1174,13 @@ export class LeafletDrawMapElement
     this._logger.debug("removeFeature", { id });
     if (!this._controller) return;
     await this._controller.removeFeature(id);
+    await this._syncStatusFromController({
+      state: "ready",
+      ready: true,
+      busy: false,
+      lastEvent: "removeFeature",
+      clearLastError: true,
+    });
   }
 
   async fitBoundsToData(padding?: number): Promise<void> {
@@ -1064,12 +1214,19 @@ export class LeafletDrawMapElement
     }
   }
 
-  async exportGeoJSON(): Promise<FeatureCollection> {
-    this._logger.debug("exportGeoJSON");
+  async exportGeoJSON(
+    options: GeoJSONExportOptions = {},
+  ): Promise<FeatureCollection> {
+    const adapter = options.adapter ?? "editing";
+    this._logger.debug("exportGeoJSON", { adapter });
     if (!this._controller) return { type: "FeatureCollection", features: [] };
-    const fc = await this._controller.getGeoJSON();
-    const detail = { geoJSON: fc, featureCount: fc.features.length };
-    this.dispatchEvent(new CustomEvent("leaflet-draw:export", { detail }));
+    const fc = await this._exportWithController(options);
+    const detail = {
+      geoJSON: fc,
+      featureCount: fc.features.length,
+      adapter,
+    };
+    this.dispatchEvent(new CustomEvent(DrawEvent.Export, { detail }));
     return fc;
   }
 
@@ -1104,6 +1261,14 @@ export class LeafletDrawMapElement
 
       // Dispatch event to notify listeners
       this.dispatchEvent(new CustomEvent("leaflet-draw:merged", { detail }));
+      this._setStatus({
+        state: "ready",
+        ready: true,
+        busy: false,
+        featureCount: postState.features.length,
+        lastEvent: "leaflet-draw:merged",
+        lastError: null,
+      });
     }
 
     return newFeatureId;
@@ -1256,49 +1421,242 @@ export class LeafletDrawMapElement
     });
   }
 
-  async loadGeoJSONFromUrl(url: string): Promise<void> {
-    this._logger.debug("loadGeoJSONFromUrl", { url });
+  async loadGeoJSONFromUrl(
+    url: string,
+    options: GeoJSONImportOptions = {},
+  ): Promise<void> {
+    const behavior = options.behavior ?? "replace";
+    this._logger.debug("loadGeoJSONFromUrl", {
+      url,
+      behavior,
+      fitToData: options.fitToData ?? true,
+    });
     if (!this._controller) return;
-    const res = await fetch(url, { headers: { Accept: "application/json" } });
+
+    const previousStatus = this.status;
+    this._setImportLoadingStatus(previousStatus);
+
+    let res: Response;
+    try {
+      res = await fetch(url, { headers: { Accept: "application/json" } });
+    } catch (cause) {
+      const err = new Error(`Failed to fetch GeoJSON from ${url}`);
+      this._emitError(
+        {
+          code: "data_fetch_failed",
+          message: err.message,
+          recoverable: true,
+          cause,
+        },
+        {
+          state: previousStatus.ready ? "ready" : previousStatus.state,
+          featureCount: previousStatus.featureCount,
+        },
+      );
+      throw err;
+    }
+
     if (!res.ok) {
       const err = new Error(
         `Failed to fetch GeoJSON from ${url}: ${res.status} ${res.statusText}`,
       );
-      this.dispatchEvent(
-        new CustomEvent("leaflet-draw:error", {
-          detail: { message: err.message, cause: err },
-        }),
+      this._emitError(
+        {
+          code: "data_fetch_failed",
+          message: err.message,
+          recoverable: true,
+          cause: err,
+        },
+        {
+          state: previousStatus.ready ? "ready" : previousStatus.state,
+          featureCount: previousStatus.featureCount,
+        },
       );
       throw err;
     }
-    const data = await res.json();
-    const detail = { fc: data, mode: "load" as const };
-    this.dispatchEvent(new CustomEvent("leaflet-draw:ingest", { detail }));
-    const finalFc =
-      detail.fc && detail.fc.type === "FeatureCollection" ? detail.fc : data;
-    await this._controller.loadGeoJSON(finalFc, true);
+
+    let data: FeatureCollection;
+    try {
+      data = await res.json();
+    } catch (cause) {
+      const err = new Error(`Failed to parse GeoJSON from ${url}`);
+      this._emitError(
+        {
+          code: "data_parse_failed",
+          message: err.message,
+          recoverable: true,
+          cause,
+        },
+        {
+          state: previousStatus.ready ? "ready" : previousStatus.state,
+          featureCount: previousStatus.featureCount,
+        },
+      );
+      throw err;
+    }
+
+    await this._performImport(
+      data,
+      {
+        behavior,
+        fitToData: options.fitToData ?? true,
+      },
+      previousStatus,
+      behavior === "add"
+        ? `Failed to add GeoJSON from ${url}`
+        : `Failed to load GeoJSON from ${url}`,
+    );
   }
 
-  async loadGeoJSONFromText(text: string): Promise<void> {
-    this._logger.debug("loadGeoJSONFromText", { length: text?.length ?? 0 });
+  async loadGeoJSONFromText(
+    text: string,
+    options: GeoJSONImportOptions = {},
+  ): Promise<void> {
+    const behavior = options.behavior ?? "replace";
+    this._logger.debug("loadGeoJSONFromText", {
+      behavior,
+      fitToData: options.fitToData ?? true,
+      length: text?.length ?? 0,
+    });
     if (!this._controller) return;
+
+    const previousStatus = this.status;
+    this._setImportLoadingStatus(previousStatus);
+
     let data: FeatureCollection;
     try {
       data = JSON.parse(text);
     } catch (cause) {
       const err = new Error("Failed to parse GeoJSON text");
-      this.dispatchEvent(
-        new CustomEvent("leaflet-draw:error", {
-          detail: { message: err.message, cause },
-        }),
+      this._emitError(
+        {
+          code: "data_parse_failed",
+          message: err.message,
+          recoverable: true,
+          cause,
+        },
+        {
+          state: previousStatus.ready ? "ready" : previousStatus.state,
+          featureCount: previousStatus.featureCount,
+        },
       );
       throw err;
     }
-    const detail = { fc: data, mode: "load" as const };
-    this.dispatchEvent(new CustomEvent("leaflet-draw:ingest", { detail }));
+
+    await this._performImport(
+      data,
+      {
+        behavior,
+        fitToData: options.fitToData ?? true,
+      },
+      previousStatus,
+      behavior === "add"
+        ? "Failed to add parsed GeoJSON into the map"
+        : "Failed to load parsed GeoJSON into the map",
+    );
+  }
+
+  private _setImportLoadingStatus(previousStatus: StatusEventDetail): void {
+    this._setStatus({
+      state: "loading",
+      ready: previousStatus.ready,
+      busy: true,
+      featureCount: previousStatus.featureCount,
+      lastEvent: DrawEvent.Ingest,
+      lastError: null,
+    });
+  }
+
+  private async _performImport(
+    fc: FeatureCollection,
+    options: GeoJSONImportOptions,
+    previousStatus: StatusEventDetail,
+    failureMessage: string,
+  ): Promise<string[]> {
+    const behavior = options.behavior ?? "replace";
+    const detail = {
+      fc,
+      mode: (behavior === "add" ? "add" : "load") as "load" | "add",
+    };
+    this.dispatchEvent(new CustomEvent(DrawEvent.Ingest, { detail }));
     const finalFc =
-      detail.fc && detail.fc.type === "FeatureCollection" ? detail.fc : data;
-    await this._controller.loadGeoJSON(finalFc, true);
+      detail.fc && detail.fc.type === "FeatureCollection" ? detail.fc : fc;
+
+    try {
+      const ids = await this._importWithController(finalFc, {
+        behavior,
+        fitToData: options.fitToData ?? false,
+      });
+      await this._syncStatusFromController({
+        state: "ready",
+        ready: true,
+        busy: false,
+        lastEvent: DrawEvent.Ingest,
+        clearLastError: true,
+      });
+      return ids;
+    } catch (cause) {
+      this._emitError(
+        {
+          code: behavior === "add" ? "data_add_failed" : "data_load_failed",
+          message: failureMessage,
+          recoverable: true,
+          cause,
+        },
+        {
+          state: previousStatus.ready ? "ready" : previousStatus.state,
+          featureCount: previousStatus.featureCount,
+        },
+      );
+      throw cause;
+    }
+  }
+
+  private async _importWithController(
+    fc: FeatureCollection,
+    options: GeoJSONImportOptions,
+  ): Promise<string[]> {
+    if (!this._controller) return [];
+
+    const behavior = options.behavior ?? "replace";
+    const fitToData = options.fitToData ?? false;
+    const maybeController = this._controller as MapController & {
+      importGeoJSON?: (
+        fc: FeatureCollection,
+        options?: GeoJSONImportOptions,
+      ) => Promise<string[]>;
+    };
+
+    if (typeof maybeController.importGeoJSON === "function") {
+      return maybeController.importGeoJSON(fc, { behavior, fitToData });
+    }
+
+    if (behavior === "add") {
+      return maybeController.addFeatures(fc);
+    }
+
+    await maybeController.loadGeoJSON(fc, fitToData);
+    return [];
+  }
+
+  private async _exportWithController(
+    options: GeoJSONExportOptions,
+  ): Promise<FeatureCollection> {
+    if (!this._controller) {
+      return { type: "FeatureCollection", features: [] };
+    }
+
+    const maybeController = this._controller as MapController & {
+      exportGeoJSON?: (
+        options?: GeoJSONExportOptions,
+      ) => Promise<FeatureCollection>;
+    };
+
+    if (typeof maybeController.exportGeoJSON === "function") {
+      return maybeController.exportGeoJSON(options);
+    }
+
+    return maybeController.getGeoJSON();
   }
   // Helpers
   private _currentConfig(): MapConfig {
@@ -1369,6 +1727,155 @@ export class LeafletDrawMapElement
         },
       ),
     );
+  }
+
+  private _syncStatusFromController(options: {
+    state: GeoKitStatusState;
+    ready: boolean;
+    busy: boolean;
+    lastEvent?: string;
+    clearLastError?: boolean;
+  }): Promise<void> {
+    const controller = this._controller as
+      | (MapController & {
+          getGeoJSON?: () => Promise<FeatureCollection>;
+        })
+      | null;
+    if (!controller || typeof controller.getGeoJSON !== "function") {
+      this._setStatus({
+        state: options.state,
+        ready: options.ready,
+        busy: options.busy,
+        featureCount: this._status.featureCount,
+        lastEvent: options.lastEvent,
+        lastError: options.clearLastError ? null : undefined,
+      });
+      return Promise.resolve();
+    }
+
+    return controller
+      .getGeoJSON()
+      .then((fc) => {
+        this._setStatus({
+          state: options.state,
+          ready: options.ready,
+          busy: options.busy,
+          featureCount: fc.features.length,
+          lastEvent: options.lastEvent,
+          lastError: options.clearLastError ? null : undefined,
+        });
+      })
+      .catch(() => {
+        this._setStatus({
+          state: options.state,
+          ready: options.ready,
+          busy: options.busy,
+          lastEvent: options.lastEvent,
+          lastError: options.clearLastError ? null : undefined,
+        });
+      });
+  }
+
+  private _emitError(
+    detail: Omit<ErrorEventDetail, "timestamp">,
+    options: {
+      state: GeoKitStatusState;
+      featureCount?: number;
+      lastEvent?: string;
+    },
+  ): ErrorEventDetail {
+    const errorDetail: ErrorEventDetail = {
+      ...detail,
+      timestamp: Date.now(),
+    };
+
+    this.dispatchEvent(
+      new CustomEvent(DrawEvent.Error, { detail: errorDetail }),
+    );
+    this._emitDiagnostic(
+      {
+        code: errorDetail.code,
+        message: errorDetail.message,
+        recoverable: errorDetail.recoverable,
+        severity: errorDetail.recoverable ? "warn" : "error",
+        cause: errorDetail.cause,
+        timestamp: errorDetail.timestamp,
+      },
+      {
+        state: options.state,
+        featureCount: options.featureCount,
+        lastEvent: options.lastEvent ?? DrawEvent.Error,
+      },
+    );
+
+    return errorDetail;
+  }
+
+  private _emitDiagnostic(
+    detail: Omit<DiagnosticEventDetail, "state">,
+    options: {
+      state: GeoKitStatusState;
+      featureCount?: number;
+      lastEvent?: string;
+    },
+  ): DiagnosticEventDetail {
+    const diagnostic: DiagnosticEventDetail = {
+      ...detail,
+      state: options.state,
+    };
+
+    this.dispatchEvent(
+      new CustomEvent(GeoKitEvent.Diagnostic, { detail: diagnostic }),
+    );
+    this._setStatus({
+      state: options.state,
+      ready: options.state === "ready",
+      busy: options.state === "initializing" || options.state === "loading",
+      featureCount: options.featureCount ?? this._status.featureCount,
+      lastEvent: options.lastEvent ?? GeoKitEvent.Diagnostic,
+      lastError: {
+        code: diagnostic.code,
+        message: diagnostic.message,
+        recoverable: diagnostic.recoverable,
+        timestamp: diagnostic.timestamp,
+      },
+    });
+
+    return diagnostic;
+  }
+
+  private _setStatus(
+    update: Partial<Omit<StatusEventDetail, "timestamp" | "lastError">> & {
+      lastError?: GeoKitDiagnosticSummary | null;
+    },
+  ): void {
+    const next: StatusEventDetail = {
+      ...this._status,
+      ...update,
+      lastError:
+        update.lastError === null
+          ? undefined
+          : update.lastError !== undefined
+            ? { ...update.lastError }
+            : this._status.lastError
+              ? { ...this._status.lastError }
+              : undefined,
+      timestamp: Date.now(),
+    };
+
+    this._status = next;
+    this.dispatchEvent(
+      new CustomEvent(GeoKitEvent.Status, {
+        detail: this._cloneStatus(next),
+      }),
+    );
+  }
+
+  private _cloneStatus(status: StatusEventDetail): StatusEventDetail {
+    return {
+      ...status,
+      lastError: status.lastError ? { ...status.lastError } : undefined,
+    };
   }
 
   private _syncApiKeyFromAttributes(): void {

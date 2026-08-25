@@ -75,6 +75,34 @@ describe("MapController", () => {
     controller.destroy();
   });
 
+  it("reports structured init failures through onError", async () => {
+    const onError = vi.fn();
+    const controller = new MapController({
+      ...opts,
+      callbacks: { onError },
+    });
+
+    vi.spyOn(controller as any, "patchLeafletDrawBugs").mockImplementation(
+      () => {
+        throw new Error("boom");
+      },
+    );
+
+    await controller.init();
+
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: "map_init_failed",
+        message: "Failed to initialize Leaflet map",
+        recoverable: false,
+        cause: expect.any(Error),
+        timestamp: expect.any(Number),
+      }),
+    );
+
+    controller.destroy();
+  });
+
   it("disables delete when requested", async () => {
     opts.controls.delete = false;
     const controller = new MapController(opts);
@@ -196,6 +224,125 @@ describe("MapController", () => {
     controller.destroy();
   });
 
+  it("supports explicit replace versus add import behavior", async () => {
+    const controller = new MapController(opts);
+    await controller.init();
+
+    const firstIds = await controller.importGeoJSON({
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          id: "bed-1",
+          properties: { name: "Bed 1" },
+          geometry: {
+            type: "Point",
+            coordinates: [0, 0],
+          },
+        },
+      ],
+    });
+
+    expect(firstIds).toEqual(["bed-1"]);
+    expect((controller as any).drawnItems.getLayers()).toHaveLength(1);
+
+    const addedIds = await controller.importGeoJSON(
+      {
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            id: "bed-2",
+            properties: { name: "Bed 2" },
+            geometry: {
+              type: "Point",
+              coordinates: [2, 3],
+            },
+          },
+        ],
+      },
+      { behavior: "add" },
+    );
+
+    expect(addedIds).toEqual(["bed-2"]);
+    expect((controller as any).drawnItems.getLayers()).toHaveLength(2);
+    expect(
+      (await controller.getGeoJSON()).features.map((feature) => feature.id),
+    ).toEqual(["bed-1", "bed-2"]);
+
+    const replacementIds = await controller.importGeoJSON({
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          id: "bed-3",
+          properties: { name: "Bed 3" },
+          geometry: {
+            type: "Point",
+            coordinates: [4, 5],
+          },
+        },
+      ],
+    });
+
+    expect(replacementIds).toEqual(["bed-3"]);
+    expect((controller as any).drawnItems.getLayers()).toHaveLength(1);
+    expect(
+      (await controller.getGeoJSON()).features.map((feature) => feature.id),
+    ).toEqual(["bed-3"]);
+
+    controller.destroy();
+  });
+
+  it("exports source-like multi geometry output when requested", async () => {
+    const controller = new MapController(opts);
+    await controller.init();
+
+    await controller.addFeatures({
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          id: "bed-1",
+          properties: { name: "Bed cluster" },
+          geometry: {
+            type: "MultiPoint",
+            coordinates: [
+              [0, 0],
+              [1, 1],
+            ],
+          },
+        },
+      ],
+    });
+
+    const editingExport = await controller.exportGeoJSON();
+    expect(editingExport.features).toHaveLength(2);
+    expect(editingExport.features.map((feature) => feature.id)).toEqual([
+      "bed-1::0",
+      "bed-1::1",
+    ]);
+
+    const sourceExport = await controller.exportGeoJSON({ adapter: "source" });
+    expect(sourceExport.features).toHaveLength(1);
+    expect(sourceExport.features[0]).toMatchObject({
+      id: "bed-1",
+      properties: {
+        id: "bed-1",
+        name: "Bed cluster",
+      },
+      geometry: {
+        type: "MultiPoint",
+        coordinates: [
+          [0, 0],
+          [1, 1],
+        ],
+      },
+    });
+
+    controller.destroy();
+  });
+
   it("restores store-backed layers after destroy and re-init", async () => {
     const controller = new MapController(opts);
     await controller.init();
@@ -288,6 +435,71 @@ describe("MapController", () => {
       ".leaflet-geokit-cake-icon",
     ) as HTMLElement;
     expect(cakeBuiltInIcon.hidden).toBe(true);
+
+    controller.destroy();
+  });
+
+  it("renders custom toolbar groups with icon buttons, hides duplicate Leaflet toolbars, and emits save", async () => {
+    container.innerHTML = `
+      <div class="leaflet-draw-toolbar"><a class="leaflet-draw-draw-polygon" title="Draw a polygon"></a></div>
+      <a class="leaflet-ruler" title="Measure"></a>
+    `;
+    const onToolTrigger = vi.fn();
+    const onSaved = vi.fn();
+    const controller = new MapController({
+      ...opts,
+      callbacks: { onToolTrigger, onSaved },
+      toolbarGroups: [
+        {
+          id: "grower-tools",
+          tools: ["polygon", "select", "save"],
+          position: "topright",
+        },
+      ],
+    });
+
+    (controller as any).applyToolButtonCustomizations();
+
+    expect(container.hasAttribute("data-geokit-default-toolbar-hidden")).toBe(
+      true,
+    );
+    expect(
+      (container.querySelector(".leaflet-draw-toolbar") as HTMLElement).style
+        .display,
+    ).toBe("none");
+    expect(
+      (container.querySelector(".leaflet-ruler") as HTMLElement).style.display,
+    ).toBe("none");
+
+    const saveButton = container.querySelector(
+      '[data-geokit-toolbar-group="grower-tools"] [data-geokit-tool="save"]',
+    ) as HTMLButtonElement;
+    expect(saveButton).toBeTruthy();
+    expect(saveButton.querySelector("svg")).toBeTruthy();
+    expect(saveButton.textContent?.trim()).toBe("");
+
+    saveButton.click();
+
+    expect(onSaved).toHaveBeenCalledWith({
+      geoJSON: { type: "FeatureCollection", features: [] },
+      featureCount: 0,
+    });
+    expect(onToolTrigger).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        tool: "save",
+        handled: true,
+        groupId: "grower-tools",
+      }),
+    );
+
+    controller.setToolbarGroups(null);
+    expect(container.hasAttribute("data-geokit-default-toolbar-hidden")).toBe(
+      false,
+    );
+    expect(
+      (container.querySelector(".leaflet-draw-toolbar") as HTMLElement).style
+        .display,
+    ).toBe("");
 
     controller.destroy();
   });

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.8.2 - 2026-08-24
+
+- Added `save` as a first-class custom toolbar tool; activating it emits `leaflet-draw:export` with the current editable GeoJSON so host apps can persist map geometry from branded controls.
+- Custom `toolbarGroups` now hide duplicate built-in Leaflet.draw/ruler toolbars by default, with per-group `hideDefaultToolbar: false` escape hatch.
+- Replaced text fallback glyphs in custom toolbar groups with built-in SVG icons for every supported tool so incomplete host configs still render usable controls.
+- Updated the irrigation draw harness and E2E coverage to prove custom draw/select/save controls work without duplicate default toolbars.
+
 ## 0.8.1 - 2026-07-15
 
 - Added `toolbarGroups` / `toolbar-groups` for multiple independent map toolbar groups with Leaflet-like corner placement.

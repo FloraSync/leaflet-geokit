@@ -215,6 +215,14 @@
           title: "Select zone",
           ariaLabel: "Select irrigation zone",
         },
+        save: {
+          title: "Save irrigation geometry",
+          ariaLabel: "Save irrigation geometry",
+          popover: {
+            title: "Save geometry",
+            body: "Export the current irrigation geometry for the host app to persist.",
+          },
+        },
         layerStyle: {
           title: "Zone style",
           ariaLabel: "Open irrigation zone style",
@@ -230,7 +238,7 @@
         {
           id: "irrigation-draw",
           position: "bottomright",
-          tools: ["polygon", "select"],
+          tools: ["polygon", "select", "save"],
           ariaLabel: "Irrigation drawing tools",
           offset: [16, 16],
         },
@@ -252,8 +260,16 @@
         setStatus("Map ready. Use the panel button or map toolbar to draw.");
       });
 
+      map.addEventListener("leaflet-draw:export", (event) => {
+        window.lastIrrigationExport = event.detail;
+        setStatus(
+          `Saved ${event.detail.featureCount} irrigation feature${event.detail.featureCount === 1 ? "" : "s"}.`,
+        );
+      });
+
       map.addEventListener("leaflet-geokit:tool-triggered", (event) => {
         window.lastIrrigationToolTrigger = event.detail;
+        if (event.detail.tool === "save") return;
         setStatus(
           `${event.detail.tool} activated from ${event.detail.source}${
             event.detail.groupId ? ` (${event.detail.groupId})` : ""
