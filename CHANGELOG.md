@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.8.3 - 2026-08-28
+
+- Upgraded `uuid` to a patched release so consumer audits no longer inherit GHSA-w5hq-g745-h8pq through GeoKit.
+- Hardened managed toolbar styling so branded `<button>` controls receive the same polished FloraSync treatment as Leaflet's default anchor controls.
+- Added CSS-level hiding for duplicate default Leaflet.draw/ruler toolbars whenever managed toolbar groups are active.
+
 ## 0.8.2 - 2026-08-24
 
 - Added `save` as a first-class custom toolbar tool; activating it emits `leaflet-draw:export` with the current editable GeoJSON so host apps can persist map geometry from branded controls.

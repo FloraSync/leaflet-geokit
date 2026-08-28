@@ -1,6 +1,6 @@
 {
   "name": "@florasync/leaflet-geokit",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "description": "Framework-agnostic Leaflet + Leaflet.draw web component with TypeScript, verbose logging, and tests.",
   "type": "module",
   "main": "./dist/leaflet-geokit.umd.js",
@@ -107,7 +107,7 @@
     "leaflet": "^1.9.4",
     "leaflet-draw": "^1.0.4",
     "leaflet-ruler": "^1.0.0",
-    "uuid": "^9.0.1"
+    "uuid": "^11.1.1"
   },
   "peerDependencies": {
     "preact": "^10.24.0",

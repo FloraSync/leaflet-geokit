@@ -207,6 +207,54 @@ ${leafletRulerCSS}
   border-right-color: #8A2BE2 !important;
 }
 
+/* --- Managed toolbar controls --- */
+[data-geokit-map-container][data-geokit-default-toolbar-hidden] .leaflet-draw-toolbar,
+[data-geokit-map-container][data-geokit-default-toolbar-hidden] .leaflet-ruler,
+[data-geokit-map-container][data-geokit-default-toolbar-hidden] .leaflet-ruler-settings-control {
+  display: none !important;
+}
+
+.leaflet-geokit-toolbar-group {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+  padding: 6px !important;
+  border: 1px solid rgba(15, 23, 18, 0.16) !important;
+  border-radius: 16px !important;
+  background: rgba(255, 255, 255, 0.94) !important;
+  backdrop-filter: blur(10px) !important;
+}
+
+.leaflet-geokit-toolbar-button {
+  width: 44px !important;
+  height: 44px !important;
+  border: 1px solid rgba(15, 23, 18, 0.18) !important;
+  border-radius: 12px !important;
+  background: #fff !important;
+  color: #1f5134 !important;
+  box-shadow: 0 10px 24px rgba(15, 23, 18, 0.16) !important;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease !important;
+}
+
+.leaflet-geokit-toolbar-button:hover,
+.leaflet-geokit-toolbar-button:focus-visible {
+  background: #f0f8ed !important;
+  border-color: #2f8f5f !important;
+  box-shadow:
+    0 0 0 1px rgba(47, 143, 95, 0.35),
+    0 12px 26px rgba(15, 23, 18, 0.18) !important;
+  transform: translateY(-1px) !important;
+}
+
+.leaflet-geokit-toolbar-button:focus-visible {
+  outline: 2px solid #2f8f5f !important;
+  outline-offset: 2px !important;
+}
+
 /* --- Move tool mode cursor styles --- */
 .leaflet-draw-move-mode {
   cursor: default !important;
