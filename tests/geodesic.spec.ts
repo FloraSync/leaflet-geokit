@@ -2,6 +2,23 @@ import { describe, it, expect } from "vitest";
 import { computePreciseDistance, magicRound } from "@src/utils/geodesic";
 
 describe("utils/geodesic", () => {
+  it("measures north/south grower-scale rows on the same meridian", () => {
+    const north = computePreciseDistance(0, 0, 0.0001, 0);
+    const south = computePreciseDistance(0.0001, 0, 0, 0);
+    // WGS84 equatorial meridional radius gives 11.0574276 m.
+    expect(north.meters).toBeCloseTo(11.0574276, 5);
+    expect(south.meters).toBeCloseTo(north.meters, 8);
+    expect(north.bearingDegrees).toBeCloseTo(0, 8);
+    expect(south.bearingDegrees).toBeCloseTo(180, 8);
+    expect(north.iterations).toBeGreaterThan(0);
+  });
+
+  it("measures nearly meridional grower-scale segments", () => {
+    const result = computePreciseDistance(34, -118, 34.0001, -117.999999999);
+    expect(result.meters).toBeGreaterThan(11);
+    expect(result.meters).toBeLessThan(12);
+  });
+
   it("matches expected distance/bearing for Denver → NYC", () => {
     const result = computePreciseDistance(39.7392, -104.9903, 40.7128, -74.006);
     expect(result.algorithm).toBe("vincenty");

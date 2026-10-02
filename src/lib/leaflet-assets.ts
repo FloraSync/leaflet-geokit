@@ -60,6 +60,32 @@ ${leafletRulerCSS}
   margin-top: -6px !important;
 }
 
+/* Preserve precise visible vertices while providing finger-sized hit targets. */
+@media (pointer: coarse) {
+  .leaflet-editing-icon {
+    width: 44px !important;
+    height: 44px !important;
+    margin-left: -22px !important;
+    margin-top: -22px !important;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    touch-action: none;
+  }
+  .leaflet-editing-icon::after {
+    content: "";
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    left: 16px;
+    top: 16px;
+    box-sizing: border-box;
+    background: #fff;
+    border: 1px solid #666;
+    pointer-events: none;
+  }
+}
+
 /* --- Ruler settings control --- */
 .leaflet-ruler-settings-control {
   display: flex;
@@ -212,47 +238,6 @@ ${leafletRulerCSS}
 [data-geokit-map-container][data-geokit-default-toolbar-hidden] .leaflet-ruler,
 [data-geokit-map-container][data-geokit-default-toolbar-hidden] .leaflet-ruler-settings-control {
   display: none !important;
-}
-
-.leaflet-geokit-toolbar-group {
-  display: flex !important;
-  flex-direction: column !important;
-  gap: 6px !important;
-  padding: 6px !important;
-  border: 1px solid rgba(15, 23, 18, 0.16) !important;
-  border-radius: 16px !important;
-  background: rgba(255, 255, 255, 0.94) !important;
-  backdrop-filter: blur(10px) !important;
-}
-
-.leaflet-geokit-toolbar-button {
-  width: 44px !important;
-  height: 44px !important;
-  border: 1px solid rgba(15, 23, 18, 0.18) !important;
-  border-radius: 12px !important;
-  background: #fff !important;
-  color: #1f5134 !important;
-  box-shadow: 0 10px 24px rgba(15, 23, 18, 0.16) !important;
-  transition:
-    background 160ms ease,
-    border-color 160ms ease,
-    box-shadow 160ms ease,
-    transform 160ms ease !important;
-}
-
-.leaflet-geokit-toolbar-button:hover,
-.leaflet-geokit-toolbar-button:focus-visible {
-  background: #f0f8ed !important;
-  border-color: #2f8f5f !important;
-  box-shadow:
-    0 0 0 1px rgba(47, 143, 95, 0.35),
-    0 12px 26px rgba(15, 23, 18, 0.18) !important;
-  transform: translateY(-1px) !important;
-}
-
-.leaflet-geokit-toolbar-button:focus-visible {
-  outline: 2px solid #2f8f5f !important;
-  outline-offset: 2px !important;
 }
 
 /* --- Move tool mode cursor styles --- */

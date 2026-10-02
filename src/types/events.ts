@@ -110,4 +110,18 @@ export const DrawEvent = {
 export const GeoKitEvent = {
   Status: "leaflet-geokit:status",
   Diagnostic: "leaflet-geokit:diagnostic",
+  ToolCommand: "leaflet-geokit:tool-command",
+  ToolCommanded: "leaflet-geokit:tool-commanded",
+  ToolStarted: "leaflet-geokit:tool-started",
+  ToolCompleted: "leaflet-geokit:tool-completed",
+  ToolCancelled: "leaflet-geokit:tool-cancelled",
+  ToolFailed: "leaflet-geokit:tool-failed",
+  ToolStateChanged: "leaflet-geokit:tool-state-changed",
+  ToolCapabilitiesChanged: "leaflet-geokit:tool-capabilities-changed",
+  LayersChanged: "leaflet-geokit:layers-changed",
+  LayerStyleRequest: "leaflet-geokit:layer-style-request",
+  LayerCakeSessionStarted: "tool:layer-cake:session-started",
+  LayerCakeSessionChanged: "tool:layer-cake:session-changed",
+  LayerCakeSaved: "tool:layer-cake:saved",
+  LayerCakeCancelled: "tool:layer-cake:cancelled",
 } as const;

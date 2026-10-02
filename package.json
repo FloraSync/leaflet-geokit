@@ -1,6 +1,6 @@
 {
   "name": "@florasync/leaflet-geokit",
-  "version": "0.8.3",
+  "version": "0.9.0",
   "description": "Framework-agnostic Leaflet + Leaflet.draw web component with TypeScript, verbose logging, and tests.",
   "type": "module",
   "main": "./dist/leaflet-geokit.umd.js",
@@ -41,6 +41,16 @@
     "dist",
     "LICENSE",
     "README.md",
+    "docs/toolbar-styling.md",
+    "docs/accessibility.md",
+    "docs/geojson-pipelines.md",
+    "docs/tool-lifecycle.md",
+    "docs/tool-capabilities.md",
+    "docs/layers.md",
+    "docs/providers.md",
+    "docs/google-maps-adapter-spike.md",
+    "docs/grower-geometry.md",
+    "docs/snapping-and-measurements.md",
     "CHANGELOG.md"
   ],
   "sideEffects": [
@@ -86,7 +96,8 @@
     "spec-kitty:doctor": "spec-kitty doctor",
     "prepack": "npm run build",
     "pack:dry": "npm pack --dry-run",
-    "release:dry": "npm run typecheck && npm run test:unit && npm run build && npm pack --dry-run"
+    "release:dry": "npm run typecheck && npm run test:unit && npm run build && npm pack --dry-run",
+    "test:e2e:snapping": "playwright test --config=playwright.snapping.config.ts"
   },
   "keywords": [
     "leaflet",
@@ -104,6 +115,16 @@
     "npm": ">=9"
   },
   "dependencies": {
+    "@turf/area": "^7.4.0",
+    "@turf/bbox": "^7.4.0",
+    "@turf/boolean-valid": "^7.4.0",
+    "@turf/buffer": "^7.4.0",
+    "@turf/centroid": "^7.4.0",
+    "@turf/kinks": "^7.4.0",
+    "@turf/line-offset": "^7.4.0",
+    "@turf/line-split": "^7.4.0",
+    "@turf/simplify": "^7.4.0",
+    "@turf/union": "^7.4.0",
     "leaflet": "^1.9.4",
     "leaflet-draw": "^1.0.4",
     "leaflet-ruler": "^1.0.0",

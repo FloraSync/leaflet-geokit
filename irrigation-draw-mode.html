@@ -133,6 +133,19 @@
           border-bottom: 1px solid rgba(31, 45, 38, 0.14);
         }
       }
+      /* Host CSS: no shadowRoot access or !important. */
+      leaflet-geokit[data-toolbar-theme="css"],
+      leaflet-geokit[data-toolbar-theme="mixed"] {
+        --geokit-tool-size: 48px;
+        --geokit-tool-radius: 8px;
+        --geokit-toolbar-gap: 10px;
+        --geokit-tool-background: #edf6ee;
+        --geokit-icon-size: 24px;
+      }
+      leaflet-geokit[data-toolbar-theme="css"]::part(toolbar-group),
+      leaflet-geokit[data-toolbar-theme="mixed"]::part(toolbar-group) {
+        border: 2px solid #246b45;
+      }
     </style>
   </head>
   <body>
@@ -158,12 +171,68 @@
           and point-of-action guidance.
         </p>
         <div class="action-stack">
-          <button id="external-draw" type="button" class="primary">
+          <button id="external-draw" data-tool="polygon" type="button" class="primary" disabled>
             Draw irrigation zone from panel
+          </button>
+          <button id="external-layer-cake" data-tool="layerCake" type="button" disabled>
+            Start Layer Cake from panel
+          </button>
+          <button id="external-stop" data-tool="select" type="button" disabled>Stop active tool</button>
+          <button id="external-save" data-tool="save" type="button" disabled>Save from panel</button>
+          <button id="external-edit" data-tool="edit" type="button" disabled>Edit from panel</button>
+          <button id="toggle-snapping" type="button">Enable snapping</button>
+          <button id="show-guide" type="button">Add guide layer</button>
+          <label for="snap-mode">Snap mode</label>
+          <select id="snap-mode">
+            <option value="vertex">Vertex</option>
+            <option value="edge">Edge</option>
+            <option value="grid">Grid</option>
+            <option value="guide">Guide layer</option>
+            <option value="all" selected>All modes</option>
+          </select>
+          <div class="action-stack" aria-label="Measurement units">
+            <button id="metric" type="button">Metric overlay</button>
+            <button id="imperial" type="button">Imperial overlay</button>
+          </div>
+          <div class="action-stack" aria-label="Grower geometry presets">
+            <button id="bed-guides" type="button">Bed-width preset</button>
+            <button id="row-guides" type="button">Row-spacing preset</button>
+            <button id="irrigation-zones" type="button">Irrigation-radius preset</button>
+            <button id="invalid-operation" type="button">Try invalid preset</button>
+          </div>
+          <label><input id="read-only-toggle" type="checkbox" /> Read-only map</label>
+          <button id="external-failure" type="button">
+            Try unavailable polyline
           </button>
           <button id="clear" type="button">Clear drawn zones</button>
         </div>
         <div id="status" aria-live="polite">Waiting for map...</div>
+        <label for="toolbar-theme">Toolbar styling contract</label>
+        <select id="toolbar-theme">
+          <option value="default">Default styling / existing JS config</option>
+          <option value="css">Pure host CSS overrides</option>
+          <option value="config">
+            JS config: horizontal, gap and icon size
+          </option>
+          <option value="mixed">Mixed CSS + JS config</option>
+        </select>
+        <details>
+          <summary>Copy a host CSS override</summary>
+          <pre><code>leaflet-geokit {
+  --geokit-tool-size: 48px;
+  --geokit-toolbar-gap: 10px;
+  --geokit-tool-radius: 8px;
+}
+leaflet-geokit::part(toolbar-group) {
+  border: 2px solid #246b45;
+}</code></pre>
+          <p>
+            Use toolbarGroups for position, offset, orientation, gap and
+            hideDefaultToolbar. Use toolButtonConfig for icons, labels, disabled
+            buttons, badges and tooltips. See README's Toolbar styling contract
+            for all parts, tokens and named slots.
+          </p>
+        </details>
       </aside>
 
       <leaflet-geokit
@@ -174,18 +243,32 @@
         tile-url="/synthetic-irrigation-tile.svg"
         tile-attribution="Synthetic irrigation demo tile"
         draw-polygon
+        draw-polyline
+        draw-rectangle
+        draw-circle
+        draw-layer-cake
         edit-features
         delete-features
         draw-marker
+        draw-move
         draw-ruler
       ></leaflet-geokit>
     </main>
 
     <script type="module">
-      import "/src/index.ts";
+      import {
+        GROWER_PRESETS,
+        createBedWidthGuides,
+        createIrrigationZones,
+        createRowSpacingGuides,
+      } from "/src/index.ts";
 
       const map = document.getElementById("irrigation-map");
       const status = document.getElementById("status");
+      map.snapping = { enabled: false, modes: ["vertex", "edge", "grid", "guide"], tolerancePx: 18, gridSizeMeters: 1, gridOrigin: [0, 0] };
+      map.measurementOverlay = { enabled: true, autoScale: true };
+      window.irrigationPresetResults = {};
+      window.irrigationToolEvents = [];
       const zoneIcon = `
         <svg viewBox="0 0 24 24" role="img" aria-hidden="true">
           <path fill="#246b45" d="M12 2 3 20h18L12 2z"></path>
@@ -255,6 +338,92 @@
         status.textContent = text;
       }
 
+      const centerline = {
+        type: "Feature",
+        properties: { name: "Demo bed centerline" },
+        geometry: { type: "LineString", coordinates: [[-0.001, 0], [0.001, 0]] },
+      };
+      const setSnapMode = (mode) => {
+        const modes = mode === "all" ? ["vertex", "edge", "grid", "guide"] : [mode];
+        map.snapping = { ...map.snapping, enabled: true, modes };
+        document.getElementById("toggle-snapping").textContent = `Disable ${mode} snapping`;
+        window.activeSnapMode = mode;
+      };
+      window.setSnapMode = setSnapMode;
+      document.getElementById("snap-mode").addEventListener("change", (event) => setSnapMode(event.target.value));
+      document.getElementById("toggle-snapping").addEventListener("click", () => {
+        const enabled = !map.snapping?.enabled;
+        map.snapping = { ...map.snapping, enabled };
+        document.getElementById("toggle-snapping").textContent = enabled ? "Disable snapping" : "Enable snapping";
+        window.snappingEnabled = enabled;
+      });
+      document.getElementById("metric").addEventListener("click", () => void map.setMeasurementUnits("metric"));
+      document.getElementById("imperial").addEventListener("click", () => void map.setMeasurementUnits("imperial"));
+      document.getElementById("show-guide").addEventListener("click", async () => {
+        const result = createRowSpacingGuides(centerline, GROWER_PRESETS.rowSpacingMeters.vegetables, { rowsPerSide: 1 });
+        if (!result.ok) { setStatus(result.error.message); return; }
+        await map.importGeoJSON({ type: "FeatureCollection", features: result.value.features }, { behavior: "add", layer: { id: "demo-guides", name: "Demo guide rows", kind: "guide" } });
+        window.guideLayerAdded = true;
+        setStatus("Guide layer added. Guide snapping can now target it.");
+      });
+      async function addPreset(name, result) {
+        if (!result.ok) { setStatus(result.error.message); return; }
+        const features = result.value.type === "FeatureCollection" ? result.value.features : [result.value];
+        window.irrigationPresetResults[name] = result.value;
+        await map.importGeoJSON({ type: "FeatureCollection", features }, { behavior: "add", layer: { name: `${name} preset`, kind: name === "irrigation" ? "drawn" : "guide" } });
+        setStatus(`${name} preset added (${features.length} feature${features.length === 1 ? "" : "s"}).`);
+      }
+      document.getElementById("bed-guides").addEventListener("click", () => void addPreset("bed", createBedWidthGuides(centerline, GROWER_PRESETS.bedWidthMeters.standard)));
+      document.getElementById("row-guides").addEventListener("click", () => void addPreset("rows", createRowSpacingGuides(centerline, GROWER_PRESETS.rowSpacingMeters.vegetables)));
+      document.getElementById("irrigation-zones").addEventListener("click", () => void addPreset("irrigation", createIrrigationZones([0, 0], GROWER_PRESETS.irrigationRadiusMeters.microSprinkler, { zoneCount: 2 })));
+      document.getElementById("invalid-operation").addEventListener("click", async () => {
+        const before = await map.getGeoJSON();
+        const result = createIrrigationZones([0, 0], -1);
+        window.invalidOperationResult = result;
+        window.invalidOperationUnchanged = JSON.stringify(before) === JSON.stringify(await map.getGeoJSON());
+        setStatus(result.ok ? "Unexpected valid result" : `Invalid operation rolled back: ${result.error.message}`);
+      });
+
+      const initialGroups = map.toolbarGroups;
+      const initialButtons = map.toolButtonConfig;
+      // Declarative host buttons mirror the same snapshot as managed map controls.
+      const renderCapabilities = () => {
+        const snapshot = map.getToolCapabilities();
+        for (const button of document.querySelectorAll("button[data-tool]")) {
+          const capability = snapshot.tools[button.dataset.tool];
+          button.disabled = capability.state !== "enabled";
+          button.title = capability.reason?.message ?? "";
+          button.dataset.disabledReason = capability.reason?.code ?? "";
+        }
+      };
+      map.addEventListener("leaflet-geokit:tool-capabilities-changed", renderCapabilities);
+      renderCapabilities();
+      document.getElementById("external-edit").addEventListener("click", () => {
+        void map.activateTool("edit", { source: "external-edit-button" });
+      });
+      document.getElementById("read-only-toggle").addEventListener("change", (event) => {
+        map.readOnly = event.target.checked;
+      });
+      document
+        .getElementById("toolbar-theme")
+        .addEventListener("change", (event) => {
+          const mode = event.target.value;
+          map.dataset.toolbarTheme = mode;
+          const useConfig = mode === "config" || mode === "mixed";
+          map.toolbarGroups = initialGroups.map((group) => ({
+            ...group,
+            orientation: useConfig ? "horizontal" : "vertical",
+            gap: useConfig ? 12 : 6,
+          }));
+          map.toolButtonConfig = {
+            ...initialButtons,
+            polygon: {
+              ...initialButtons.polygon,
+              iconSize: useConfig ? [28, 28] : [22, 22],
+            },
+          };
+        });
+
       map.addEventListener("leaflet-draw:ready", () => {
         window.irrigationMapReady = true;
         setStatus("Map ready. Use the panel button or map toolbar to draw.");
@@ -266,6 +435,27 @@
           `Saved ${event.detail.featureCount} irrigation feature${event.detail.featureCount === 1 ? "" : "s"}.`,
         );
       });
+
+      for (const eventName of [
+        "leaflet-geokit:tool-command",
+        "leaflet-geokit:tool-commanded",
+        "leaflet-geokit:tool-started",
+        "leaflet-geokit:tool-completed",
+        "leaflet-geokit:tool-cancelled",
+        "leaflet-geokit:tool-failed",
+        "leaflet-geokit:tool-state-changed",
+      ]) {
+        map.addEventListener(eventName, (event) => {
+          window.irrigationToolEvents.push({
+            type: event.type,
+            detail: event.detail,
+          });
+          window.lastIrrigationToolEvent = {
+            type: event.type,
+            detail: event.detail,
+          };
+        });
+      }
 
       map.addEventListener("leaflet-geokit:tool-triggered", (event) => {
         window.lastIrrigationToolTrigger = event.detail;
@@ -288,6 +478,49 @@
           groupId: "external-panel",
         });
       });
+
+      document
+        .getElementById("external-layer-cake")
+        .addEventListener("click", () => {
+          map.dispatchEvent(
+            new CustomEvent("leaflet-geokit:tool-command", {
+              bubbles: true,
+              composed: true,
+              detail: {
+                tool: "layerCake",
+                source: "external-layer-cake-button",
+                groupId: "external-panel",
+                commandId: "outside-layer-cake",
+              },
+            }),
+          );
+        });
+
+      document.getElementById("external-stop").addEventListener("click", () => {
+        void map.deactivateTool({
+          source: "external-stop-button",
+          groupId: "external-panel",
+          commandId: "outside-stop",
+        });
+      });
+
+      document.getElementById("external-save").addEventListener("click", () => {
+        void map.activateTool("save", {
+          source: "external-save-button",
+          groupId: "external-panel",
+          commandId: "outside-save",
+        });
+      });
+
+      document
+        .getElementById("external-failure")
+        .addEventListener("click", () => {
+          void map.activateTool("polyline", {
+            source: "external-failure-button",
+            groupId: "external-panel",
+            commandId: "outside-failure",
+          });
+        });
 
       document.getElementById("clear").addEventListener("click", () => {
         void map.deactivateTool({

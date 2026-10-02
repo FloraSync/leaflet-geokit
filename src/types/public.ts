@@ -8,6 +8,9 @@ import type {
   GeoJSONImportOptions,
 } from "@src/utils/geojson";
 import type * as Leaflet from "leaflet";
+import type { MapLayer, LayerStyle, LayerCakeSession, LayerCakeSessionUpdate } from "@src/types/layers";
+export * from "@src/types/layers";
+import type { BasemapAdapter, ProviderDiagnostics } from "@src/lib/providers";
 
 /**
  * Basic map configuration derived from element attributes.
@@ -41,6 +44,38 @@ export interface MapConfig {
 
 export type MeasurementSystem = "metric" | "imperial";
 
+export type SnapMode = "vertex" | "edge" | "grid" | "guide";
+
+/** Opt-in drawing/editing snapping. All distances are screen-space pixels. */
+export interface SnappingOptions {
+  enabled?: boolean;
+  modes?: SnapMode[];
+  /** Maximum screen-space distance for a candidate to win. Defaults to 12px. */
+  tolerancePx?: number;
+  /**
+   * Physical WGS84 grid spacing in meters. Required when grid mode is enabled.
+   * Nodes are stable relative to gridOrigin and use the ellipsoidal meridian
+   * scale for latitude and the local parallel scale for longitude.
+   */
+  gridSizeMeters?: number;
+  /**
+   * Fixed grid anchor as [longitude, latitude]. Defaults to [0, 0].
+   * Grid snapping is supported for WGS84 latitudes inside ±89.9°; it is a
+   * local editing aid, not antimeridian/polar survey or CRS transformation.
+   */
+  gridOrigin?: [number, number];
+}
+
+/** Controls the lightweight live draw/edit measurement overlay. */
+export interface MeasurementOverlayOptions {
+  enabled?: boolean;
+  showLength?: boolean;
+  showPerimeter?: boolean;
+  showArea?: boolean;
+  maximumFractionDigits?: number;
+  autoScale?: boolean;
+}
+
 export type MarkerIconPoint = [number, number];
 
 export interface MarkerIconConfig {
@@ -73,6 +108,47 @@ export type ToolButtonName =
   | "measurementSettings"
   | "layerStyle"
   | "save";
+
+export type ToolCapabilityState = "enabled" | "disabled" | "unavailable";
+export type ToolRequirementReason =
+  | "not_ready" | "read_only" | "missing_attribute" | "unavailable_plugin"
+  | "empty_selection" | "no_editable_layers" | "missing_provider"
+  | "missing_api_key" | "runtime_error" | "configured_disabled";
+
+export interface ToolCapabilityReason {
+  code: ToolRequirementReason;
+  message: string;
+  requirement?: string;
+}
+
+export interface ToolCapability {
+  tool: ToolButtonName;
+  state: ToolCapabilityState;
+  reason: ToolCapabilityReason | null;
+  active: boolean;
+  /** Configured toolbar groups containing this tool, not caller-supplied command groups. */
+  groupIds: string[];
+  /** Actual built-in activation shortcut; null means no shortcut is registered. */
+  hotkey: string | null;
+  commands: { activate: boolean; deactivate: boolean };
+  /** UI-only disabled config does not block imperative activation. Runtime failures may be retried. */
+  commandEnabled: boolean;
+  behavior: "draw" | "mode" | "action" | "deactivate";
+}
+
+export interface ToolProviderCapability {
+  requested: string;
+  active: string;
+  state: ToolCapabilityState;
+  reason: ToolCapabilityReason | null;
+}
+
+/** Detached snapshot; also the detail of tool-capabilities-changed. No credentials. */
+export interface ToolCapabilities {
+  tools: Record<ToolButtonName, ToolCapability>;
+  provider: ToolProviderCapability;
+  selectedFeatureIds: string[];
+}
 
 export interface ToolButtonRenderContext {
   tool: ToolButtonName;
@@ -124,6 +200,14 @@ export interface ToolButtonStyleConfig {
   className?: string;
   /** Optional point-of-action guidance shown when the button is used. */
   popover?: ToolPopoverConfig;
+  /** Disable managed toolbar buttons, not the imperative tool API. */
+  disabled?: boolean;
+  /** Optional host prerequisites; built-in local tools need neither provider nor selection. */
+  requirements?: { selection?: boolean; provider?: boolean };
+  /** Decorative badge text; include meaningful counts in ariaLabel too. */
+  badge?: string;
+  /** Visible hover/focus tooltip; defaults to the accessible label. */
+  tooltip?: string;
 }
 
 export type ToolButtonConfig = Partial<
@@ -131,7 +215,18 @@ export type ToolButtonConfig = Partial<
 >;
 
 export type ToolToolbarPosition =
-  "topleft" | "topright" | "bottomleft" | "bottomright";
+  "topleft" | "topright" | "bottomleft" | "bottomright" | ToolToolbarZone;
+
+export type ToolToolbarZone =
+  "top-start" | "top-end" | "bottom-start" | "bottom-end" | "center-end";
+
+export interface ToolToolbarPlacement {
+  position?: ToolToolbarPosition;
+  orientation?: "vertical" | "horizontal";
+  order?: number;
+  overflow?: "wrap" | "scroll";
+  offset?: MarkerIconPoint;
+}
 
 export interface ToolToolbarGroupConfig {
   /** Stable group id used in events and DOM data attributes. */
@@ -146,6 +241,18 @@ export interface ToolToolbarGroupConfig {
   className?: string;
   /** Pixel offset from the chosen map corner. Defaults to [10, 10]. */
   offset?: MarkerIconPoint;
+  /** Defaults to vertical. CSS may override the visual direction. */
+  orientation?: "vertical" | "horizontal";
+  /** Nonnegative button gap in pixels. Defaults to 6; CSS may override it. */
+  gap?: number;
+  /** Opt in to bounded zones; responsive uses a bottom sheet below 600px map width. */
+  preset?: "zones" | "responsive";
+  /** Numeric stacking order inside a zone; CSS --geokit-toolbar-order wins. */
+  order?: number;
+  /** Wrap tools or keep a scrollable single row/column. Defaults to wrap. */
+  overflow?: "wrap" | "scroll";
+  /** Map-width breakpoint and narrow placement overrides (also enables zones). */
+  responsive?: ToolToolbarPlacement & { breakpoint?: number };
   /**
    * Hide the built-in Leaflet.draw/ruler toolbars while this custom group is present.
    * Defaults to true so custom buttons are the only visible map tool chrome.
@@ -158,6 +265,47 @@ export interface ToolTriggerOptions {
   source?: "api" | "event" | "toolbar" | "leaflet-toolbar" | string;
   /** Toolbar group id when triggered from a configured toolbar group. */
   groupId?: string;
+  /** Optional caller-supplied correlation id. GeoKit generates one when omitted. */
+  commandId?: string;
+}
+
+export type ToolCommandAction = "activate" | "deactivate";
+
+/**
+ * Detail accepted by the public `leaflet-geokit:tool-command` event.
+ * `action` defaults to `activate`; `deactivate` returns the map to select mode.
+ */
+export interface ToolCommandEventDetail extends ToolTriggerOptions {
+  tool: ToolButtonName;
+  action?: ToolCommandAction;
+}
+
+export type ToolLifecycleEventName =
+  | "leaflet-geokit:tool-command"
+  | "leaflet-geokit:tool-commanded"
+  | "leaflet-geokit:tool-started"
+  | "leaflet-geokit:tool-completed"
+  | "leaflet-geokit:tool-cancelled"
+  | "leaflet-geokit:tool-failed"
+  | "leaflet-geokit:tool-state-changed";
+
+/**
+ * Correlated payload shared by every public tool lifecycle event.
+ * Empty featureIds and omitted geometry/reason mean those fields are not
+ * relevant to that lifecycle transition.
+ */
+export interface ToolEventDetail {
+  tool: ToolButtonName;
+  action: ToolCommandAction;
+  source: string;
+  groupId?: string;
+  commandId: string;
+  previousTool: ToolButtonName | null;
+  activeTool: ToolButtonName | null;
+  featureIds: string[];
+  geometry?: Feature | FeatureCollection;
+  reason?: string;
+  timestamp: number;
 }
 
 export interface ToolTriggerEventDetail extends ToolTriggerOptions {
@@ -168,6 +316,7 @@ export interface ToolTriggerEventDetail extends ToolTriggerOptions {
 }
 
 export type IntegratedToolEventName =
+  | ToolLifecycleEventName
   | "tool:polygon:created"
   | "tool:polyline:created"
   | "tool:rectangle:created"
@@ -175,6 +324,8 @@ export type IntegratedToolEventName =
   | "tool:marker:created"
   | "tool:layer-cake:session-started"
   | "tool:layer-cake:saved"
+  | "tool:layer-cake:session-changed"
+  | "tool:layer-cake:cancelled"
   | "tool:move:pending"
   | "tool:move:confirmed"
   | "tool:move:cancelled"
@@ -319,6 +470,10 @@ export interface LeafletDrawMapElementAPI {
    * `undefined` falls back to the `toolbar-groups` attribute, `null` clears custom groups.
    */
   toolbarGroups?: ToolToolbarGroupConfig[] | null;
+  /** Opt-in screen-space snapping for drawing and vertex editing. */
+  snapping?: SnappingOptions | null;
+  /** Opt-in live length/area/perimeter feedback while drawing or editing. */
+  measurementOverlay?: MeasurementOverlayOptions | null;
 
   /** Optional injection of a pre-existing Leaflet namespace to use instead of bundled import. */
   leafletInstance?: typeof Leaflet;
@@ -340,6 +495,22 @@ export interface LeafletDrawMapElementAPI {
   readonly status: StatusEventDetail;
 
   // Methods
+  /** Optional basemap bridge, applied after ready. Null restores attribute-configured tiles. */
+  setBasemapAdapter(adapter: BasemapAdapter | null): void;
+  getProviderDiagnostics(): ProviderDiagnostics | null;
+  getLayers(): MapLayer[];
+  setLayerVisibility(id: string, visible: boolean): Promise<void>;
+  setLayerStyle(id: string, style: LayerStyle): Promise<void>;
+  reorderLayers(ids: readonly string[]): Promise<void>;
+  focusLayer(id: string): Promise<void>;
+  removeLayer(id: string): Promise<void>;
+  getLayerCakeSession(): LayerCakeSession | null;
+  updateLayerCakeSession(update: LayerCakeSessionUpdate): Promise<void>;
+  saveLayerCakeSession(): Promise<void>;
+  cancelLayerCakeSession(): Promise<void>;
+  getToolCapabilities(): ToolCapabilities;
+  /** Supply host selection; unknown/deleted ids are excluded from capability snapshots. */
+  setToolSelection(featureIds: readonly string[]): void;
   getGeoJSON(): Promise<FeatureCollection>;
   importGeoJSON(
     fc: FeatureCollection,
@@ -391,6 +562,10 @@ export interface LeafletDrawMapElementAPI {
    * Change the measurement system for the Leaflet ruler tool.
    */
   setMeasurementUnits(system: MeasurementSystem): Promise<void>;
+  /** Return the current screen-space snap configuration. */
+  getSnappingOptions(): SnappingOptions | null;
+  /** Return the current live measurement overlay configuration. */
+  getMeasurementOverlayOptions(): MeasurementOverlayOptions | null;
   /**
    * Programmatically activate a map tool through the public web component API.
    */

@@ -14,7 +14,13 @@ Primary sources
 
 Documentation quick-links
 
+- Provider v2 contracts, diagnostics, MapLibre/PMTiles shim and security: [docs/providers.md](docs/providers.md)
+- Optional Google Maps adapter spike: [docs/google-maps-adapter-spike.md](docs/google-maps-adapter-spike.md)
+- Validated GeoJSON adapters, metadata round trips, diff/patch: [docs/geojson-pipelines.md](docs/geojson-pipelines.md)
 - Architecture overview: [ARCHITECTURE.md](ARCHITECTURE.md)
+- Public tool lifecycle: [docs/tool-lifecycle.md](docs/tool-lifecycle.md)
+- Tool availability, disabled reasons and external button binding: [docs/tool-capabilities.md](docs/tool-capabilities.md)
+- Named map layers, host-rendered styles and cake sessions: [docs/layers.md](docs/layers.md); run `npm run dev` and open `/layer-manager.html` for the live sidebar harness.
 - Dev harness (example): [index.html](index.html)
 - Unit tests: [tests/element.spec.ts](tests/element.spec.ts)
 - Vitest config: [vitest.config.ts](vitest.config.ts)
@@ -552,7 +558,7 @@ map!.toolbarGroups = toolbarGroups;
 Supported tool keys are `polygon`, `polyline`, `rectangle`, `circle`, `marker`,
 `layerCake`, `move`, `select`, `edit`, `delete`, `ruler`,
 `measurementSettings`, `layerStyle`, and `save`. `select` disables active draw/edit
-handlers; `layerStyle` emits a public trigger event for host-owned style panels;
+handlers; `layerStyle` opens a preset panel (cancel `leaflet-geokit:layer-style-request` to render a host-owned panel instead);
 `save` emits `leaflet-draw:export` with the current editable GeoJSON for host
 persistence.
 
@@ -560,6 +566,79 @@ persistence.
 `map.toolbarGroups` takes precedence over the `toolbar-groups` attribute. Set a
 property to `undefined` to return to the attribute, or `null` to clear the
 programmatic config while keeping stable `data-geokit-tool` hooks.
+
+#### Toolbar styling contract (v2)
+
+See the [keyboard and accessibility contract](docs/accessibility.md) for toolbar
+navigation, save/cancel commands, focus handling, announcements, contrast/motion
+tokens, and the limits of the current touch verification.
+
+Managed `toolbarGroups` use normal CSS rules, not inline `!important` visual
+styles. Defaults are 44px buttons with visible hover, focus, active and disabled
+states. Existing `toolButtonConfig`, `toolbarGroups`, `data-geokit-tool`,
+`themeCss` and `theme-url` APIs remain supported in bundled and external runtimes.
+
+Public parts: `host` and `map` (the internal map-sized surface), `toolbar-group`,
+`toolbar-button`, `icon`, `popover`, `active`, `disabled`, `badge`, `tooltip`.
+Style the actual element box with `leaflet-geokit`, and internals via `::part`:
+
+```css
+/* Pure CSS overrides for existing configured groups. */
+leaflet-geokit {
+  --geokit-tool-size: 48px;
+  --geokit-tool-radius: 8px;
+  --geokit-tool-background: #edf6ee;
+  --geokit-toolbar-gap: 10px;
+  --geokit-icon-size: 24px;
+}
+leaflet-geokit::part(toolbar-group) {
+  border: 2px solid #246b45;
+}
+leaflet-geokit::part(toolbar-button):focus-visible {
+  outline: 3px solid #246b45;
+}
+leaflet-geokit::part(active) {
+  color: #124124;
+}
+```
+
+```ts
+// JS config only: no custom stylesheet required.
+map.toolbarGroups = [
+  {
+    id: "care",
+    tools: ["polygon", "save"],
+    position: "bottomleft",
+    offset: [16, 24],
+    orientation: "horizontal",
+    gap: 12,
+    hideDefaultToolbar: true,
+  },
+];
+map.toolButtonConfig = {
+  polygon: { title: "Draw growing space", iconSize: [28, 28] },
+  save: { title: "Save", ariaLabel: "Save 2 growing spaces", badge: "2" },
+};
+```
+
+For mixed CSS + config, combine those examples: public tokens override config's
+visual defaults (including gap and icon size); placement and behavior stay in JS.
+Per-group/per-tool overrides belong in `themeCss` or `theme-url`:
+
+```ts
+map.themeCss = `
+  [data-geokit-managed-toolbar][data-geokit-toolbar-group="care"] {
+    --geokit-toolbar-gap: 14px;
+    --geokit-tool-background: #edf6ee;
+  }
+  button[data-geokit-tool="save"] { --geokit-tool-radius: 50%; }
+`;
+```
+
+The [complete styling contract](docs/toolbar-styling.md)
+documents all tokens/defaults, slots, state semantics, native-control boundaries,
+and placement/visibility behavior. Try the default/CSS/config/mixed selector in
+`irrigation-draw-mode.html`. Responsive zones and overflow are a separate slice.
 
 #### External Tool Triggers
 
@@ -598,14 +677,31 @@ code to reach into Leaflet.draw toolbar internals. The legacy
 `{ action: "deactivate" }` or `{ active: false }` in its detail to use it as a
 deactivate request.
 
-GeoKit emits `leaflet-geokit:tool-trigger-requested`, then either
-`leaflet-geokit:tool-triggered` or
-`leaflet-geokit:tool-trigger-failed`. Event detail includes `tool`, `source`,
-`groupId`, `handled`, `timestamp`, and optional `error`.
+The canonical public bus emits `leaflet-geokit:tool-command`,
+`tool-commanded`, `tool-started`, `tool-completed`, `tool-cancelled`,
+`tool-failed`, and `tool-state-changed`. Every phase uses exported
+`ToolEventDetail` and preserves `source`, `groupId`, and `commandId`.
+Committed geometry phases also contain feature ids and a GeoJSON snapshot.
+All lifecycle events bubble and cross the component's Shadow DOM boundary.
 
-See `irrigation-draw-mode.html` for a working integration demo with custom
-icons, popovers, two toolbar groups, an external panel button, real polygon
-draw activation, and a custom save button.
+Event-only hosts can dispatch `leaflet-geokit:tool-command` with
+`{ tool, action?, source?, groupId?, commandId? }`. Activation is not
+completion: interactive draw tools complete only when geometry is committed,
+and LayerCake completes only when its manager saves. Action tools
+(`save`, `layerStyle`, and `measurementSettings`) complete immediately
+without replacing an active persistent tool.
+
+The older `leaflet-geokit:tool-trigger-requested`,
+`leaflet-geokit:tool-triggered`, and
+`leaflet-geokit:tool-trigger-failed` events remain compatibility aliases and
+now include `commandId` in addition to `tool`, `source`, `groupId`,
+`handled`, `timestamp`, and optional `error`.
+
+The [complete lifecycle contract](docs/tool-lifecycle.md) inventories all 14
+tools, every activation path, ordering, switches/repeats, Escape/cancellation,
+LayerCake continuation, and failure behavior. See
+`irrigation-draw-mode.html` for outside start/stop/save/failure controls using
+only public APIs.
 
 #### Programmatic Marker Icon Override
 
@@ -1488,6 +1584,35 @@ Versioning and releases
 - Keep a Changelog in CHANGELOG.md (to be populated during releases)
 
 ---
+
+## Snapping, live measurements, and grower scale
+
+The component keeps snapping backward-compatible by default: enable it explicitly
+with `snapping`. Modes are `vertex`, `edge`, `grid`, and `guide`; tolerance is
+measured in screen pixels. Grid spacing is physical WGS84 meters and
+`gridOrigin` is a fixed `[longitude, latitude]` anchor (default `[0, 0]`).
+Latitude nodes use ellipsoidal meridian distance and longitude nodes use the
+parallel scale at the snapped latitude. Grid snapping is supported inside
+±89.9° latitude and is an editing/planning aid rather than survey accuracy.
+Guide candidates come from the current layer registry and must be visible.
+
+```ts
+map.snapping = {
+  enabled: true,
+  modes: ["vertex", "edge", "grid", "guide"],
+  tolerancePx: 14,
+  gridSizeMeters: 1,
+  gridOrigin: [0, 0],
+};
+map.measurementOverlay = { enabled: true, autoScale: true };
+```
+
+The live overlay follows `setMeasurementUnits("metric" | "imperial")` and
+refreshes during draw/edit. Grower helpers and `GROWER_PRESETS` are exported from
+`src/index.ts` and `src/external.ts`; add generated guide features with
+`layer: { kind: "guide" }` to make them snap targets. Invalid helper operations
+return an actionable error result and do not alter existing layers. See
+[`docs/snapping-and-measurements.md`](docs/snapping-and-measurements.md).
 
 ## License
 

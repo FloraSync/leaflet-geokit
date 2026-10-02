@@ -1,4 +1,5 @@
 import * as L from "leaflet";
+import { bindMovePointer } from "./move-pointer";
 
 /**
  * DrawMove: A custom Leaflet.draw handler that enables moving/translating existing features.
@@ -6,6 +7,7 @@ import * as L from "leaflet";
  */
 export class DrawMove extends (L as any).Draw.Feature {
   public static TYPE = "move";
+  private _unbindPointer: (() => void) | null = null;
 
   private _featureGroup: L.FeatureGroup;
   private _selectedLayer: L.Layer | null = null;
@@ -31,7 +33,6 @@ export class DrawMove extends (L as any).Draw.Feature {
 
   disable(): void {
     if (!this._enabled) return;
-    this._cleanupDragging();
     super.disable();
   }
 
@@ -41,6 +42,14 @@ export class DrawMove extends (L as any).Draw.Feature {
 
     // Set cursor style for the map container
     L.DomUtil.addClass(map.getContainer(), "leaflet-draw-move-mode");
+    this._unbindPointer = bindMovePointer(map, this._featureGroup, {
+      start: e => this._onLayerMouseDown(e),
+      move: e => this._onMouseMove(e),
+      end: e => this._onMouseUp(e),
+      cancel: () => this.cancelMove(),
+      pending: () => this.hasPendingMove(),
+    });
+    map.on("unload", this.disable, this);
 
     // Add mouseover/mouseout handlers for all layers in featureGroup
     this._featureGroup.eachLayer((layer: L.Layer) => {
@@ -62,6 +71,9 @@ export class DrawMove extends (L as any).Draw.Feature {
     if (!map) return;
 
     // Remove cursor style
+    this._unbindPointer?.();
+    this._unbindPointer = null;
+    map.off("unload", this.disable, this);
     L.DomUtil.removeClass(map.getContainer(), "leaflet-draw-move-mode");
 
     // Remove hover handlers
@@ -77,7 +89,6 @@ export class DrawMove extends (L as any).Draw.Feature {
 
     (layer as any).on("mouseover", this._onLayerMouseOver, this);
     (layer as any).on("mouseout", this._onLayerMouseOut, this);
-    (layer as any).on("mousedown", this._onLayerMouseDown, this);
   }
 
   private _disableLayerHover(layer: L.Layer): void {
@@ -85,7 +96,6 @@ export class DrawMove extends (L as any).Draw.Feature {
 
     (layer as any).off("mouseover", this._onLayerMouseOver, this);
     (layer as any).off("mouseout", this._onLayerMouseOut, this);
-    (layer as any).off("mousedown", this._onLayerMouseDown, this);
   }
 
   private _onLayerMouseOver(e: L.LeafletMouseEvent): void {
@@ -141,10 +151,6 @@ export class DrawMove extends (L as any).Draw.Feature {
     } else if ((selectedLayer as any)._path) {
       (selectedLayer as any)._path.style.cursor = "grabbing";
     }
-
-    // Attach move and up handlers
-    this._map.on("mousemove", this._onMouseMove, this);
-    this._map.on("mouseup", this._onMouseUp, this);
 
     // Store original GeoJSON for potential cancel
     const originalGeoJSON = (selectedLayer as any).toGeoJSON();
@@ -272,13 +278,15 @@ export class DrawMove extends (L as any).Draw.Feature {
   public confirmMove(): void {
     if (!this._pendingMove) return;
 
-    this._map.fire("draw:moveconfirmed", {
-      layer: this._pendingMove.layer,
-      originalGeoJSON: this._pendingMove.originalGeoJSON,
-      newGeoJSON: this._pendingMove.newGeoJSON,
-    });
-
+    const pending = this._pendingMove;
+    // Completion can synchronously disable this mode. Clear the rollback
+    // transaction before notifying listeners so Save cannot become Cancel.
     this._cleanupDragging();
+    this._map.fire("draw:moveconfirmed", {
+      layer: pending.layer,
+      originalGeoJSON: pending.originalGeoJSON,
+      newGeoJSON: pending.newGeoJSON,
+    });
   }
 
   /**
@@ -320,6 +328,7 @@ export function ensureDrawMoveRegistered(Lns: typeof L): void {
 
   class RuntimeDrawMove extends DrawNs.Feature {
     public static TYPE = "move";
+    private _unbindPointer: (() => void) | null = null;
     private _featureGroup: L.FeatureGroup;
     private _selectedLayer: L.Layer | null = null;
     private _originalLatLngs: any = null;
@@ -344,7 +353,6 @@ export function ensureDrawMoveRegistered(Lns: typeof L): void {
 
     disable(): void {
       if (!(this as any)._enabled) return;
-      this._cleanupDragging();
       super.disable();
     }
 
@@ -353,6 +361,14 @@ export function ensureDrawMoveRegistered(Lns: typeof L): void {
       if (!map) return;
 
       Lns.DomUtil.addClass(map.getContainer(), "leaflet-draw-move-mode");
+      this._unbindPointer = bindMovePointer(map, this._featureGroup, {
+        start: e => this._onLayerMouseDown(e),
+        move: e => this._onMouseMove(e),
+        end: e => this._onMouseUp(e),
+        cancel: () => this.cancelMove(),
+        pending: () => this.hasPendingMove(),
+      });
+      map.on("unload", this.disable, this);
 
       this._featureGroup.eachLayer((layer: L.Layer) => {
         this._enableLayerHover(layer);
@@ -372,6 +388,9 @@ export function ensureDrawMoveRegistered(Lns: typeof L): void {
       if (!map) return;
 
       Lns.DomUtil.removeClass(map.getContainer(), "leaflet-draw-move-mode");
+      this._unbindPointer?.();
+      this._unbindPointer = null;
+      map.off("unload", this.disable, this);
 
       this._featureGroup.eachLayer((layer: L.Layer) => {
         this._disableLayerHover(layer);
@@ -384,14 +403,12 @@ export function ensureDrawMoveRegistered(Lns: typeof L): void {
       if (!(layer as any).on) return;
       (layer as any).on("mouseover", this._onLayerMouseOver, this);
       (layer as any).on("mouseout", this._onLayerMouseOut, this);
-      (layer as any).on("mousedown", this._onLayerMouseDown, this);
     }
 
     private _disableLayerHover(layer: L.Layer): void {
       if (!(layer as any).off) return;
       (layer as any).off("mouseover", this._onLayerMouseOver, this);
       (layer as any).off("mouseout", this._onLayerMouseOut, this);
-      (layer as any).off("mousedown", this._onLayerMouseDown, this);
     }
 
     private _onLayerMouseOver(e: L.LeafletMouseEvent): void {
@@ -433,9 +450,6 @@ export function ensureDrawMoveRegistered(Lns: typeof L): void {
       } else if ((selectedLayer as any)._path) {
         (selectedLayer as any)._path.style.cursor = "grabbing";
       }
-
-      (this as any)._map.on("mousemove", this._onMouseMove, this);
-      (this as any)._map.on("mouseup", this._onMouseUp, this);
 
       const originalGeoJSON = (selectedLayer as any).toGeoJSON();
       this._pendingMove = {
@@ -544,13 +558,13 @@ export function ensureDrawMoveRegistered(Lns: typeof L): void {
     public confirmMove(): void {
       if (!this._pendingMove) return;
 
-      (this as any)._map.fire("draw:moveconfirmed", {
-        layer: this._pendingMove.layer,
-        originalGeoJSON: this._pendingMove.originalGeoJSON,
-        newGeoJSON: this._pendingMove.newGeoJSON,
-      });
-
+      const pending = this._pendingMove;
       this._cleanupDragging();
+      (this as any)._map.fire("draw:moveconfirmed", {
+        layer: pending.layer,
+        originalGeoJSON: pending.originalGeoJSON,
+        newGeoJSON: pending.newGeoJSON,
+      });
     }
 
     public cancelMove(): void {

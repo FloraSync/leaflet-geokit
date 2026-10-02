@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GeoKit layer manager harness</title>
+    <style>
+      body {
+        font-family: system-ui;
+        margin: 20px;
+      }
+      main {
+        display: grid;
+        grid-template-columns: 260px 1fr;
+        gap: 20px;
+      }
+      leaflet-geokit {
+        display: block;
+        height: 600px;
+      }
+      aside label,
+      aside button {
+        display: block;
+        margin: 8px 0;
+      }
+      output {
+        display: block;
+        white-space: pre-wrap;
+      }
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+      #host-style[hidden] {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Grower map layers</h1>
+    <main>
+      <aside aria-label="Layer sidebar">
+        <button id="start">Start layer cake</button
+        ><label
+          >Layer name <input id="name" value="Orchard water zones"
+        /></label>
+        <label>Radii in meters <input id="radii" value="100,150,225" /></label>
+        <label
+          >Preset
+          <select id="preset">
+            <option>crop</option>
+            <option selected>water</option>
+            <option>reference</option>
+          </select></label
+        >
+        <button id="update" disabled>Update rings</button
+        ><button id="save" disabled>Save session</button
+        ><button id="cancel" disabled>Cancel session</button>
+        <output id="session" aria-label="Session status"
+          >No active session</output
+        >
+        <button id="style">Open layer style</button
+        ><label
+          ><input id="host" type="checkbox" /> Host-render style panel</label
+        >
+        <section id="host-style" aria-label="Host layer style" hidden>
+          <h2>Host layer style</h2>
+          <button id="host-apply">Apply reference style</button>
+        </section>
+        <button id="hide">Toggle saved layer</button
+        ><button id="roundtrip">Export and restore layers</button
+        ><output id="layers" aria-label="Layers"></output
+        ><output id="result" aria-label="Result"></output>
+      </aside>
+      <template id="map-template"
+        ><leaflet-geokit
+          id="map"
+          latitude="34.05"
+          longitude="-118.25"
+          zoom="15"
+          draw-layer-cake
+          draw-polygon
+          draw-edit
+          draw-delete
+          log-level="silent"
+        ></leaflet-geokit
+      ></template>
+    </main>
+    <script type="module">
+      import "/src/index.ts";
+      import { LAYER_STYLE_PRESETS } from "/src/types/layers.ts";
+      const map = document.importNode(
+        document.querySelector("#map-template").content.firstElementChild,
+        true,
+      );
+      map.preferCanvas = false;
+      const byId = (id) => document.getElementById(id);
+      window.layerEvents = [];
+      window.layerHarnessReady = false;
+      const refresh = () => {
+        byId("layers").textContent = map
+          .getLayers()
+          .map(
+            (l) =>
+              `${l.name}: ${l.visible ? "visible" : "hidden"} (${l.featureIds.length})`,
+          )
+          .join("\n");
+      };
+      for (const name of [
+        "tool:layer-cake:session-started",
+        "tool:layer-cake:session-changed",
+        "tool:layer-cake:saved",
+        "tool:layer-cake:cancelled",
+      ]) {
+        map.addEventListener(name, (event) => {
+          window.layerEvents.push({ name, detail: event.detail });
+          const active =
+            name.endsWith("session-started") ||
+            name.endsWith("session-changed");
+          for (const id of ["save", "cancel", "update"])
+            byId(id).disabled = !active;
+          byId("session").textContent = active
+            ? `${event.detail.session.name}: ${event.detail.session.rings.length} rings`
+            : name.endsWith("saved")
+              ? "Session saved"
+              : "Session cancelled";
+          refresh();
+        });
+      }
+      map.addEventListener("leaflet-geokit:layers-changed", refresh);
+      map.addEventListener("leaflet-geokit:layer-style-request", (event) => {
+        if (!byId("host").checked) return;
+        event.preventDefault();
+        byId("host-style").hidden = false;
+      });
+      const run = (action) => async () => {
+        try {
+          await action();
+        } catch (error) {
+          byId("result").textContent = error.message;
+          throw error;
+        }
+      };
+      byId("start").onclick = () =>
+        map.dispatchEvent(
+          new CustomEvent("leaflet-geokit:tool-command", {
+            detail: {
+              tool: "layerCake",
+              source: "secondary-app-button",
+              commandId: "layer-harness-cake",
+            },
+          }),
+        );
+      byId("update").onclick = run(() =>
+        map.updateLayerCakeSession({
+          name: byId("name").value,
+          radii: byId("radii").value.split(",").map(Number),
+          preset: byId("preset").value,
+        }),
+      );
+      byId("save").onclick = run(() => map.saveLayerCakeSession());
+      byId("cancel").onclick = run(() => map.cancelLayerCakeSession());
+      byId("style").onclick = () =>
+        map.dispatchEvent(
+          new CustomEvent("leaflet-geokit:tool-command", {
+            detail: { tool: "layerStyle", source: "sidebar" },
+          }),
+        );
+      const savedLayer = () => map.getLayers().find((l) => l.kind === "drawn");
+      byId("host-apply").onclick = run(async () => {
+        await map.setLayerStyle(savedLayer().id, LAYER_STYLE_PRESETS.reference);
+        byId("result").textContent = "Host style applied";
+      });
+      byId("hide").onclick = run(() => {
+        const l = savedLayer();
+        return map.setLayerVisibility(l.id, !l.visible);
+      });
+      byId("roundtrip").onclick = run(async () => {
+        await map.reorderLayers(
+          map
+            .getLayers()
+            .map((l) => l.id)
+            .reverse(),
+        );
+        const before = map.getLayers();
+        const data = await map.exportGeoJSON({ preserveLayers: true });
+        await map.importGeoJSON(JSON.parse(JSON.stringify(data)), {
+          preserveLayers: true,
+        });
+        const after = map.getLayers();
+        window.layerRoundTrip = { before, after };
+        const serialize = (layers) =>
+          JSON.stringify(
+            layers.map((layer) => ({
+              ...layer,
+              style: Object.fromEntries(
+                Object.entries(layer.style).sort(([a], [b]) =>
+                  a.localeCompare(b),
+                ),
+              ),
+            })),
+          );
+        byId("result").textContent =
+          serialize(before) === serialize(after)
+            ? "Layers round-trip exact"
+            : "Layers mismatch";
+      });
+      const ready = async () => {
+        await map.importGeoJSON(
+          {
+            type: "FeatureCollection",
+            features: [
+              {
+                type: "Feature",
+                id: "fence",
+                properties: {},
+                geometry: {
+                  type: "LineString",
+                  coordinates: [
+                    [-118.255, 34.048],
+                    [-118.245, 34.048],
+                  ],
+                },
+              },
+            ],
+          },
+          {
+            layer: {
+              id: "fence-guide",
+              name: "Fence reference",
+              kind: "guide",
+              style: LAYER_STYLE_PRESETS.reference,
+            },
+          },
+        );
+        refresh();
+        window.layerHarnessReady = true;
+      };
+      if (map.status.ready) ready();
+      else map.addEventListener("leaflet-draw:ready", ready, { once: true });
+      document.querySelector("main").append(map);
+    </script>
+  </body>
+</html>

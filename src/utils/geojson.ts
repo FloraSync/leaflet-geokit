@@ -11,13 +11,21 @@ import type {
 export type GeoJSONImportBehavior = "replace" | "add";
 
 export interface GeoJSONImportOptions {
+  /** Restore the portable registry snapshot; supported with replace only. */
+  preserveLayers?: boolean;
+  /** Group imported features, including guide/reference or measurement overlays. */
+  layer?: import("@src/types/layers").LayerDefinition;
   behavior?: GeoJSONImportBehavior;
   fitToData?: boolean;
+  /** Reject invalid data before changing layers. Legacy default is false. */
+  validate?: boolean;
 }
 
 export type GeoJSONExportAdapter = "editing" | "source";
 
 export interface GeoJSONExportOptions {
+  /** Include geokit:layers registry metadata. Default false. */
+  preserveLayers?: boolean;
   adapter?: GeoJSONExportAdapter;
 }
 
@@ -42,6 +50,15 @@ interface ExpandedFeatureEntry {
   childIndex: number;
   feature: Feature;
 }
+
+interface ExpansionSource {
+  id?: string | number;
+  type: Geometry["type"];
+  hasPropertyId: boolean;
+  propertyId?: unknown;
+  nullProperties: boolean;
+}
+const SOURCE_KEY = "geokit:source";
 
 function parseExpandedChildId(feature: Feature): ExpandedFeatureEntry | null {
   const id = normalizeId(feature);
@@ -76,6 +93,8 @@ function collapseExpandedFeatureGroup(
   });
   const first = sorted[0]!.feature;
   const properties = buildCollapsedProperties(baseId, first.properties);
+  const sources = first.properties?.[SOURCE_KEY] as ExpansionSource[] | undefined;
+  const source = Array.isArray(sources) ? sources[sources.length - 1] : undefined;
   const geometries = sorted
     .map((entry) => entry.feature.geometry)
     .filter((geometry): geometry is Geometry => geometry != null);
@@ -86,19 +105,19 @@ function collapseExpandedFeatureGroup(
       type: "GeometryCollection",
       geometries: [],
     };
-  } else if (geometries.length === 1) {
+  } else if (geometries.length === 1 && !source) {
     geometry = geometries[0]!;
-  } else if (geometries.every((candidate) => candidate.type === "Point")) {
+  } else if (source?.type !== "GeometryCollection" && geometries.every((candidate) => candidate.type === "Point")) {
     geometry = {
       type: "MultiPoint",
       coordinates: geometries.map((candidate) => candidate.coordinates),
     };
-  } else if (geometries.every((candidate) => candidate.type === "LineString")) {
+  } else if (source?.type !== "GeometryCollection" && geometries.every((candidate) => candidate.type === "LineString")) {
     geometry = {
       type: "MultiLineString",
       coordinates: geometries.map((candidate) => candidate.coordinates),
     };
-  } else if (geometries.every((candidate) => candidate.type === "Polygon")) {
+  } else if (source?.type !== "GeometryCollection" && geometries.every((candidate) => candidate.type === "Polygon")) {
     geometry = {
       type: "MultiPolygon",
       coordinates: geometries.map((candidate) => candidate.coordinates),
@@ -110,10 +129,16 @@ function collapseExpandedFeatureGroup(
     };
   }
 
+  if (source && properties) {
+    if (source.hasPropertyId) properties.id = source.propertyId;
+    else delete properties.id;
+    if (sources!.length > 1) properties[SOURCE_KEY] = sources!.slice(0, -1);
+    else delete properties[SOURCE_KEY];
+  }
   return {
     type: "Feature",
-    id: baseId,
-    properties,
+    id: source?.id ?? baseId,
+    properties: source?.nullProperties && Object.keys(properties ?? {}).length === 0 ? null : properties,
     geometry,
   };
 }
@@ -234,6 +259,7 @@ export function bboxToBoundsPair(b: BBox): BoundsPair {
  */
 export function expandMultiGeometries(
   fc: FeatureCollection,
+  options: { preserveMetadata?: boolean } = {},
 ): FeatureCollection {
   const out: Feature[] = [];
   for (const f of fc.features) {
@@ -252,6 +278,17 @@ export function expandMultiGeometries(
       if (derivedId !== undefined) {
         (properties as Record<string, unknown>).id = derivedId;
       }
+
+      const previous = Array.isArray(baseProps[SOURCE_KEY]) ? baseProps[SOURCE_KEY] : [];
+      const source: ExpansionSource = {
+        type: f.geometry.type,
+        hasPropertyId: Object.prototype.hasOwnProperty.call(baseProps, "id"),
+        nullProperties: f.properties === null,
+      };
+      if (f.id !== undefined) source.id = f.id;
+      else if (sourceId !== undefined) source.id = sourceId;
+      if (source.hasPropertyId) source.propertyId = baseProps.id;
+      if (options.preserveMetadata) properties[SOURCE_KEY] = [...previous, source];
 
       return {
         type: "Feature",
@@ -297,18 +334,26 @@ export function expandMultiGeometries(
         break;
     }
   }
-  return { type: "FeatureCollection", features: out };
+  const expanded = { type: "FeatureCollection" as const, features: out };
+  if (options.preserveMetadata && out.some((f) => f.geometry.type.startsWith("Multi") || f.geometry.type === "GeometryCollection")) {
+    return expandMultiGeometries(expanded, options);
+  }
+  return expanded;
 }
 
 export function adaptFeatureCollectionForExport(
   fc: FeatureCollection,
-  options: GeoJSONExportOptions = {},
+  options: GeoJSONExportOptions & { provenanceOnly?: boolean } = {},
 ): FeatureCollection {
   const adapter = options.adapter ?? "editing";
   if (adapter !== "source") return fc;
 
+  const depth = (f: Feature): number => Array.isArray(f.properties?.[SOURCE_KEY]) ? f.properties![SOURCE_KEY].length : 0;
+  const maxDepth = fc.features.reduce((max, f) => Math.max(max, depth(f)), 0);
+  const eligible = (f: Feature) => maxDepth === 0 ? !options.provenanceOnly : depth(f) === maxDepth;
   const grouped = new Map<string, ExpandedFeatureEntry[]>();
   for (const feature of fc.features) {
+    if (!eligible(feature)) continue;
     const parsed = parseExpandedChildId(feature);
     if (!parsed) continue;
 
@@ -325,6 +370,7 @@ export function adaptFeatureCollectionForExport(
   const emittedBaseIds = new Set<string>();
   const features: Feature[] = [];
   for (const feature of fc.features) {
+    if (!eligible(feature)) { features.push(feature); continue; }
     const parsed = parseExpandedChildId(feature);
     if (!parsed) {
       features.push(feature);
@@ -338,10 +384,11 @@ export function adaptFeatureCollectionForExport(
     );
   }
 
-  return {
-    type: "FeatureCollection",
-    features,
-  };
+  const result: FeatureCollection = { type: "FeatureCollection", features };
+  if (features.some((f) => Array.isArray(f.properties?.[SOURCE_KEY]) && f.properties![SOURCE_KEY].length > 0 && parseExpandedChildId(f))) {
+    return adaptFeatureCollectionForExport(result, options);
+  }
+  return result;
 }
 
 /**

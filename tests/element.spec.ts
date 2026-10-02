@@ -18,6 +18,12 @@ describe("LeafletDrawMapElement (scaffold)", () => {
     expect(ctor).toBeInstanceOf(Function);
   });
 
+  it("exposes the host surface and map as public parts", () => {
+    expect(
+      el.shadowRoot.querySelector('[part~="host"][part~="map"]'),
+    ).not.toBeNull();
+  });
+
   it("observes the layer-cake draw attribute", () => {
     const ctor: any = customElements.get(TAG);
     expect(ctor.observedAttributes).toContain("draw-layer-cake");
@@ -356,10 +362,14 @@ describe("LeafletDrawMapElement (scaffold)", () => {
     });
 
     expect(handled).toBe(true);
-    expect(activateTool).toHaveBeenCalledWith("polygon", {
-      source: "api",
-      groupId: "external-irrigation-button",
-    });
+    expect(activateTool).toHaveBeenCalledWith(
+      "polygon",
+      expect.objectContaining({
+        source: "api",
+        groupId: "external-irrigation-button",
+        commandId: expect.any(String),
+      }),
+    );
     expect(requested).toHaveBeenCalledWith(
       expect.objectContaining({
         detail: expect.objectContaining({
@@ -411,20 +421,27 @@ describe("LeafletDrawMapElement (scaffold)", () => {
       groupId: "alias-panel",
     });
     expect(handled).toBe(true);
-    expect(activateTool).toHaveBeenCalledWith("polygon", {
-      source: "api",
-      groupId: "alias-panel",
-    });
+    expect(activateTool).toHaveBeenCalledWith(
+      "polygon",
+      expect.objectContaining({
+        source: "api",
+        groupId: "alias-panel",
+        commandId: expect.any(String),
+      }),
+    );
 
     const deactivated = await localEl.deactivateTool({
       source: "api",
       groupId: "alias-panel",
     });
     expect(deactivated).toBe(true);
-    expect(deactivateTool).toHaveBeenCalledWith({
-      source: "api",
-      groupId: "alias-panel",
-    });
+    expect(deactivateTool).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "api",
+        groupId: "alias-panel",
+        commandId: expect.any(String),
+      }),
+    );
   });
 
   it("emits a non-fatal error and clears tool button config for invalid JSON attributes", () => {

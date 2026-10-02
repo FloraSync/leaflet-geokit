@@ -4,6 +4,13 @@ import { bakeLayerCake } from "@src/lib/layer-cake/CakeBaker";
 import { bindCakeControls } from "@src/lib/layer-cake/bindCakeControls";
 import { ensureCircleEditable } from "@src/lib/layer-cake/ensureCircleEditable";
 import type { MeasurementSystem } from "@src/types/public";
+import {
+  LAYER_STYLE_PRESETS,
+  type LayerCakeSession,
+  type LayerCakeSessionUpdate,
+  type LayerStyle,
+} from "@src/types/layers";
+import { validateLayerStyle } from "@src/lib/LayerRegistry";
 
 /**
  * Format distance in meters to a friendly string based on measurement system.
@@ -37,18 +44,24 @@ export class LayerCakeManager {
   private detachMapListeners: (() => void)[] = [];
   private renderScheduled = false;
   private measurementSystem: MeasurementSystem;
+  private name = "Layer cake";
+  private style: LayerStyle = { ...LAYER_STYLE_PRESETS.crop };
+  private destroyed = false;
+  private saving = false;
 
   constructor(
     map: L.Map,
     initialCircle: L.Circle,
     onSave: (geojson: GeoJSON.FeatureCollection) => void,
     measurementSystem: MeasurementSystem = "metric",
+    private onChange?: (session: LayerCakeSession) => void,
   ) {
     this.map = map;
     this.onSave = onSave;
     this.measurementSystem = measurementSystem;
     this.controlsGroup = L.layerGroup().addTo(map);
     this.baseCircleOptions = { ...(initialCircle.options as any) };
+    Object.assign(this.baseCircleOptions, this.style);
     delete (this.baseCircleOptions as any).editing;
     delete (this.baseCircleOptions as any).original;
 
@@ -134,12 +147,14 @@ export class LayerCakeManager {
         : (cb: FrameRequestCallback) => setTimeout(() => cb(0), 0);
 
     schedule(() => {
+      if (this.destroyed) return;
       this.renderScheduled = false;
       this.renderControls();
     });
   }
 
   private addLayer(circle: L.Circle): void {
+    circle.setStyle(this.style);
     this.layers.push(circle);
     circle.addTo(this.map);
 
@@ -160,6 +175,7 @@ export class LayerCakeManager {
     // Deferring to the next tick stabilizes handle placement in Shadow DOM + Canvas paths.
     setTimeout(() => {
       try {
+        if (this.destroyed || !this.layers.includes(circle)) return;
         circle.redraw?.();
         ensureCircleEditable(circle);
         if (editing?.enabled?.()) {
@@ -177,6 +193,7 @@ export class LayerCakeManager {
   }
 
   public addRing(): void {
+    if (this.destroyed) return;
     if (this.layers.length >= 10) return;
     const largest = this.getLargestCircle();
     if (!largest) return;
@@ -188,12 +205,80 @@ export class LayerCakeManager {
     });
     this.addLayer(newCircle);
     this.renderControls();
+    this.onChange?.(this.snapshot());
+  }
+
+  public snapshot(): LayerCakeSession {
+    const center = this.layers[0]?.getLatLng();
+    return {
+      id: this.sessionId,
+      name: this.name,
+      center: { lat: center?.lat ?? 0, lng: center?.lng ?? 0 },
+      rings: [...this.layers]
+        .sort((a, b) => a.getRadius() - b.getRadius())
+        .map((circle) => ({ radius: circle.getRadius() })),
+      style: { ...this.style },
+    };
+  }
+
+  public update(update: LayerCakeSessionUpdate): void {
+    if (this.destroyed) throw new Error("Layer cake session is closed");
+    const radii = update.radii;
+    if (
+      radii &&
+      (!Array.isArray(radii) ||
+        radii.length < 1 ||
+        radii.length > 10 ||
+        radii.some(
+          (r, i) =>
+            !Number.isFinite(r) || r <= 0 || (i > 0 && r <= radii[i - 1]),
+        ))
+    )
+      throw new Error("Use one to ten strictly increasing positive radii");
+    if (
+      update.name !== undefined &&
+      (typeof update.name !== "string" || !update.name.trim())
+    )
+      throw new Error("Layer name must not be empty");
+    if (
+      update.preset &&
+      !Object.prototype.hasOwnProperty.call(LAYER_STYLE_PRESETS, update.preset)
+    )
+      throw new Error("Unknown style preset");
+    const style = validateLayerStyle({
+      ...this.style,
+      ...(update.preset ? LAYER_STYLE_PRESETS[update.preset] : {}),
+      ...update.style,
+    });
+    this.name = update.name?.trim() ?? this.name;
+    this.style = style;
+    Object.assign(this.baseCircleOptions, style);
+    if (radii) {
+      const center = this.layers[0].getLatLng();
+      this.layers.forEach((circle) => {
+        (circle as any).editing?.disable?.();
+        this.map.removeLayer(circle);
+      });
+      this.layers = [];
+      radii.forEach((radius) =>
+        this.addLayer(L.circle(center, { ...this.baseCircleOptions, radius })),
+      );
+    }
+    this.layers.forEach((circle) => circle.setStyle(style));
+    this.renderControls();
+    this.onChange?.(this.snapshot());
   }
 
   public save(): void {
+    if (this.destroyed || this.saving) return;
+    this.saving = true;
     const geojson = bakeLayerCake({ circles: this.layers });
-    this.onSave(geojson);
-    this.destroy();
+    try {
+      this.onSave(geojson);
+      this.destroy();
+    } finally {
+      this.saving = false;
+    }
   }
 
   private getLargestCircle(): L.Circle | null {
@@ -212,6 +297,7 @@ export class LayerCakeManager {
       (layer as any).editing?.updateMarkers?.();
     });
     this.requestRenderControls();
+    this.onChange?.(this.snapshot());
   }
 
   /**
@@ -220,6 +306,7 @@ export class LayerCakeManager {
    * Positions the tooltip on the left side to avoid toolbar interference.
    */
   private updateLabels(activeCircle: L.Circle): void {
+    this.onChange?.(this.snapshot());
     const currentRadius = activeCircle.getRadius();
     let labelText = formatDistance(currentRadius, this.measurementSystem);
 
@@ -261,6 +348,7 @@ export class LayerCakeManager {
   }
 
   private renderControls(): void {
+    if (this.destroyed) return;
     this.controlsGroup.clearLayers();
     const largest = this.getLargestCircle();
     if (!largest) return;
@@ -292,6 +380,7 @@ export class LayerCakeManager {
 
     setTimeout(() => {
       // Important: the map likely lives in a ShadowRoot; document.getElementById won't find these.
+      if (this.destroyed) return;
       const root: ParentNode = this.map.getContainer();
       bindCakeControls({
         root,
@@ -304,6 +393,8 @@ export class LayerCakeManager {
   }
 
   public destroy(): void {
+    if (this.destroyed) return;
+    this.destroyed = true;
     this.detachMapListeners.forEach((fn) => {
       try {
         fn();
@@ -313,7 +404,10 @@ export class LayerCakeManager {
     });
     this.detachMapListeners = [];
 
-    this.layers.forEach((l) => this.map.removeLayer(l));
+    this.layers.forEach((l) => {
+      (l as any).editing?.disable?.();
+      this.map.removeLayer(l);
+    });
     this.layers = [];
     this.controlsGroup.clearLayers();
     this.map.removeLayer(this.controlsGroup);

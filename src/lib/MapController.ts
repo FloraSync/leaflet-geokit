@@ -8,11 +8,19 @@ import type {
   GeoJSONImportOptions,
   MapConfig,
   MeasurementSystem,
+  SnappingOptions,
+  MeasurementOverlayOptions,
   IntegratedToolEventEmitter,
   IntegratedToolEventName,
   IntegratedToolHooks,
   ToolButtonConfig,
   ToolButtonName,
+  ToolCapabilities,
+  ToolProviderCapability,
+  ToolCommandAction,
+  ToolCommandEventDetail,
+  ToolEventDetail,
+  ToolLifecycleEventName,
   ToolToolbarGroupConfig,
   ToolTriggerEventDetail,
   ToolTriggerOptions,
@@ -20,8 +28,16 @@ import type {
 import type { ErrorEventDetail } from "@src/types/events";
 import { createLogger, type Logger } from "@src/utils/logger";
 import { FeatureStore } from "@src/lib/FeatureStore";
+import { LayerRegistry } from "@src/lib/LayerRegistry";
+import { openLayerStylePanel } from "@src/lib/layer-style-panel";
+import { announceToolStatus } from "@src/lib/toolbar-accessibility";
+import type { MapLayer, LayerStyle, LayerCakeSessionUpdate, LayerStyleRequestDetail } from "@src/types/layers";
 import { type NormalizedMarkerIconConfig } from "@src/lib/marker-icons";
-import { applyToolButtonConfig } from "@src/lib/tool-buttons";
+import {
+  applyToolButtonConfig,
+  setActiveToolbarTool,
+  type ToolButtonTriggerContext,
+} from "@src/lib/tool-buttons";
 import { registerLayerCakeTool } from "@src/lib/draw/toolbar-patch";
 import { DrawCake, ensureDrawCakeRegistered } from "@src/lib/draw/L.Draw.Cake";
 import { ensureDrawMoveRegistered } from "@src/lib/draw/L.Draw.Move";
@@ -38,16 +54,25 @@ import {
   normalizeId,
 } from "@src/utils/geojson";
 import { computePreciseDistance, magicRound } from "@src/utils/geodesic";
+import { normalizeGeoJSON } from "@src/utils/geojson-pipeline";
 import {
   getRulerOptions,
   measurementSystemDescriptions,
 } from "@src/utils/ruler";
 import { assertDrawPresent } from "@src/utils/leaflet-guards";
 import type { TileURLTemplate } from "@src/lib/TileProviderFactory";
+import { createCustomRasterProvider, getProviderDiagnostics } from "@src/lib/providers";
+import type { BasemapAdapter, ProviderDiagnostics } from "@src/lib/providers";
+import { buildToolCapabilities, reflectToolCapabilities, TOOL_REGISTRY } from "./tool-capabilities";
+import { findSnap, type SnapResult, type SnapTarget } from "@src/lib/snapping";
+import { formatMeasurements, measureGeoJSON } from "@src/utils/grower-geometry";
 
 let rulerPrecisionPatched = false;
 
 export interface MapControllerCallbacks {
+  onLayerEvent?: (name: string, detail: unknown) => void;
+  onLayerStyleRequested?: (detail: LayerStyleRequestDetail) => boolean;
+  onToolCapabilitiesChanged?: (detail: ToolCapabilities) => void;
   onReady?: (detail: { bounds?: [[number, number], [number, number]] }) => void;
   onCreated?: (detail: {
     id: string;
@@ -59,6 +84,10 @@ export interface MapControllerCallbacks {
   onError?: (detail: ErrorEventDetail) => void;
   onTileError?: (error: unknown) => void;
   onToolTrigger?: (detail: ToolTriggerEventDetail) => void;
+  onToolEvent?: (
+    eventName: ToolLifecycleEventName,
+    detail: ToolEventDetail,
+  ) => void;
   onSaved?: (detail: {
     geoJSON: FeatureCollection;
     featureCount: number;
@@ -86,6 +115,10 @@ export interface MapControllerOptions {
   toolButtonConfig?: ToolButtonConfig | null;
   /** Optional additional toolbar groups rendered over the map. */
   toolbarGroups?: ToolToolbarGroupConfig[] | null;
+  /** Opt-in screen-space snapping for drawing and vertex editing. */
+  snapping?: SnappingOptions | null;
+  /** Opt-in live length/area/perimeter feedback while drawing or editing. */
+  measurementOverlay?: MeasurementOverlayOptions | null;
 }
 
 type CreatedLayerType =
@@ -106,6 +139,17 @@ interface TileLayerCallbacks {
   onTileError?: (error: unknown) => void;
 }
 
+interface ToolCommandContext {
+  tool: ToolButtonName;
+  action: ToolCommandAction;
+  source: string;
+  groupId?: string;
+  commandId: string;
+  previousTool: ToolButtonName | null;
+  terminalOutcome?: "completed" | "failed";
+  replacedActive?: boolean;
+}
+
 /**
  * MapController: initializes Leaflet map + Draw, bridges events, and manages data via FeatureStore.
  */
@@ -119,10 +163,15 @@ export class MapController {
 
   // Data store (id-centric)
   private store: FeatureStore;
+  private layerRegistry = new LayerRegistry();
+  private featureLayers = new Map<string, BundledL.Layer>();
+  private closeLayerStylePanel: (() => void) | null = null;
 
   // Leaflet entities
   private map: BundledL.Map | null = null;
-  private tileLayer: BundledL.TileLayer | null = null;
+  private tileLayer: BundledL.Layer | null = null;
+  private adapterAttribution: string | null = null;
+  private providerDiagnostics: ProviderDiagnostics | null = null;
   private drawnItems: BundledL.FeatureGroup | null = null;
   // Keep 'any' here to avoid type friction across different @types/leaflet-draw versions
   private drawControl: any | null = null;
@@ -145,6 +194,7 @@ export class MapController {
   private vertexMenuCleanup: (() => void) | null = null;
   private vertexEditSurfaceCleanup: (() => void) | null = null;
   private activeCakeSession: LayerCakeManager | null = null;
+  private cakeSessionCommand: ToolCommandContext | null = null;
 
   // Move tool UI elements
   private moveConfirmationUI: HTMLDivElement | null = null;
@@ -153,6 +203,26 @@ export class MapController {
   private markerIcon: BundledL.Icon | null = null;
   private toolButtonConfig: ToolButtonConfig | null = null;
   private toolbarGroups: ToolToolbarGroupConfig[] | null = null;
+  private activeToolCommand: ToolCommandContext | null = null;
+  private pendingToolCommand: ToolCommandContext | null = null;
+  private observedNativeToolbarCommand: ToolCommandContext | null = null;
+  private commandSequence = 0;
+  private toolErrors: Partial<Record<ToolButtonName, string>> = {};
+  private toolSelection: string[] = [];
+  private toolProvider: ToolProviderCapability = {
+    requested: "tile-url", active: "tile-url", state: "enabled", reason: null,
+  };
+  private capabilityNotificationPending = false;
+  private lastCapabilities = "";
+  private toolEscapeKeyHandler: ((event: KeyboardEvent) => void) | null = null;
+  private measurementPreviousFocus: HTMLElement | null = null;
+  private snappingOptions: SnappingOptions | null = null;
+  private measurementOverlayOptions: MeasurementOverlayOptions | null = null;
+  private interactionCleanup: (() => void) | null = null;
+  private measurementOverlayElement: HTMLDivElement | null = null;
+  private snapFeedbackMarker: BundledL.CircleMarker | null = null;
+  private lastMeasurementFeature: Feature | null = null;
+  private lastMeasurementLatLng: BundledL.LatLng | null = null;
 
   private emitToolEvent(
     eventName: IntegratedToolEventName,
@@ -193,12 +263,15 @@ export class MapController {
     );
     this.L = this.resolveLeaflet(opts);
     this.store = new FeatureStore(this.logger.child("store"));
+    this.layerRegistry.add([], { id: "base", name: "Basemap" }, "base");
     this.setMarkerIconConfig(opts.markerIconConfig ?? null, {
       reapplyExistingLayers: false,
       syncDrawControl: false,
     });
     this.toolButtonConfig = opts.toolButtonConfig ?? null;
     this.toolbarGroups = opts.toolbarGroups ?? null;
+    this.snappingOptions = opts.snapping ? { ...opts.snapping, enabled: opts.snapping.enabled ?? true } : null;
+    this.measurementOverlayOptions = opts.measurementOverlay ? { ...opts.measurementOverlay, enabled: opts.measurementOverlay.enabled ?? true } : null;
     this.logger.debug("ctor", {
       config: opts.map,
       controls: opts.controls,
@@ -209,6 +282,205 @@ export class MapController {
     ensureDrawCakeRegistered(this.L);
     ensureDrawMoveRegistered(this.L);
     registerLayerCakeTool(this.L);
+  }
+
+  private nextCommandId(): string {
+    this.commandSequence += 1;
+    return `tool-${Date.now().toString(36)}-${this.commandSequence.toString(36)}`;
+  }
+
+  getToolCapabilities(): ToolCapabilities {
+    const available: Partial<Record<ToolButtonName, boolean>> = {};
+    for (const tool of Object.keys(TOOL_REGISTRY) as ToolButtonName[]) {
+      available[tool] = tool === "ruler"
+        ? this.canTriggerRulerTool()
+        : typeof this.findLeafletDrawHandler(tool)?.enable === "function";
+    }
+    return buildToolCapabilities({
+      ready: Boolean(this.map && this.drawnItems),
+      readOnly: Boolean(this.options.readOnly),
+      controls: this.options.controls,
+      available,
+      layerCount: this.drawnItems?.getLayers?.().length ?? 0,
+      selectedFeatureIds: this.toolSelection.filter((id) => this.store.has(id)),
+      activeTool: this.activeToolCommand?.tool ?? null,
+      config: this.toolButtonConfig,
+      groups: this.toolbarGroups,
+      errors: this.toolErrors,
+      provider: this.toolProvider,
+    });
+  }
+
+  setToolSelection(ids: readonly string[]): void {
+    this.toolSelection = [...new Set(ids)].filter((id) => this.store.has(id));
+    this.notifyToolCapabilities();
+  }
+
+  setToolProvider(provider: ToolProviderCapability): void {
+    this.toolProvider = { ...provider, reason: provider.reason ? { ...provider.reason } : null };
+    this.notifyToolCapabilities();
+  }
+
+  /** Update structural options before rebuilding, retaining the existing feature store. */
+  configure(map: MapConfig, controls: DrawControlsConfig): void {
+    this.options.map = map;
+    this.options.controls = controls;
+    this.options.readOnly = map.readOnly;
+    this.toolErrors = {};
+    this.notifyToolCapabilities();
+  }
+
+  private notifyToolCapabilities(): void {
+    if (this.capabilityNotificationPending) return;
+    this.capabilityNotificationPending = true;
+    queueMicrotask(() => {
+      this.capabilityNotificationPending = false;
+      this.toolSelection = this.toolSelection.filter((id) => this.store.has(id));
+      const snapshot = this.getToolCapabilities();
+      reflectToolCapabilities(this.container, snapshot);
+      const serialized = JSON.stringify(snapshot);
+      if (serialized === this.lastCapabilities) return;
+      this.lastCapabilities = serialized;
+      this.options.callbacks?.onToolCapabilitiesChanged?.(snapshot);
+    });
+  }
+
+  private toolEventDetail(
+    command: ToolCommandContext,
+    overrides: Partial<ToolEventDetail> = {},
+  ): ToolEventDetail {
+    return {
+      tool: command.tool,
+      action: command.action,
+      source: command.source,
+      groupId: command.groupId,
+      commandId: command.commandId,
+      previousTool: command.previousTool,
+      activeTool: this.activeToolCommand?.tool ?? null,
+      featureIds: [],
+      timestamp: Date.now(),
+      ...overrides,
+    };
+  }
+
+  private emitToolLifecycle(
+    eventName: ToolLifecycleEventName,
+    command: ToolCommandContext,
+    overrides: Partial<ToolEventDetail> = {},
+  ): ToolEventDetail {
+    const detail = this.toolEventDetail(command, overrides);
+    const outcome = eventName.replace("leaflet-geokit:tool-", "");
+    if (["started", "completed", "cancelled", "failed"].includes(outcome)) {
+      announceToolStatus(this.container, detail.reason ?? `${command.tool}: ${outcome}`, outcome === "failed");
+    }
+    this.options.callbacks?.onToolEvent?.(eventName, detail);
+    this.emitToolEvent(eventName, detail);
+    this.notifyToolCapabilities();
+    return detail;
+  }
+
+  private beginToolCommand(
+    tool: ToolButtonName,
+    action: ToolCommandAction,
+    options: ToolTriggerOptions,
+    emitCommand: boolean,
+    requestDetail?: ToolCommandEventDetail,
+  ): ToolCommandContext {
+    const command: ToolCommandContext = {
+      tool,
+      action,
+      source: options.source ?? "api",
+      groupId: options.groupId,
+      commandId: options.commandId?.trim() || this.nextCommandId(),
+      previousTool: this.activeToolCommand?.tool ?? null,
+    };
+    const detail = this.toolEventDetail(command);
+    if (requestDetail) {
+      Object.assign(requestDetail, detail);
+    }
+    if (emitCommand) {
+      this.emitToolLifecycle("leaflet-geokit:tool-command", command);
+    }
+    this.emitToolLifecycle("leaflet-geokit:tool-commanded", command);
+    return command;
+  }
+
+  private startPersistentTool(command: ToolCommandContext): void {
+    if (this.activeToolCommand === command) return;
+    if (this.activeToolCommand) {
+      this.cancelActiveTool(
+        `Superseded by command "${command.commandId}"`,
+        false,
+      );
+      command.replacedActive = true;
+    }
+    this.activeToolCommand = command;
+    this.emitToolLifecycle("leaflet-geokit:tool-started", command, {
+      activeTool: command.tool,
+    });
+    if (command.previousTool !== command.tool) {
+      this.emitToolLifecycle("leaflet-geokit:tool-state-changed", command, {
+        previousTool: command.previousTool,
+        activeTool: command.tool,
+      });
+    }
+    setActiveToolbarTool(this.container, command.tool);
+  }
+
+  private clearActiveTool(command: ToolCommandContext): void {
+    if (this.activeToolCommand !== command) return;
+    this.activeToolCommand = null;
+    setActiveToolbarTool(this.container, null);
+    this.emitToolLifecycle("leaflet-geokit:tool-state-changed", command, {
+      previousTool: command.tool,
+      activeTool: null,
+    });
+  }
+
+  private cancelActiveTool(reason: string, emitState = true): void {
+    const command = this.activeToolCommand;
+    if (!command) return;
+    this.activeToolCommand = null;
+    this.emitToolLifecycle("leaflet-geokit:tool-cancelled", command, {
+      previousTool: command.tool,
+      activeTool: null,
+      reason,
+    });
+    setActiveToolbarTool(this.container, null);
+    if (emitState) {
+      this.emitToolLifecycle("leaflet-geokit:tool-state-changed", command, {
+        previousTool: command.tool,
+        activeTool: null,
+      });
+    }
+  }
+
+  private completeActiveTool(
+    overrides: Partial<ToolEventDetail>,
+    endsSession: boolean,
+  ): void {
+    const command = this.activeToolCommand;
+    if (!command) return;
+    this.emitToolLifecycle("leaflet-geokit:tool-completed", command, overrides);
+    if (endsSession) {
+      command.terminalOutcome = "completed";
+    }
+  }
+
+  private failToolCommand(command: ToolCommandContext, reason: string): void {
+    if (this.getToolCapabilities().tools[command.tool]?.state === "enabled") {
+      this.toolErrors[command.tool] = reason;
+    }
+    command.terminalOutcome = "failed";
+    this.emitToolLifecycle("leaflet-geokit:tool-failed", command, { reason });
+    if (this.activeToolCommand === command) {
+      this.clearActiveTool(command);
+    } else if (command.replacedActive && !this.activeToolCommand) {
+      this.emitToolLifecycle("leaflet-geokit:tool-state-changed", command, {
+        previousTool: command.previousTool,
+        activeTool: null,
+      });
+    }
   }
 
   setToolObservers(options: {
@@ -244,27 +516,126 @@ export class MapController {
     this.options.toolButtonConfig = config ?? null;
     this.toolButtonConfig = config ?? null;
     this.applyToolButtonCustomizations();
+    this.notifyToolCapabilities();
+  }
+
+  setSnappingOptions(options: SnappingOptions | null | undefined): void {
+    if (options?.modes?.includes("grid") && (!Number.isFinite(options.gridSizeMeters) || (options.gridSizeMeters ?? 0) <= 0)) {
+      throw new Error("Grid snapping requires gridSizeMeters greater than zero.");
+    }
+    if (options?.tolerancePx !== undefined && (!Number.isFinite(options.tolerancePx) || options.tolerancePx <= 0)) {
+      throw new Error("Snapping tolerancePx must be a finite number greater than zero.");
+    }
+    this.snappingOptions = options ? { ...options, enabled: options.enabled ?? true } : null;
+    this.options.snapping = this.snappingOptions;
+    this.installInteractionIntegrations();
+  }
+
+  getSnappingOptions(): SnappingOptions | null {
+    return this.snappingOptions ? { ...this.snappingOptions, modes: this.snappingOptions.modes ? [...this.snappingOptions.modes] : undefined, gridOrigin: this.snappingOptions.gridOrigin ? [...this.snappingOptions.gridOrigin] as [number, number] : undefined } : null;
+  }
+
+  setMeasurementOverlayOptions(options: MeasurementOverlayOptions | null | undefined): void {
+    if (options?.maximumFractionDigits !== undefined && (!Number.isInteger(options.maximumFractionDigits) || options.maximumFractionDigits < 0 || options.maximumFractionDigits > 20)) {
+      throw new Error("Measurement maximumFractionDigits must be an integer from 0 through 20.");
+    }
+    this.measurementOverlayOptions = options ? { ...options, enabled: options.enabled ?? true } : null;
+    this.options.measurementOverlay = this.measurementOverlayOptions;
+    this.installInteractionIntegrations();
+  }
+
+  getMeasurementOverlayOptions(): MeasurementOverlayOptions | null {
+    return this.measurementOverlayOptions ? { ...this.measurementOverlayOptions } : null;
   }
 
   setToolbarGroups(groups: ToolToolbarGroupConfig[] | null | undefined): void {
     this.options.toolbarGroups = groups ?? null;
     this.toolbarGroups = groups ?? null;
     this.applyToolButtonCustomizations();
+    this.notifyToolCapabilities();
   }
 
   activateTool(
     tool: ToolButtonName,
     options: ToolTriggerOptions = {},
   ): boolean {
-    const source = options.source ?? "api";
+    const action: ToolCommandAction =
+      tool === "select" ? "deactivate" : "activate";
+    return this.executeToolCommand(tool, action, options, true);
+  }
+
+  triggerTool(tool: ToolButtonName, options: ToolTriggerOptions = {}): boolean {
+    return this.activateTool(tool, options);
+  }
+
+  deactivateTool(options: ToolTriggerOptions = {}): boolean {
+    return this.executeToolCommand("select", "deactivate", options, true);
+  }
+
+  handleToolCommand(detail: ToolCommandEventDetail): boolean {
+    const action: ToolCommandAction =
+      detail.action === "deactivate" || detail.tool === "select"
+        ? "deactivate"
+        : "activate";
+    const tool = action === "deactivate" ? "select" : detail.tool;
+    return this.executeToolCommand(tool, action, detail, false, detail);
+  }
+
+  private executeToolCommand(
+    tool: ToolButtonName,
+    action: ToolCommandAction,
+    options: ToolTriggerOptions,
+    emitCommand: boolean,
+    requestDetail?: ToolCommandEventDetail,
+  ): boolean {
+    const command = this.beginToolCommand(
+      tool,
+      action,
+      options,
+      emitCommand,
+      requestDetail,
+    );
+
+    delete this.toolErrors[tool];
+    const requirements = this.toolButtonConfig?.[tool]?.requirements;
+    const capability = this.getToolCapabilities().tools[tool];
+    if (action !== "deactivate" && (
+      capability?.reason?.code === "missing_attribute" ||
+      capability?.reason?.code === "no_editable_layers" ||
+      (this.options.readOnly && TOOL_REGISTRY[tool]?.mutates) ||
+      (requirements?.selection && this.getToolCapabilities().selectedFeatureIds.length === 0) ||
+      (requirements?.provider && this.toolProvider.state !== "enabled")
+    )) {
+      const reason = `Tool "${tool}" is not available: ${capability?.reason?.message ?? "Tool requirements are not met"}`;
+      this.failToolCommand(command, reason);
+      this.emitToolTrigger({ tool, source: command.source, groupId: command.groupId, commandId: command.commandId, handled: false, error: reason });
+      return false;
+    }
 
     try {
-      if (tool === "select") {
-        return this.deactivateTool({ source, groupId: options.groupId });
+      if (action === "deactivate" || tool === "select") {
+        const previous = this.activeToolCommand?.tool;
+        this.cancelActiveTool("Deactivated by select command");
+        this.disablePhysicalTool(previous);
+        this.toggleMeasurementModal(false);
+        this.emitToolLifecycle("leaflet-geokit:tool-completed", command, {
+          activeTool: null,
+        });
+        this.emitToolTrigger({
+          tool: "select",
+          source: command.source,
+          groupId: command.groupId,
+          commandId: command.commandId,
+          handled: true,
+        });
+        return true;
       }
 
       if (tool === "save") {
         const geoJSON = this.store.toFeatureCollection();
+        const featureIds = geoJSON.features
+          .map((feature) => normalizeId(feature))
+          .filter((id): id is string => Boolean(id));
         this.options.callbacks?.onSaved?.({
           geoJSON,
           featureCount: geoJSON.features.length,
@@ -273,110 +644,180 @@ export class MapController {
           geoJSON,
           featureCount: geoJSON.features.length,
         });
+        this.emitToolLifecycle("leaflet-geokit:tool-completed", command, {
+          featureIds,
+          geometry: geoJSON,
+        });
         this.emitToolTrigger({
           tool,
-          source,
-          groupId: options.groupId,
+          source: command.source,
+          groupId: command.groupId,
+          commandId: command.commandId,
           handled: true,
         });
         return true;
       }
 
-      if (tool === "layerStyle") {
+      if (tool === "layerStyle" || tool === "measurementSettings") {
+        if (tool === "measurementSettings") {
+          this.toggleMeasurementModal(true);
+        } else {
+          this.closeLayerStylePanel?.();
+          const detail = { layers: this.getLayers() };
+          if (!this.options.callbacks?.onLayerStyleRequested?.(detail)) {
+            this.closeLayerStylePanel = openLayerStylePanel(this.container, detail.layers, (id, style) => {
+              this.setLayerStyle(id, style);
+            });
+          }
+        }
+        this.emitToolLifecycle("leaflet-geokit:tool-completed", command);
         this.emitToolTrigger({
           tool,
-          source,
-          groupId: options.groupId,
-          handled: true,
-        });
-        return true;
-      }
-
-      if (tool === "measurementSettings") {
-        this.toggleMeasurementModal(true);
-        this.emitToolTrigger({
-          tool,
-          source,
-          groupId: options.groupId,
+          source: command.source,
+          groupId: command.groupId,
+          commandId: command.commandId,
           handled: true,
         });
         return true;
       }
 
       if (tool === "ruler") {
+        if (!this.canTriggerRulerTool()) {
+          const reason = "Ruler control is not available";
+          this.failToolCommand(command, reason);
+          this.emitToolTrigger({
+            tool,
+            source: command.source,
+            groupId: command.groupId,
+            commandId: command.commandId,
+            handled: false,
+            error: reason,
+          });
+          return false;
+        }
+        this.preparePersistentTool(command);
         const handled = this.triggerRulerTool();
+        if (!handled) {
+          const reason = "Ruler control is not available";
+          this.failToolCommand(command, reason);
+          this.emitToolTrigger({
+            tool,
+            source: command.source,
+            groupId: command.groupId,
+            commandId: command.commandId,
+            handled: false,
+            error: reason,
+          });
+          return false;
+        }
+        this.startPersistentTool(command);
         this.emitToolTrigger({
           tool,
-          source,
-          groupId: options.groupId,
-          handled,
-          error: handled ? undefined : "Ruler control is not available",
+          source: command.source,
+          groupId: command.groupId,
+          commandId: command.commandId,
+          handled: true,
         });
-        return handled;
+        return true;
       }
 
       const handler = this.findLeafletDrawHandler(tool);
       if (!handler || typeof handler.enable !== "function") {
+        const reason = `Tool "${tool}" is not available on this map`;
+        this.failToolCommand(command, reason);
         this.emitToolTrigger({
           tool,
-          source,
-          groupId: options.groupId,
+          source: command.source,
+          groupId: command.groupId,
+          commandId: command.commandId,
           handled: false,
-          error: `Tool "${tool}" is not available on this map`,
+          error: reason,
         });
         return false;
       }
 
+      this.preparePersistentTool(command);
+      this.pendingToolCommand = command;
       handler.enable();
+      this.pendingToolCommand = null;
+      if (
+        typeof handler.enabled === "function" &&
+        handler.enabled() === false
+      ) {
+        const reason = `Tool "${tool}" could not be started`;
+        this.failToolCommand(command, reason);
+        this.emitToolTrigger({
+          tool,
+          source: command.source,
+          groupId: command.groupId,
+          commandId: command.commandId,
+          handled: false,
+          error: reason,
+        });
+        return false;
+      }
+      this.startPersistentTool(command);
       this.emitToolTrigger({
         tool,
-        source,
-        groupId: options.groupId,
+        source: command.source,
+        groupId: command.groupId,
+        commandId: command.commandId,
         handled: true,
       });
       return true;
     } catch (cause) {
-      const message = `Failed to activate tool "${tool}"`;
+      this.pendingToolCommand = null;
+      const message =
+        action === "deactivate"
+          ? "Failed to deactivate active map tools"
+          : "Failed to activate tool " + tool;
+      const reason = cause instanceof Error ? cause.message : message;
+      this.toolErrors[tool] = reason;
       this._error(message, cause);
+      this.failToolCommand(command, reason);
       this.emitToolTrigger({
         tool,
-        source,
-        groupId: options.groupId,
+        source: command.source,
+        groupId: command.groupId,
+        commandId: command.commandId,
         handled: false,
-        error: cause instanceof Error ? cause.message : message,
+        error: reason,
       });
       return false;
     }
   }
 
-  triggerTool(tool: ToolButtonName, options: ToolTriggerOptions = {}): boolean {
-    return this.activateTool(tool, options);
+  private preparePersistentTool(command: ToolCommandContext): void {
+    const previous = this.activeToolCommand?.tool;
+    if (this.activeToolCommand) {
+      this.cancelActiveTool(
+        `Superseded by command "${command.commandId}"`,
+        false,
+      );
+      command.replacedActive = true;
+    }
+    this.disablePhysicalTool(previous);
   }
 
-  deactivateTool(options: ToolTriggerOptions = {}): boolean {
-    const source = options.source ?? "api";
-
-    try {
+  private disablePhysicalTool(tool?: ToolButtonName): void {
+    if (tool === "layerCake" || this.activeCakeSession) {
+      try {
+        if (this.activeCakeSession) this.emitCakeEvent("tool:layer-cake:cancelled");
+        this.activeCakeSession?.destroy();
+      } finally {
+        this.activeCakeSession = null;
+        this.cakeSessionCommand = null;
+      }
+    }
+    if (tool === "move" && this.activeMoveHandler?.hasPendingMove?.()) {
+      this.activeMoveHandler.cancelMove?.();
+      this.hideMoveConfirmationUI();
+    }
+    if (tool === "ruler") {
+      this.triggerRulerTool();
+    }
+    if (tool) {
       this.disableActiveToolHandlers();
-      this.toggleMeasurementModal(false);
-      this.emitToolTrigger({
-        tool: "select",
-        source,
-        groupId: options.groupId,
-        handled: true,
-      });
-      return true;
-    } catch (cause) {
-      const message = "Failed to deactivate active map tools";
-      this._error(message, cause);
-      this.emitToolTrigger({
-        tool: "select",
-        source,
-        groupId: options.groupId,
-        handled: false,
-        error: cause instanceof Error ? cause.message : message,
-      });
-      return false;
     }
   }
 
@@ -455,6 +896,7 @@ export class MapController {
 
       // FeatureGroup for all drawn layers
       this.drawnItems = Lns.featureGroup().addTo(this.map);
+      this.drawnItems.on("layeradd layerremove", () => this.notifyToolCapabilities());
 
       // Draw control
       const drawOptions = this.buildDrawOptions(
@@ -504,6 +946,7 @@ export class MapController {
 
       // Bind draw events
       this.bindDrawEvents();
+      this.installInteractionIntegrations();
 
       const elapsed = (performance.now?.() ?? Date.now()) - t0;
       this.logger.debug("init:ready", { elapsedMs: Math.round(elapsed) });
@@ -511,6 +954,8 @@ export class MapController {
       // Announce ready with current bounds (if any)
       const b = this.store.bounds();
       this.options.callbacks?.onReady?.(b ? { bounds: b } : {});
+      this.toolErrors = {};
+      this.notifyToolCapabilities();
     } catch (err) {
       this._error("Failed to initialize Leaflet map", err, {
         code: "map_init_failed",
@@ -520,9 +965,20 @@ export class MapController {
   }
 
   async destroy(): Promise<void> {
+    this.cancelLayerCakeSession();
+    this.closeLayerStylePanel?.();
+    this.closeLayerStylePanel = null;
+    this.featureLayers.clear();
+    this.providerDiagnostics = null;
+    this.interactionCleanup?.();
+    this.interactionCleanup = null;
+    this.adapterAttribution = null;
     try {
       applyToolButtonConfig(this.container, null, { toolbarGroups: null });
       if (this.map) {
+        // Release captured move gestures and roll back before off() removes
+        // the unload hook. The confirmation UI may not exist mid-gesture.
+        this.findLeafletDrawHandler("move")?.disable?.();
         this.map.off();
         this.map.remove();
       }
@@ -560,11 +1016,22 @@ export class MapController {
       // Ignore errors when cleaning up move confirmation UI during destruction
     }
 
+    if (this.toolEscapeKeyHandler) {
+      this.container.removeEventListener("keydown", this.toolEscapeKeyHandler);
+      this.container.removeEventListener("keyup", this.toolEscapeKeyHandler);
+      this.toolEscapeKeyHandler = null;
+    }
+    this.activeToolCommand = null;
+    this.pendingToolCommand = null;
+    this.observedNativeToolbarCommand = null;
+    setActiveToolbarTool(this.container, null);
+
     this.drawControl = null;
     this.rulerControl = null;
     this.measurementControl = null;
     this.removeMeasurementModal();
     this.drawnItems = null;
+    this.notifyToolCapabilities();
     this.tileLayer = null;
 
     try {
@@ -579,6 +1046,83 @@ export class MapController {
 
   // ---------------- Public API (data) ----------------
 
+  getLayers(): MapLayer[] { return this.layerRegistry.getLayers(); }
+
+  private applyLayerRegistry(): void {
+    if (!this.map || !this.drawnItems) return;
+    for (const record of this.getLayers()) {
+      if (record.kind === "base") {
+        if (this.tileLayer) {
+          if (record.visible) this.tileLayer.addTo(this.map);
+          else this.map.removeLayer(this.tileLayer);
+          (this.tileLayer as BundledL.TileLayer).setOpacity?.(record.style.opacity ?? 1);
+        }
+        continue;
+      }
+      for (const id of record.featureIds) {
+        const layer = this.featureLayers.get(id) as (BundledL.Layer & { setStyle?: (style: LayerStyle) => void; setOpacity?: (n: number) => void; bringToFront?: () => void; setZIndexOffset?: (n: number) => void }) | undefined;
+        if (!layer) continue;
+        if (record.visible) this.drawnItems.addLayer(layer);
+        else this.drawnItems.removeLayer(layer);
+        layer.setStyle?.(record.style);
+        layer.setOpacity?.(record.style.opacity ?? 1);
+        if (record.visible) layer.bringToFront?.();
+        layer.setZIndexOffset?.(record.order * 100);
+      }
+    }
+    this.options.callbacks?.onLayerEvent?.("leaflet-geokit:layers-changed", { layers: this.getLayers() });
+    this.notifyToolCapabilities();
+  }
+
+  setLayerVisibility(id: string, visible: boolean): void {
+    this.layerRegistry.setLayerVisibility(id, visible);
+    this.applyLayerRegistry();
+  }
+  setLayerStyle(id: string, style: LayerStyle): void {
+    this.layerRegistry.setLayerStyle(id, style);
+    this.applyLayerRegistry();
+  }
+  reorderLayers(ids: readonly string[]): void {
+    this.layerRegistry.reorderLayers(ids);
+    this.applyLayerRegistry();
+  }
+  async focusLayer(id: string): Promise<void> {
+    const record = this.layerRegistry.get(id);
+    const group = this.L.featureGroup(record.featureIds.map((fid) => this.featureLayers.get(fid)).filter((layer): layer is BundledL.Layer => Boolean(layer)));
+    const bounds = group.getBounds();
+    if (bounds.isValid()) this.map?.fitBounds(bounds, { maxZoom: 18 });
+  }
+  async removeLayer(id: string): Promise<void> {
+    if (this.options.readOnly) throw new Error("Map is read-only");
+    const record = this.layerRegistry.get(id);
+    if (record.kind === "base") throw new Error("Hide the basemap with setLayerVisibility instead");
+    for (const fid of record.featureIds) await this.removeFeature(fid);
+    if (this.getLayers().some((layer) => layer.id === id)) this.layerRegistry.removeLayer(id);
+    this.applyLayerRegistry();
+  }
+  getLayerCakeSession() { return this.activeCakeSession?.snapshot() ?? null; }
+  updateLayerCakeSession(update: LayerCakeSessionUpdate): void {
+    if (this.options.readOnly) throw new Error("Map is read-only");
+    if (!this.activeCakeSession) throw new Error("No active layer cake session");
+    this.activeCakeSession.update(update);
+  }
+  saveLayerCakeSession(): void {
+    if (this.options.readOnly) throw new Error("Map is read-only");
+    if (!this.activeCakeSession) throw new Error("No active layer cake session");
+    this.activeCakeSession.save();
+  }
+  cancelLayerCakeSession(): void {
+    if (!this.activeCakeSession) return;
+    this.disablePhysicalTool("layerCake");
+    this.cancelActiveTool("Layer cake cancelled by host");
+  }
+  private emitCakeEvent(name: IntegratedToolEventName, extra: Record<string, unknown> = {}): void {
+    const command = this.cakeSessionCommand ?? this.activeToolCommand;
+    const detail = { session: this.getLayerCakeSession(), source: command?.source, commandId: command?.commandId, groupId: command?.groupId, ...extra };
+    this.emitToolEvent(name, detail);
+    this.options.callbacks?.onLayerEvent?.(name, detail);
+  }
+
   async getGeoJSON(): Promise<FeatureCollection> {
     return this.store.toFeatureCollection();
   }
@@ -586,7 +1130,8 @@ export class MapController {
   async exportGeoJSON(
     options: GeoJSONExportOptions = {},
   ): Promise<FeatureCollection> {
-    return adaptFeatureCollectionForExport(await this.getGeoJSON(), options);
+    const fc = adaptFeatureCollectionForExport(await this.getGeoJSON(), options);
+    return options.preserveLayers ? { ...fc, "geokit:layers": this.layerRegistry.snapshot() } as FeatureCollection : fc;
   }
 
   async importGeoJSON(
@@ -596,14 +1141,45 @@ export class MapController {
     if (!this.map || !this.drawnItems) return [];
 
     const behavior = options.behavior ?? "replace";
+    const normalized = options.validate
+      ? normalizeGeoJSON(fc, { expandMulti: true })
+      : expandMultiGeometries(fc);
+    if (options.preserveLayers && behavior !== "replace") throw new Error("preserveLayers requires replace import");
+    const snapshot = options.preserveLayers
+      ? LayerRegistry.parseSnapshot((fc as FeatureCollection & { "geokit:layers"?: unknown })["geokit:layers"], normalized.features.map((feature) => normalizeId(feature) ?? ""))
+      : null;
+    if (!snapshot) {
+      const validation = new LayerRegistry();
+      validation.add([], options.layer);
+      if (options.layer?.id === "base" || (behavior === "add" && this.getLayers().some((layer) => layer.id === options.layer?.id))) throw new Error("Duplicate layer id");
+    }
+    if (options.validate && behavior === "add") {
+      normalizeGeoJSON({
+        type: "FeatureCollection",
+        features: [
+          ...this.store.toFeatureCollection().features,
+          ...normalized.features,
+        ],
+      });
+    }
     if (behavior === "replace") {
       await this.clearLayers();
+    } else {
+      // Preserve legacy upsert behavior without duplicate rendered features or membership.
+      for (const feature of normalized.features) {
+        const id = normalizeId(feature);
+        if (id && this.store.has(id)) await this.removeFeature(id);
+      }
     }
 
-    const normalized = expandMultiGeometries(fc);
     const ids = this.store.add(normalized);
     const layers = this.createGeoJSONLayers(normalized);
     this.addGeoJSONLayersToDrawnItems(layers);
+    layers.eachLayer((layer: any) => { if (layer._fid) this.featureLayers.set(layer._fid, layer); });
+    if (snapshot) this.layerRegistry.restore(snapshot);
+    else if (ids.length) this.layerRegistry.add(ids, options.layer);
+    this.applyLayerRegistry();
+    this.notifyToolCapabilities();
 
     this.logger.debug("importGeoJSON", {
       behavior,
@@ -629,10 +1205,16 @@ export class MapController {
   }
 
   async clearLayers(): Promise<void> {
+    this.cancelLayerCakeSession();
     if (this.drawnItems) {
       this.drawnItems.clearLayers();
     }
     this.store.clear();
+    this.featureLayers.clear();
+    this.layerRegistry.clearData();
+    this.applyLayerRegistry();
+    this.toolSelection = [];
+    this.notifyToolCapabilities();
   }
 
   async addFeatures(fc: FeatureCollection): Promise<string[]> {
@@ -665,6 +1247,8 @@ export class MapController {
       this.drawnItems!.addLayer(layer);
       this.installVertexContextMenu(layer);
     });
+    layers.eachLayer((layer: any) => this.featureLayers.set(id, layer));
+    this.applyLayerRegistry();
   }
 
   async removeFeature(id: string): Promise<void> {
@@ -677,6 +1261,11 @@ export class MapController {
       });
     }
     this.store.remove(id);
+    this.toolSelection = this.toolSelection.filter((selected) => selected !== id);
+    this.featureLayers.delete(id);
+    this.layerRegistry.removeFeature(id);
+    this.applyLayerRegistry();
+    this.notifyToolCapabilities();
   }
 
   // ---------------- Public API (map) ----------------
@@ -729,20 +1318,53 @@ export class MapController {
     this.map.setView([lat, lng], zoom ?? this.map.getZoom());
   }
 
+  getProviderDiagnostics(): ProviderDiagnostics | null {
+    return this.providerDiagnostics ? { ...this.providerDiagnostics } : null;
+  }
+
+  /** Basemap-only swap: preserve the map, drawing engine and feature store. */
+  setBasemapAdapter(adapter: BasemapAdapter): void {
+    if (!this.map) throw new Error("Map is not ready");
+    if (adapter.provider.capabilities.attributionRequired && !adapter.attribution.trim()) {
+      throw new Error("Basemap attribution is required");
+    }
+    if (adapter.provider.kind === "raster") {
+      this.setTileLayer({ ...adapter.provider.resolve(), attribution: adapter.attribution });
+    } else {
+      const next = adapter.provider.createLayer(this.L);
+      if (next === this.tileLayer || this.map.hasLayer(next)) {
+        throw new Error("Basemap adapter must return a fresh layer");
+      }
+      try {
+        next.addTo(this.map);
+      } catch {
+        if (this.map.hasLayer(next)) this.map.removeLayer(next);
+        throw new Error("Basemap adapter failed to mount");
+      }
+      if (this.tileLayer) this.map.removeLayer(this.tileLayer);
+      if (this.adapterAttribution) this.map.attributionControl?.removeAttribution(this.adapterAttribution);
+      this.tileLayer = next;
+      this.adapterAttribution = adapter.attribution;
+      this.map.attributionControl?.addAttribution(adapter.attribution);
+    }
+    this.providerDiagnostics = getProviderDiagnostics(adapter.provider, adapter.attribution);
+    this.applyLayerRegistry();
+  }
+
   setTileLayer(config: TileURLTemplate, callbacks?: TileLayerCallbacks): void {
     if (!this.map) {
-      this.logger.warn("setTileLayer called before map initialization", {
-        urlTemplate: config.urlTemplate,
-      });
+      this.logger.warn("setTileLayer called before map initialization");
       return;
     }
 
     this.logger.debug("tile-layer:switch", {
-      urlTemplate: config.urlTemplate,
-      attribution: config.attribution,
       maxZoom: config.maxZoom,
       subdomains: config.subdomains,
     });
+
+    if (this.adapterAttribution) this.map.attributionControl?.removeAttribution(this.adapterAttribution);
+    this.adapterAttribution = null;
+    this.providerDiagnostics = getProviderDiagnostics(createCustomRasterProvider(config), config.attribution);
 
     if (this.tileLayer) {
       this.map.removeLayer(this.tileLayer);
@@ -768,7 +1390,8 @@ export class MapController {
 
     let tileErrorReported = false;
     nextTileLayer.on("tileerror", (error: unknown) => {
-      this.logger.error("tile-layer:error", { error });
+      if (this.tileLayer !== nextTileLayer) return;
+      this.logger.error("tile-layer:error");
       if (!tileErrorReported) {
         tileErrorReported = true;
         callbacks?.onTileError?.(error);
@@ -777,6 +1400,7 @@ export class MapController {
 
     nextTileLayer.addTo(this.map);
     this.tileLayer = nextTileLayer;
+    this.applyLayerRegistry();
   }
 
   /**
@@ -798,7 +1422,9 @@ export class MapController {
     // Filter for polygon features only
     const polygonFeatures = fc.features.filter((feature) => {
       const geom = feature.geometry;
-      return geom && (isPolygon(geom) || isMultiPolygon(geom));
+      const id = normalizeId(feature);
+      const hidden = this.getLayers().some((layer) => !layer.visible && id && layer.featureIds.includes(id));
+      return !hidden && geom && (isPolygon(geom) || isMultiPolygon(geom));
     });
 
     if (polygonFeatures.length <= 1) {
@@ -845,6 +1471,7 @@ export class MapController {
       current: system,
     });
     this.syncMeasurementModalState();
+    this.refreshMeasurementOverlay();
     this.rebuildRulerControl();
   }
   // ---------------- Internals ----------------
@@ -1036,46 +1663,145 @@ export class MapController {
   }
 
   private applyToolButtonCustomizations(): void {
-    applyToolButtonConfig(this.container, this.toolButtonConfig, {
-      toolbarGroups: this.toolbarGroups,
-      onTrigger: (tool, context) => {
-        if (context.activate) {
-          this.activateTool(tool, {
-            source: context.source,
-            groupId: context.groupId,
-          });
-          return;
-        }
-
-        this.emitToolTrigger({
-          tool,
-          source: context.source,
-          groupId: context.groupId,
-          handled: true,
-        });
-      },
-    });
-    setTimeout(() => {
+    const apply = () => {
       applyToolButtonConfig(this.container, this.toolButtonConfig, {
         toolbarGroups: this.toolbarGroups,
-        onTrigger: (tool, context) => {
-          if (context.activate) {
-            this.activateTool(tool, {
-              source: context.source,
-              groupId: context.groupId,
-            });
-            return;
-          }
-
-          this.emitToolTrigger({
-            tool,
-            source: context.source,
-            groupId: context.groupId,
-            handled: true,
-          });
-        },
+        onTrigger: (tool, context) => this.handleToolbarTrigger(tool, context),
       });
-    }, 0);
+      reflectToolCapabilities(this.container, this.getToolCapabilities());
+    };
+    apply();
+    setTimeout(apply, 0);
+  }
+
+  private handleToolbarTrigger(
+    tool: ToolButtonName,
+    context: ToolButtonTriggerContext,
+  ): void {
+    if (context.activate) {
+      this.activateTool(tool, {
+        source: context.source,
+        groupId: context.groupId,
+      });
+      return;
+    }
+
+    let command =
+      this.observedNativeToolbarCommand?.tool === tool
+        ? this.observedNativeToolbarCommand
+        : null;
+    if (command) {
+      this.observedNativeToolbarCommand = null;
+    }
+
+    if (tool === "measurementSettings") {
+      command = this.beginToolCommand(
+        tool,
+        "activate",
+        { source: context.source, groupId: context.groupId },
+        true,
+      );
+      this.emitToolLifecycle("leaflet-geokit:tool-completed", command);
+    } else if (tool === "ruler") {
+      const rulerActive = this.isRulerActive();
+      if (this.activeToolCommand?.tool === "ruler" && !rulerActive) {
+        command = this.beginToolCommand(
+          tool,
+          "activate",
+          { source: context.source, groupId: context.groupId },
+          true,
+        );
+        this.cancelActiveTool("Ruler toggled off");
+        this.emitToolLifecycle("leaflet-geokit:tool-completed", command, {
+          activeTool: null,
+        });
+      } else if (!command) {
+        command = this.observePersistentToolStart(tool, {
+          source: context.source,
+          groupId: context.groupId,
+        });
+      }
+    } else if (!command) {
+      command = this.observePersistentToolStart(tool, {
+        source: context.source,
+        groupId: context.groupId,
+      });
+    }
+
+    this.emitToolTrigger({
+      tool,
+      source: context.source,
+      groupId: context.groupId,
+      commandId: command?.commandId,
+      handled: true,
+    });
+  }
+
+  private observePersistentToolStart(
+    tool: ToolButtonName,
+    options: ToolTriggerOptions,
+  ): ToolCommandContext {
+    const pending = this.pendingToolCommand;
+    const nativeObservation = pending?.tool !== tool;
+    const command = nativeObservation
+      ? this.beginToolCommand(tool, "activate", options, true)
+      : pending;
+    if (this.activeToolCommand && this.activeToolCommand !== command) {
+      const previous = this.activeToolCommand.tool;
+      this.cancelActiveTool(
+        `Superseded by command "${command.commandId}"`,
+        false,
+      );
+      command.replacedActive = true;
+      this.cleanupSupersededNativeTool(previous);
+    }
+    this.startPersistentTool(command);
+    if (nativeObservation) {
+      this.observedNativeToolbarCommand = command;
+      queueMicrotask(() => {
+        if (this.observedNativeToolbarCommand === command) {
+          this.observedNativeToolbarCommand = null;
+        }
+      });
+    }
+    return command;
+  }
+
+  private cleanupSupersededNativeTool(tool: ToolButtonName): void {
+    if (tool === "layerCake" && this.activeCakeSession) {
+      try {
+        this.emitCakeEvent("tool:layer-cake:cancelled");
+        this.activeCakeSession.destroy();
+      } finally {
+        this.activeCakeSession = null;
+        this.cakeSessionCommand = null;
+      }
+    }
+    if (tool === "ruler" && this.isRulerActive()) {
+      this.triggerRulerTool();
+    }
+    if (tool === "move" && this.activeMoveHandler?.hasPendingMove?.()) {
+      this.activeMoveHandler.cancelMove?.();
+      this.hideMoveConfirmationUI();
+    }
+  }
+
+  private handlePersistentToolStop(tool: ToolButtonName, reason: string): void {
+    const command = this.activeToolCommand;
+    if (!command || command.tool !== tool) return;
+    if (tool === "layerCake" && this.activeCakeSession) return;
+    if (command.terminalOutcome) {
+      this.clearActiveTool(command);
+      return;
+    }
+    this.cancelActiveTool(reason);
+  }
+
+  private failActiveTool(reason: string): void {
+    const command = this.activeToolCommand;
+    if (command) {
+      this.failToolCommand(command, reason);
+    }
   }
 
   private emitToolTrigger(
@@ -1127,6 +1853,24 @@ export class MapController {
         }
       });
     });
+  }
+
+  private canTriggerRulerTool(): boolean {
+    const ruler = this.rulerControl as
+      (BundledL.Control.Ruler & { _toggleMeasure?: () => void }) | null;
+    return (
+      typeof ruler?._toggleMeasure === "function" ||
+      Boolean(this.container.querySelector<HTMLElement>(".leaflet-ruler"))
+    );
+  }
+
+  private isRulerActive(): boolean {
+    const ruler = this.rulerControl as
+      (BundledL.Control.Ruler & { _choice?: boolean }) | null;
+    return (
+      ruler?._choice === true ||
+      Boolean(this.container.querySelector(".leaflet-ruler-clicked"))
+    );
   }
 
   private triggerRulerTool(): boolean {
@@ -1358,6 +2102,7 @@ export class MapController {
     const dialog = document.createElement("div");
     dialog.className = "leaflet-ruler-modal";
     dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-label", "Measurement units");
     dialog.setAttribute("aria-modal", "true");
     dialog.tabIndex = -1;
 
@@ -1431,10 +2176,15 @@ export class MapController {
         this.measurementModalOverlay.setAttribute("aria-hidden", "true");
       }
       this.detachMeasurementModalKeydown();
+      if (this.measurementPreviousFocus?.isConnected) this.measurementPreviousFocus.focus();
+      this.measurementPreviousFocus = null;
       return;
     }
 
     const overlay = this.ensureMeasurementModal();
+    const root = this.container.getRootNode();
+    const focus = root instanceof ShadowRoot ? root.activeElement : document.activeElement;
+    if (!overlay.contains(focus)) this.measurementPreviousFocus = focus instanceof HTMLElement ? focus : null;
     overlay.classList.add("is-open");
     overlay.setAttribute("aria-hidden", "false");
     this.syncMeasurementModalState();
@@ -1470,8 +2220,22 @@ export class MapController {
       return;
     }
     this.measurementModalKeydownHandler = (e: KeyboardEvent) => {
+      const dialog = this.measurementModalDialog;
+      if (!dialog || !e.composedPath().includes(dialog)) return;
       if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
         this.toggleMeasurementModal(false);
+      } else if (e.key === "Tab") {
+        const controls = Array.from(dialog.querySelectorAll<HTMLElement>("input:checked, button:not(:disabled)"));
+        const current = e.composedPath()[0];
+        if (e.shiftKey && (current === controls[0] || current === dialog)) {
+          e.preventDefault();
+          controls.at(-1)?.focus();
+        } else if (!e.shiftKey && (current === controls.at(-1) || current === dialog)) {
+          e.preventDefault();
+          controls[0]?.focus();
+        }
       }
     };
     document.addEventListener("keydown", this.measurementModalKeydownHandler);
@@ -1660,8 +2424,435 @@ export class MapController {
     }
   }
 
+  private getSnapTargets(): SnapTarget[] {
+    const targets: SnapTarget[] = [];
+    for (const record of this.layerRegistry.getLayers()) {
+      if (record.kind === "base" || record.kind === "measurement") continue;
+      for (const featureId of record.featureIds) {
+        const layer = this.featureLayers.get(featureId) as any;
+        if (!layer || typeof layer.toGeoJSON !== "function") continue;
+        const feature = layer.toGeoJSON() as Feature;
+        targets.push({
+          featureId,
+          layerId: record.id,
+          layerKind: record.kind,
+          visible: record.visible,
+          feature,
+        });
+      }
+    }
+    return targets;
+  }
+
+  private findSnapResult(raw: any, excludedFeatureId?: string): SnapResult | null {
+    if (!this.map || !this.snappingOptions || this.snappingOptions.enabled === false || !raw) return null;
+    return findSnap(
+      { lat: Number(raw.lat), lng: Number(raw.lng) },
+      this.getSnapTargets(),
+      (latlng) => {
+        const point = this.map!.latLngToContainerPoint([latlng.lat, latlng.lng]);
+        return { x: point.x, y: point.y };
+      },
+      (point) => {
+        const latlng = this.map!.containerPointToLatLng([point.x, point.y]);
+        return { lat: latlng.lat, lng: latlng.lng };
+      },
+      this.snappingOptions,
+      excludedFeatureId,
+    );
+  }
+
+  private eventLatLng(event: any): any | null {
+    if (event?.latlng) return event.latlng;
+    const original = event?.originalEvent;
+    const touch = original?.touches?.[0] ?? original?.changedTouches?.[0];
+    if (touch && this.map) {
+      try {
+        return this.map.mouseEventToLatLng(touch);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  private showSnapFeedback(result: SnapResult | null): void {
+    if (!this.map || !this.snappingOptions || this.snappingOptions.enabled === false) return;
+    if (!result) {
+      if (this.snapFeedbackMarker) this.map.removeLayer(this.snapFeedbackMarker);
+      this.snapFeedbackMarker = null;
+      const old = this.container.querySelector(".geokit-snap-feedback-label");
+      old?.remove();
+      return;
+    }
+    if (!this.snapFeedbackMarker) {
+      this.snapFeedbackMarker = this.L.circleMarker([result.latlng.lat, result.latlng.lng], {
+        radius: 7,
+        color: "#f59e0b",
+        fillColor: "#fff7ed",
+        fillOpacity: 0.85,
+        weight: 3,
+        className: "geokit-snap-feedback",
+        interactive: false,
+      } as any).addTo(this.map);
+    } else {
+      this.snapFeedbackMarker.setLatLng([result.latlng.lat, result.latlng.lng]);
+    }
+    let label = this.container.querySelector<HTMLDivElement>(".geokit-snap-feedback-label");
+    if (!label) {
+      label = document.createElement("div");
+      label.className = "geokit-snap-feedback-label";
+      label.setAttribute("role", "status");
+      label.setAttribute("aria-live", "polite");
+      Object.assign(label.style, {
+        position: "absolute", zIndex: "1000", pointerEvents: "none",
+        padding: "3px 6px", borderRadius: "4px", background: "#fff7ed",
+        color: "#7c2d12", border: "1px solid #f59e0b", font: "12px system-ui",
+      });
+      this.container.appendChild(label);
+    }
+    label.textContent = `Snapped to ${result.mode}`;
+    const point = this.map.latLngToContainerPoint([result.latlng.lat, result.latlng.lng]);
+    label.style.left = `${point.x + 10}px`;
+    label.style.top = `${point.y + 10}px`;
+  }
+
+  private geometryFeatureForHandler(handler: any, cursor?: any): Feature | null {
+    const shape = handler?._poly ?? handler?._shape;
+    if (!shape) return null;
+    if (handler?._poly?.getLatLngs) {
+      const raw = handler._poly.getLatLngs();
+      const source = Array.isArray(raw?.[0]) ? raw[0] : raw;
+      const points = (Array.isArray(source) ? source : []).map((item: any) => [item.lng, item.lat]);
+      const current = cursor ?? handler._currentLatLng;
+      if (current && points.length && (points.at(-1)?.[0] !== current.lng || points.at(-1)?.[1] !== current.lat)) points.push([current.lng, current.lat]);
+      if (handler.type === "polygon" || shape instanceof (this.L as any).Polygon) {
+        if (points.length < 3) return null;
+        const closed = points[0][0] === points.at(-1)?.[0] && points[0][1] === points.at(-1)?.[1] ? points : [...points, points[0]];
+        return { type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [closed] } } as Feature;
+      }
+      if (points.length < 2) return null;
+      return { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: points } } as Feature;
+    }
+    if (handler?._shape?.getLatLng && handler?._shape?.getRadius) {
+      const center = handler._shape.getLatLng();
+      const radius = handler._shape.getRadius();
+      const latScale = 110574;
+      const lngScale = latScale * Math.max(0.1, Math.cos((center.lat * Math.PI) / 180));
+      const coordinates = Array.from({ length: 65 }, (_, index) => {
+        const angle = (index / 64) * Math.PI * 2;
+        return [center.lng + (Math.cos(angle) * radius) / lngScale, center.lat + (Math.sin(angle) * radius) / latScale];
+      });
+      return { type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [coordinates] } } as Feature;
+    }
+    return typeof shape.toGeoJSON === "function" ? shape.toGeoJSON() as Feature : null;
+  }
+
+  private renderMeasurement(feature: Feature | null, cursor?: any): void {
+    if (!this.measurementOverlayOptions?.enabled || !feature) return;
+    const measured = measureGeoJSON(feature);
+    if (!measured.ok) {
+      this.logger.warn("measurement-overlay:failed", measured.error);
+      return;
+    }
+    const formatted = formatMeasurements(measured.value, this.measurementSystem, {
+      maximumFractionDigits: this.measurementOverlayOptions.maximumFractionDigits ?? 2,
+      autoScale: this.measurementOverlayOptions.autoScale ?? true,
+    });
+    if (!formatted.ok) return;
+    const lines: string[] = [];
+    const options = this.measurementOverlayOptions;
+    if (options.showLength !== false && measured.value.lengthMeters > 0) lines.push(`Length: ${formatted.value.length.text}`);
+    if (options.showPerimeter !== false && measured.value.perimeterMeters > 0) lines.push(`Perimeter: ${formatted.value.perimeter.text}`);
+    if (options.showArea !== false && measured.value.areaSquareMeters > 0) lines.push(`Area: ${formatted.value.area.text}`);
+    if (!lines.length) return;
+    let overlay = this.measurementOverlayElement;
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.className = "geokit-measurement-overlay";
+      overlay.setAttribute("role", "status");
+      overlay.setAttribute("aria-live", "polite");
+      Object.assign(overlay.style, {
+        position: "absolute", zIndex: "999", pointerEvents: "none",
+        padding: "6px 8px", borderRadius: "5px", background: "rgba(255,255,255,.94)",
+        color: "#1f2937", border: "1px solid #94a3b8", boxShadow: "0 1px 3px rgba(0,0,0,.18)",
+        font: "12px/1.4 system-ui", whiteSpace: "pre-line",
+      });
+      this.container.appendChild(overlay);
+      this.measurementOverlayElement = overlay;
+    }
+    overlay.textContent = lines.join("\n");
+    const location = cursor ?? this.lastMeasurementLatLng ?? this.map?.getCenter();
+    if (location && this.map) {
+      const point = this.map.latLngToContainerPoint(location);
+      overlay.style.left = `${point.x + 12}px`;
+      overlay.style.top = `${point.y + 12}px`;
+    }
+    this.lastMeasurementFeature = feature;
+    this.lastMeasurementLatLng = cursor ? this.L.latLng(cursor) : this.lastMeasurementLatLng;
+  }
+
+  private refreshMeasurementOverlay(): void {
+    if (!this.measurementOverlayOptions?.enabled) return;
+    this.renderMeasurement(this.lastMeasurementFeature, this.lastMeasurementLatLng);
+  }
+
+  private hideLiveOverlays(): void {
+    this.measurementOverlayElement?.remove();
+    this.measurementOverlayElement = null;
+    this.lastMeasurementFeature = null;
+    this.lastMeasurementLatLng = null;
+    this.showSnapFeedback(null);
+  }
+
+  private installEditMarkerSnap(marker: any, vertexHandler: any, cleanups: Array<() => void>): void {
+    if (!marker?.on || marker._geokitSnapBound) return;
+    marker._geokitSnapBound = true;
+    const originalDrag = vertexHandler._onMarkerDrag;
+    const originalTouch = vertexHandler._onTouchMove;
+    if (originalDrag) marker.off?.("drag", originalDrag, vertexHandler);
+    const onDrag = (event: any) => {
+      const featureId = vertexHandler._poly?._fid;
+      const result = this.findSnapResult(marker.getLatLng?.(), featureId);
+      this.showSnapFeedback(result);
+      if (result) marker.setLatLng(result.latlng);
+      originalDrag?.call(vertexHandler, { ...event, target: marker });
+      this.renderMeasurement(vertexHandler._poly?.toGeoJSON?.() ?? null, marker.getLatLng?.());
+    };
+    marker.on("drag", onDrag, vertexHandler);
+    if (originalTouch) {
+      marker.off?.("touchmove", originalTouch, vertexHandler);
+      const onTouch = (event: any) => {
+        const raw = this.eventLatLng(event) ?? marker.getLatLng?.();
+        const result = this.findSnapResult(raw, vertexHandler._poly?._fid);
+        this.showSnapFeedback(result);
+        if (result) {
+          marker.setLatLng(result.latlng);
+          originalDrag?.call(vertexHandler, { ...event, target: marker });
+        } else {
+          if (raw) marker.setLatLng?.(raw);
+          if (originalTouch) {
+            originalTouch.call(vertexHandler, { ...event, target: marker });
+          } else {
+            originalDrag?.call(vertexHandler, { ...event, target: marker });
+          }
+        }
+        this.renderMeasurement(vertexHandler._poly?.toGeoJSON?.() ?? null, marker.getLatLng?.());
+      };
+      marker.on("touchmove", onTouch, vertexHandler);
+      cleanups.push(() => marker.off?.("touchmove", onTouch, vertexHandler));
+    }
+    cleanups.push(() => {
+      marker.off?.("drag", onDrag, vertexHandler);
+      marker._geokitSnapBound = false;
+      if (originalDrag) marker.on?.("drag", originalDrag, vertexHandler);
+      if (originalTouch) marker.on?.("touchmove", originalTouch, vertexHandler);
+    });
+  }
+
+  private installEditHandlerSnap(vertexHandler: any, cleanups: Array<() => void>): void {
+    const originalCreate = vertexHandler?._createMarker;
+    if (
+      typeof originalCreate !== "function" ||
+      vertexHandler._geokitSnapCreateMarker
+    ) return;
+
+    const hadOwnCreate = Object.prototype.hasOwnProperty.call(vertexHandler, "_createMarker");
+    const ownCreate = vertexHandler._createMarker;
+    const controller = this;
+    const wrappedCreate = function patchedGeokitCreateMarker(this: any, ...args: any[]) {
+      const marker = originalCreate.apply(this, args);
+      controller.installEditMarkerSnap(marker, this, cleanups);
+      return marker;
+    };
+    vertexHandler._geokitSnapCreateMarker = true;
+    vertexHandler._createMarker = wrappedCreate;
+    cleanups.push(() => {
+      if (vertexHandler._createMarker === wrappedCreate) {
+        if (hadOwnCreate) vertexHandler._createMarker = ownCreate;
+        else delete vertexHandler._createMarker;
+      }
+      delete vertexHandler._geokitSnapCreateMarker;
+    });
+  }
+  private installInteractionIntegrations(): void {
+    this.interactionCleanup?.();
+
+    this.interactionCleanup = null;
+    this.hideLiveOverlays();
+    if (!this.map || !this.drawControl) return;
+    const cleanup: Array<() => void> = [];
+    const editCleanup: Array<() => void> = [];
+    const snappingEnabled = Boolean(this.snappingOptions?.enabled !== false && this.snappingOptions);
+    let integrationActive = true;
+    const measurementEnabled = Boolean(this.measurementOverlayOptions?.enabled);
+    const clearEdit = () => { while (editCleanup.length) editCleanup.pop()?.(); this.showSnapFeedback(null); };
+
+    if (snappingEnabled) {
+
+      const modes = Object.values((this.drawControl as any)?._toolbars?.draw?._modes ?? {}) as any[];
+      for (const mode of modes) {
+        const handler = mode?.handler;
+        if (!handler) continue;
+        for (const method of ["_onMouseMove", "_onMouseDown", "_onMouseUp", "_onTouch"]) {
+          const original = handler[method];
+          if (typeof original !== "function") continue;
+          const wrapped = (event: any) => {
+            const raw = this.eventLatLng(event);
+            const result = this.findSnapResult(raw);
+            this.showSnapFeedback(result);
+            const nextEvent = result ? { ...event, latlng: result.latlng } : event;
+            const output = original.call(handler, nextEvent);
+            if (result) {
+              handler._currentLatLng = result.latlng;
+              handler._mouseMarker?.setLatLng(result.latlng);
+              if (typeof handler._updateGuide === "function") handler._updateGuide(this.map!.latLngToLayerPoint(result.latlng));
+              handler._updateTooltip?.(result.latlng);
+            }
+            this.renderMeasurement(this.geometryFeatureForHandler(handler, result?.latlng), result?.latlng ?? raw);
+            return output;
+          };
+          handler[method] = wrapped;
+          cleanup.push(() => { if (handler[method] === wrapped) handler[method] = original; });
+        }
+      }
+    }
+
+    const onPointer = (event: any) => {
+      const handler = (Object.values((this.drawControl as any)?._toolbars?.draw?._modes ?? {}) as any[])
+        .map((mode) => mode?.handler)
+        .find((candidate) => candidate?._enabled);
+      if (!handler) return;
+      const raw = this.eventLatLng(event);
+      const result = snappingEnabled ? this.findSnapResult(raw) : null;
+      if (snappingEnabled) this.showSnapFeedback(result);
+      this.renderMeasurement(this.geometryFeatureForHandler(handler, result?.latlng ?? raw), result?.latlng ?? raw);
+    };
+    this.map.on("mousemove touchmove", onPointer);
+    cleanup.push(() => this.map?.off("mousemove touchmove", onPointer));
+
+    const onEditStart = () => {
+      if (measurementEnabled) {
+        for (const layer of this.drawnItems?.getLayers?.() ?? []) {
+          const editLayer = layer as any;
+          const onEdit = () => this.renderMeasurement(editLayer.toGeoJSON?.() ?? null, editLayer.getLatLng?.());
+          editLayer.on?.("editdrag drag", onEdit);
+          editCleanup.push(() => editLayer.off?.("editdrag drag", onEdit));
+        }
+      }
+      if (!snappingEnabled) return;
+      queueMicrotask(() => {
+        if (!integrationActive) return;
+        for (const layer of this.drawnItems?.getLayers?.() ?? []) {
+          const edit = (layer as any).editing;
+          for (const handler of edit?._verticesHandlers ?? []) {
+            this.installEditHandlerSnap(handler, editCleanup);
+            for (const marker of handler?._markers ?? []) this.installEditMarkerSnap(marker, handler, editCleanup);
+          }
+        }
+      });
+    };
+    const onEditVertex = (event: any) => {
+      const feature = event?.poly?.toGeoJSON?.() ?? event?.layer?.toGeoJSON?.();
+      this.renderMeasurement(feature, event?.marker?.getLatLng?.() ?? event?.poly?.getCenter?.());
+    };
+    const onEditStop = () => { clearEdit(); this.hideLiveOverlays(); };
+    const onDrawStop = () => { this.hideLiveOverlays(); };
+    this.map.on("draw:editstart", onEditStart);
+    this.map.on("draw:editvertex", onEditVertex);
+    this.map.on("draw:editstop", onEditStop);
+    this.map.on("draw:drawstop", onDrawStop);
+    cleanup.push(() => {
+      integrationActive = false;
+      clearEdit();
+      this.map?.off("draw:editstart", onEditStart);
+      this.map?.off("draw:editvertex", onEditVertex);
+      this.map?.off("draw:editstop", onEditStop);
+      this.map?.off("draw:drawstop", onDrawStop);
+    });
+
+    this.interactionCleanup = () => {
+      while (cleanup.length) cleanup.pop()?.();
+      clearEdit();
+      this.hideLiveOverlays();
+    };
+  }
+
   private bindDrawEvents(): void {
     if (!this.map || !this.drawnItems) return;
+
+    const drawToolFromLayerType = (
+      layerType: unknown,
+    ): ToolButtonName | null => {
+      const tool = layerType === "cake" ? "layerCake" : layerType;
+      return [
+        "polygon",
+        "polyline",
+        "rectangle",
+        "circle",
+        "marker",
+        "layerCake",
+        "move",
+      ].includes(String(tool))
+        ? (tool as ToolButtonName)
+        : null;
+    };
+
+    this.map.on("draw:drawstart", (event: any) => {
+      const tool = drawToolFromLayerType(event?.layerType);
+      if (tool) {
+        this.observePersistentToolStart(tool, { source: "leaflet-toolbar" });
+      }
+    });
+    this.map.on("draw:editstart", () => {
+      this.observePersistentToolStart("edit", { source: "leaflet-toolbar" });
+    });
+    this.map.on("draw:deletestart", () => {
+      this.observePersistentToolStart("delete", { source: "leaflet-toolbar" });
+    });
+    this.map.on("draw:canceled", (event: any) => {
+      const tool = drawToolFromLayerType(event?.layerType);
+      if (tool && this.activeToolCommand?.tool === tool) {
+        this.cancelActiveTool("Cancelled with Escape");
+      }
+    });
+    this.map.on("draw:drawstop", (event: any) => {
+      const tool = drawToolFromLayerType(event?.layerType);
+      if (tool) this.handlePersistentToolStop(tool, "Draw interaction stopped");
+    });
+    this.map.on("draw:editstop", () => {
+      this.handlePersistentToolStop("edit", "Edit interaction stopped");
+    });
+    this.map.on("draw:deletestop", () => {
+      this.handlePersistentToolStop("delete", "Delete interaction stopped");
+    });
+
+    if (!this.toolEscapeKeyHandler) {
+      this.toolEscapeKeyHandler = (event: KeyboardEvent) => {
+        if (event.type !== "keydown" || event.defaultPrevented || event.repeat) return;
+        const target = event.target;
+        if (target instanceof HTMLElement && target.closest("input, textarea, select, [contenteditable], [role='dialog']")) return;
+        if (event.key === "Escape" && this.activeToolCommand) {
+          event.preventDefault();
+          this.deactivateTool({ source: "api" });
+        } else if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+          event.preventDefault();
+          const tool = this.activeToolCommand?.tool;
+          if (tool === "edit" || tool === "delete") {
+            const handler = this.findLeafletDrawHandler(tool);
+            handler?.save?.();
+            handler?.disable?.();
+          } else if (tool === "move") {
+            this.activeMoveHandler?.confirmMove();
+            this.hideMoveConfirmationUI();
+          } else {
+            this.activateTool("save");
+          }
+        }
+      };
+      this.container.addEventListener("keydown", this.toolEscapeKeyHandler);
+      this.container.addEventListener("keyup", this.toolEscapeKeyHandler);
+    }
 
     // CREATED: single layer with layerType
     this.map.on((this.L as any).Draw.Event.CREATED, (e: any) => {
@@ -1670,23 +2861,31 @@ export class MapController {
 
         if (layerType === DrawCake.TYPE) {
           try {
+            if (this.activeCakeSession) this.emitCakeEvent("tool:layer-cake:cancelled");
             this.activeCakeSession?.destroy();
           } catch {
             // Ignore previous session cleanup failures
           }
 
+          this.cakeSessionCommand = this.activeToolCommand;
           this.activeCakeSession = new LayerCakeManager(
             this.map!,
             layer as BundledL.Circle,
             (featureCollection) => {
               if (!this.drawnItems) return;
+              const session = this.activeCakeSession!.snapshot();
+              featureCollection.features.forEach((feature, index) => {
+                feature.properties = { ...feature.properties, name: `${session.name} ${index === 0 ? "core" : `ring ${index}`}` };
+              });
               const ids = this.store.add(featureCollection);
+              const layerId = this.layerRegistry.add(ids, { name: session.name, kind: "drawn", style: session.style });
               const layers = this.L.geoJSON(featureCollection);
 
               let i = 0;
               layers.eachLayer((createdLayer: any) => {
                 const id = ids[i] ?? ids[ids.length - 1];
                 (createdLayer as any)._fid = id;
+                this.featureLayers.set(id, createdLayer);
                 this.drawnItems!.addLayer(createdLayer);
                 this.installVertexContextMenu(createdLayer);
                 this.options.callbacks?.onCreated?.({
@@ -1697,17 +2896,42 @@ export class MapController {
                 i++;
               });
 
-              this.activeCakeSession = null;
-              this.emitToolEvent("tool:layer-cake:saved", {
+              this.applyLayerRegistry();
+              const command =
+                this.activeToolCommand?.tool === "layerCake"
+                  ? this.activeToolCommand
+                  : null;
+              this.emitCakeEvent("tool:layer-cake:saved", {
+                layerId,
                 featureCollection,
+                source: command?.source,
+                groupId: command?.groupId,
+                commandId: command?.commandId,
               });
+              this.activeCakeSession = null;
+              this.cakeSessionCommand = null;
+              if (command) {
+                this.completeActiveTool(
+                  { featureIds: ids, geometry: featureCollection },
+                  true,
+                );
+                this.clearActiveTool(command);
+              }
             },
             this.measurementSystem,
+            () => this.emitCakeEvent("tool:layer-cake:session-changed"),
           );
 
-          this.emitToolEvent("tool:layer-cake:session-started", {
+          const command =
+            this.activeToolCommand?.tool === "layerCake"
+              ? this.activeToolCommand
+              : null;
+          this.emitCakeEvent("tool:layer-cake:session-started", {
             center: (layer as BundledL.Circle).getLatLng(),
             radius: (layer as BundledL.Circle).getRadius(),
+            source: command?.source,
+            groupId: command?.groupId,
+            commandId: command?.commandId,
           });
 
           return;
@@ -1722,6 +2946,9 @@ export class MapController {
         const id = ids[0];
         (layer as any)._fid = id;
         this.installVertexContextMenu(layer);
+        this.featureLayers.set(id, layer);
+        this.layerRegistry.add([id], { name: `${layerType} layer`, kind: "drawn" });
+        this.applyLayerRegistry();
 
         this.options.callbacks?.onCreated?.({ id, layerType, geoJSON: feat });
         const createdToolEvent =
@@ -1732,7 +2959,13 @@ export class MapController {
             geoJSON: feat,
           });
         }
+        if (this.activeToolCommand?.tool === layerType) {
+          this.completeActiveTool({ featureIds: [id], geometry: feat }, true);
+        }
       } catch (err) {
+        this.failActiveTool(
+          err instanceof Error ? err.message : "Draw completion failed",
+        );
         this._error("onCreated handler failed", err);
       }
     });
@@ -1756,6 +2989,8 @@ export class MapController {
             })[0];
             (layer as any)._fid = newId;
             ids.push(newId);
+            this.featureLayers.set(newId, layer);
+            this.layerRegistry.add([newId], { kind: "drawn" });
           }
         });
 
@@ -1768,7 +3003,13 @@ export class MapController {
           ids,
           geoJSON,
         });
+        if (this.activeToolCommand?.tool === "edit") {
+          this.completeActiveTool({ featureIds: ids, geometry: geoJSON }, true);
+        }
       } catch (err) {
+        this.failActiveTool(
+          err instanceof Error ? err.message : "Edit completion failed",
+        );
         this._error("onEdited handler failed", err);
       }
     });
@@ -1783,6 +3024,8 @@ export class MapController {
           if (id) {
             ids.push(id);
             this.store.remove(id);
+            this.featureLayers.delete(id);
+            this.layerRegistry.removeFeature(id);
           }
         });
 
@@ -1795,7 +3038,14 @@ export class MapController {
           ids,
           geoJSON,
         });
+        this.applyLayerRegistry();
+        if (this.activeToolCommand?.tool === "delete") {
+          this.completeActiveTool({ featureIds: ids, geometry: geoJSON }, true);
+        }
       } catch (err) {
+        this.failActiveTool(
+          err instanceof Error ? err.message : "Delete completion failed",
+        );
         this._error("onDeleted handler failed", err);
       }
     });
@@ -1834,9 +3084,21 @@ export class MapController {
             geoJSON: this.store.toFeatureCollection(),
           });
         }
+        if (this.activeToolCommand?.tool === "move") {
+          this.completeActiveTool(
+            {
+              featureIds: id ? [id] : [],
+              geometry: e?.newGeoJSON,
+            },
+            false,
+          );
+        }
 
         this.hideMoveConfirmationUI();
       } catch (err) {
+        this.failActiveTool(
+          err instanceof Error ? err.message : "Move completion failed",
+        );
         this._error("draw:moveconfirmed handler failed", err);
       }
     });
@@ -2181,8 +3443,23 @@ export class MapController {
 
       // Create a floating UI with Save and Cancel buttons
       const ui = document.createElement("div");
+      ui.dataset.geokitMoveConfirmation = "";
+      // Treat this overlay as a Leaflet control: touch taps must not start map
+      // dragging or double-tap zoom and suppress the following native click.
+      this.L.DomEvent.disableClickPropagation(ui);
+      this.L.DomEvent.disableScrollPropagation(ui);
       ui.style.position = "absolute";
-      ui.style.bottom = "60px";
+      const bounds = this.container.getBoundingClientRect();
+      let bottom = 60;
+      this.container.querySelectorAll<HTMLElement>("[data-geokit-managed-toolbar]").forEach(toolbar => {
+        const rect = toolbar.getBoundingClientRect();
+        if (rect.width && rect.height && toolbar.dataset.geokitToolbarPosition?.startsWith("bottom")) {
+          bottom = Math.max(bottom, bounds.bottom - rect.top + 8);
+        }
+      });
+      ui.style.bottom = `${bottom}px`;
+      ui.style.maxWidth = "calc(100% - 32px)";
+      ui.style.boxSizing = "border-box";
       ui.style.left = "50%";
       ui.style.transform = "translateX(-50%)";
       ui.style.display = "flex";
@@ -2198,6 +3475,9 @@ export class MapController {
 
       const saveBtn = document.createElement("button");
       saveBtn.textContent = "✓ Save";
+      saveBtn.style.minHeight = "44px";
+      saveBtn.style.minWidth = "44px";
+      saveBtn.style.whiteSpace = "nowrap";
       saveBtn.style.padding = "8px 16px";
       saveBtn.style.border = "none";
       saveBtn.style.background = "#28a745";
@@ -2216,6 +3496,9 @@ export class MapController {
 
       const cancelBtn = document.createElement("button");
       cancelBtn.textContent = "✕ Cancel";
+      cancelBtn.style.minHeight = "44px";
+      cancelBtn.style.minWidth = "44px";
+      cancelBtn.style.whiteSpace = "nowrap";
       cancelBtn.style.padding = "8px 16px";
       cancelBtn.style.border = "1px solid #ccc";
       cancelBtn.style.background = "#fff";

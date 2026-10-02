@@ -21,7 +21,9 @@ class FakeFeatureGroup {
   layers: any[] = [];
 
   addLayer(layer: any): void {
-    this.layers.push(layer);
+    // Leaflet FeatureGroup membership is idempotent. Registry presentation
+    // updates may re-add an already-visible layer without duplicating it.
+    if (!this.layers.includes(layer)) this.layers.push(layer);
   }
 }
 

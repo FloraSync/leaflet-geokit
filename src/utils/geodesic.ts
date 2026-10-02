@@ -87,7 +87,8 @@ function vincentyDistance(
   const cosU2 = Math.cos(U2);
 
   let lambda = L;
-  let lambdaPrev = 0;
+  // Always evaluate the first iteration, including same-longitude rows.
+  let lambdaPrev = Number.POSITIVE_INFINITY;
   let iterations = 0;
   const MAX = 200;
   let sinSigma = 0;

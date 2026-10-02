@@ -4,6 +4,9 @@ import type {
   ToolToolbarGroupConfig,
   ToolToolbarPosition,
 } from "@src/types/public";
+import { toolbarStyles } from "./toolbar-styles";
+import { installToolbarAccessibility, announceToolStatus } from "./toolbar-accessibility";
+import { createToolbarLayout, usesToolbarLayout } from "./toolbar-layout";
 
 interface ToolButtonTarget {
   selectors: readonly string[];
@@ -114,10 +117,17 @@ export function applyToolButtonConfig(
   options: ApplyToolButtonOptions = {},
 ): void {
   closeToolPopover(container);
+  if (!container.querySelector("style[data-geokit-toolbar-styles]")) {
+    const style = document.createElement("style");
+    style.dataset.geokitToolbarStyles = "true";
+    style.textContent = toolbarStyles;
+    container.prepend(style);
+  }
   for (const name of TOOL_BUTTON_NAMES) {
     const target = TOOL_BUTTON_TARGETS[name];
     for (const button of findButtons(container, target.selectors)) {
       button.setAttribute("data-geokit-tool", target.dataTool);
+      button.setAttribute("part", "toolbar-button");
       resetManagedButton(button);
 
       const buttonConfig = config?.[name];
@@ -133,6 +143,41 @@ export function applyToolButtonConfig(
   }
 
   renderToolbarGroups(container, config, options);
+  installToolbarAccessibility(container);
+  if (!container.querySelector("[data-geokit-announcement='status']")) announceToolStatus(container, "");
+  if (!container.querySelector("[data-geokit-announcement='alert']")) announceToolStatus(container, "", true);
+  setActiveToolbarTool(
+    container,
+    (container.dataset.geokitActiveTool as ToolButtonName) || null,
+  );
+}
+
+/** Reflect the controller's current mode, not just the last clicked button. */
+export function setActiveToolbarTool(
+  container: HTMLElement,
+  tool: ToolButtonName | null,
+): void {
+  container.dataset.geokitActiveTool = tool ?? "";
+  container
+    .querySelectorAll<HTMLButtonElement>(".leaflet-geokit-toolbar-button")
+    .forEach((button) => {
+      const active = Boolean(
+        tool && button.dataset.geokitTool === TOOL_BUTTON_TARGETS[tool].dataTool,
+      );
+      const modeTools = [
+        "polygon", "polyline", "rectangle", "circle", "marker",
+        "layer-cake", "move", "edit", "delete", "ruler",
+      ];
+      if (modeTools.includes(button.dataset.geokitTool ?? "")) {
+        button.setAttribute("aria-pressed", String(active));
+      }
+      button.dataset.geokitActive = String(active);
+      button.dataset.geokitDisabled = String(button.disabled);
+      button.setAttribute(
+        "part",
+        `toolbar-button${active ? " active" : ""}${button.disabled ? " disabled" : ""}`,
+      );
+    });
 }
 
 function findButtons(
@@ -315,8 +360,11 @@ function applyButtonIcon(
 ): void {
   const [width, height] = resolveIconSize(config.iconSize);
 
-  button.style.setProperty("background-image", "none", "important");
-  button.style.setProperty("position", "relative", "important");
+  // Native Leaflet sprites are separate from the managed styling contract.
+  if (!button.classList.contains("leaflet-geokit-toolbar-button")) {
+    button.style.setProperty("background-image", "none", "important");
+    button.style.setProperty("position", "relative");
+  }
 
   button
     .querySelectorAll<HTMLElement>(BUILT_IN_ICON_SELECTOR)
@@ -328,14 +376,9 @@ function applyButtonIcon(
   icon.className = CUSTOM_ICON_CLASS;
   icon.dataset.geokitToolButtonIcon = "true";
   icon.setAttribute("aria-hidden", "true");
-  icon.style.setProperty("position", "absolute", "important");
-  icon.style.setProperty("display", "block", "important");
-  icon.style.setProperty("left", "50%", "important");
-  icon.style.setProperty("top", "50%", "important");
-  icon.style.setProperty("width", `${width}px`, "important");
-  icon.style.setProperty("height", `${height}px`, "important");
-  icon.style.setProperty("transform", "translate(-50%, -50%)", "important");
-  icon.style.setProperty("pointer-events", "none", "important");
+  icon.setAttribute("part", "icon");
+  icon.style.setProperty("--_geokit-icon-width", `${width}px`);
+  icon.style.setProperty("--_geokit-icon-height", `${height}px`);
 
   const rendered = config.renderIcon?.({
     tool: context.tool ?? "polygon",
@@ -350,33 +393,18 @@ function applyButtonIcon(
     icon.appendChild(rendered);
   } else if (typeof rendered === "string" && rendered.trim()) {
     icon.innerHTML = rendered;
-    styleInlineIconChild(icon);
   } else if (config.iconHtml) {
     icon.innerHTML = config.iconHtml;
-    styleInlineIconChild(icon);
   } else if (config.iconUrl) {
     const img = document.createElement("img");
     img.src = config.iconUrl;
     img.alt = "";
     img.decoding = "async";
     img.draggable = false;
-    img.style.setProperty("display", "block", "important");
-    img.style.setProperty("width", "100%", "important");
-    img.style.setProperty("height", "100%", "important");
-    img.style.setProperty("object-fit", "contain", "important");
     icon.appendChild(img);
   }
 
   button.appendChild(icon);
-}
-
-function styleInlineIconChild(icon: HTMLElement): void {
-  const child = icon.firstElementChild as HTMLElement | SVGElement | null;
-  if (!child) return;
-  child.style.setProperty("display", "block", "important");
-  child.style.setProperty("width", "100%", "important");
-  child.style.setProperty("height", "100%", "important");
-  child.style.setProperty("color", "currentColor", "important");
 }
 
 function resolveIconSize(
@@ -409,6 +437,11 @@ function bindTrigger(
   },
 ): void {
   const listener: EventListener = (event) => {
+    if (button instanceof HTMLButtonElement && button.disabled) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     const config = resolveButtonConfig(button);
     const container = closestManagedContainer(button);
     if (config?.popover) {
@@ -425,6 +458,20 @@ function bindTrigger(
       groupId: options.groupId,
       activate: options.activate,
     });
+
+    // Draw activation can focus the map after opening the configured dialog.
+    const popover = container.querySelector<HTMLElement>(CUSTOM_POPOVER_SELECTOR);
+    if (popover) {
+      (popover.querySelector<HTMLElement>("button:not(:disabled), [href], input, select, textarea, [tabindex='0']") ?? popover).focus();
+    }
+
+    // Leaflet.draw focuses the map when enabling a mode. Keyboard users must
+    // keep their place in the toolbar unless the command opened a dialog.
+    if ((event as MouseEvent).detail === 0) {
+      const root = button.getRootNode();
+      const active = root instanceof ShadowRoot ? root.activeElement : document.activeElement;
+      if (!(active instanceof HTMLElement && active.closest("[role='dialog']"))) button.focus();
+    }
 
     if (options.activate) {
       event.preventDefault();
@@ -465,6 +512,7 @@ function renderToolbarGroups(
   options: ApplyToolButtonOptions,
 ): void {
   container.setAttribute("data-geokit-map-container", "true");
+  container.querySelector("geokit-toolbar-layout")?.remove();
   container
     .querySelectorAll<HTMLElement>(CUSTOM_TOOLBAR_SELECTOR)
     .forEach((toolbar) => toolbar.remove());
@@ -474,6 +522,7 @@ function renderToolbarGroups(
     (group) => group?.hideDefaultToolbar !== false,
   );
   setDefaultToolbarsHidden(container, shouldHideDefaultToolbar);
+  const layoutEntries: { element: HTMLElement; config: ToolToolbarGroupConfig }[] = [];
 
   groups.forEach((group) => {
     if (!group?.id || !Array.isArray(group.tools) || group.tools.length === 0) {
@@ -486,6 +535,22 @@ function renderToolbarGroups(
     toolbar.className = "leaflet-geokit-toolbar-group leaflet-bar";
     toolbar.setAttribute("role", "toolbar");
     toolbar.setAttribute("aria-label", group.ariaLabel ?? group.id);
+    toolbar.setAttribute("part", "toolbar-group");
+    const orientation =
+      group.orientation === "horizontal" ? "horizontal" : "vertical";
+    toolbar.dataset.geokitToolbarOrientation = orientation;
+    toolbar.setAttribute("aria-orientation", orientation);
+    toolbar.style.setProperty(
+      "--_geokit-direction",
+      orientation === "horizontal" ? "row" : "column",
+    );
+    if (
+      typeof group.gap === "number" &&
+      Number.isFinite(group.gap) &&
+      group.gap >= 0
+    ) {
+      toolbar.style.setProperty("--_geokit-gap", `${group.gap}px`);
+    }
     applyToolbarPosition(toolbar, group.position, group.offset);
 
     const classes = splitClasses(group.className);
@@ -504,8 +569,14 @@ function renderToolbarGroups(
       toolbar.appendChild(button);
     });
 
-    container.appendChild(toolbar);
+    if (usesToolbarLayout(group)) {
+      toolbar.setAttribute("part", `toolbar-group toolbar-group-${group.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`);
+      layoutEntries.push({ element: toolbar, config: group });
+    } else {
+      container.appendChild(toolbar);
+    }
   });
+  if (layoutEntries.length) container.appendChild(createToolbarLayout(layoutEntries));
 }
 
 function setDefaultToolbarsHidden(
@@ -555,19 +626,16 @@ function createToolbarButton(
     index,
   );
   button.className = "leaflet-geokit-toolbar-button";
-  button.style.setProperty("display", "block", "important");
-  button.style.setProperty("width", "34px", "important");
-  button.style.setProperty("height", "34px", "important");
-  button.style.setProperty("padding", "0", "important");
-  button.style.setProperty("border", "0", "important");
-  button.style.setProperty("border-bottom", "1px solid #ccc", "important");
-  button.style.setProperty("background", "#fff", "important");
-  button.style.setProperty("cursor", "pointer", "important");
-  button.style.setProperty("position", "relative", "important");
+  button.disabled = config?.disabled === true;
+  button.setAttribute("aria-disabled", String(button.disabled));
 
   const title = config?.title ?? defaultToolTitle(tool);
   button.title = title;
   button.setAttribute("aria-label", config?.ariaLabel ?? title);
+  if (config?.popover) {
+    button.setAttribute("aria-haspopup", "dialog");
+    button.setAttribute("aria-expanded", "false");
+  }
 
   const classes = splitClasses(config?.className);
   if (classes.length > 0) {
@@ -590,11 +658,31 @@ function createToolbarButton(
   if (!button.querySelector(`.${CUSTOM_ICON_CLASS}`)) {
     const fallbackConfig: NonNullable<ToolButtonConfig[ToolButtonName]> = {
       iconHtml: defaultToolIcon(tool),
-      iconSize: [20, 20],
+      iconSize: config?.iconSize ?? [20, 20],
     };
     applyButtonIcon(button, fallbackConfig, { tool, groupId: group.id });
   }
 
+  const slotPrefix = `${group.id}-${tool}-${index}`;
+  const icon = button.querySelector<HTMLElement>(`.${CUSTOM_ICON_CLASS}`)!;
+  const iconSlot = document.createElement("slot");
+  iconSlot.name = `${slotPrefix}-icon`;
+  iconSlot.append(...Array.from(icon.childNodes));
+  icon.appendChild(iconSlot);
+  for (const name of ["badge", "tooltip"] as const) {
+    const affordance = document.createElement("span");
+    affordance.className = `leaflet-geokit-tool-${name}`;
+    affordance.setAttribute("part", name);
+    affordance.setAttribute("aria-hidden", "true");
+    const slot = document.createElement("slot");
+    slot.name = `${slotPrefix}-${name}`;
+    slot.textContent =
+      name === "badge"
+        ? config?.badge ?? ""
+        : config?.tooltip ?? config?.ariaLabel ?? title;
+    affordance.appendChild(slot);
+    button.appendChild(affordance);
+  }
   return button;
 }
 
@@ -604,20 +692,9 @@ function applyToolbarPosition(
   offset: readonly [number, number] | undefined,
 ): void {
   const [x, y] = resolveOffset(offset);
-  toolbar.style.setProperty("position", "absolute", "important");
-  toolbar.style.setProperty("z-index", "1000", "important");
-  toolbar.style.setProperty("background", "#fff", "important");
-  toolbar.style.setProperty(
-    "box-shadow",
-    "0 1px 5px rgba(0,0,0,0.35)",
-    "important",
-  );
-
-  const [vertical, horizontal] = position.startsWith("bottom")
-    ? ["bottom", position.endsWith("right") ? "right" : "left"]
-    : ["top", position.endsWith("right") ? "right" : "left"];
-  toolbar.style.setProperty(vertical, `${y}px`, "important");
-  toolbar.style.setProperty(horizontal, `${x}px`, "important");
+  toolbar.dataset.geokitToolbarPosition = position;
+  toolbar.style.setProperty("--_geokit-offset-x", `${x}px`);
+  toolbar.style.setProperty("--_geokit-offset-y", `${y}px`);
 }
 
 function showToolPopover(
@@ -633,6 +710,7 @@ function showToolPopover(
   closeToolPopover(options.container);
 
   const popover = document.createElement("div");
+  popover.setAttribute("part", "popover");
   popover.dataset.geokitToolPopover = "true";
   popover.dataset.geokitTool = TOOL_BUTTON_TARGETS[tool]?.dataTool ?? tool;
   if (button.dataset.geokitToolInstance) {
@@ -646,30 +724,10 @@ function showToolPopover(
     "aria-label",
     config.popover.ariaLabel ?? config.popover.title ?? defaultToolTitle(tool),
   );
-  popover.style.setProperty("position", "absolute", "important");
-  popover.style.setProperty("z-index", "10001", "important");
-  popover.style.setProperty("max-width", "260px", "important");
-  popover.style.setProperty("padding", "10px 12px", "important");
-  popover.style.setProperty(
-    "border",
-    "1px solid rgba(0,0,0,0.22)",
-    "important",
-  );
-  popover.style.setProperty("border-radius", "8px", "important");
-  popover.style.setProperty("background", "#fff", "important");
-  popover.style.setProperty(
-    "box-shadow",
-    "0 8px 24px rgba(0,0,0,0.24)",
-    "important",
-  );
-  popover.style.setProperty("font", "13px system-ui, sans-serif", "important");
-  popover.style.setProperty("line-height", "1.35", "important");
 
   if (config.popover.title) {
     const title = document.createElement("strong");
     title.textContent = config.popover.title;
-    title.style.setProperty("display", "block", "important");
-    title.style.setProperty("margin-bottom", "4px", "important");
     popover.appendChild(title);
   }
 
@@ -712,6 +770,8 @@ function showToolPopover(
     config,
   });
   bindPopoverCloseEvents(options.container, button, popover);
+  popover.tabIndex = -1;
+  (popover.querySelector<HTMLElement>("button:not(:disabled), [href], input, select, textarea, [tabindex='0']") ?? popover).focus();
 
   config.popover.onOpen?.({
     tool,
@@ -742,8 +802,8 @@ function placePopover(
       containerRect.height - popover.offsetHeight - 8,
     ),
   );
-  popover.style.setProperty("left", `${left}px`, "important");
-  popover.style.setProperty("top", `${top}px`, "important");
+  popover.style.setProperty("left", `${left}px`);
+  popover.style.setProperty("top", `${top}px`);
 }
 
 function bindPopoverCloseEvents(
@@ -752,17 +812,15 @@ function bindPopoverCloseEvents(
   popover: HTMLElement,
 ): void {
   const keydown: EventListener = (event) => {
-    if ((event as KeyboardEvent).key === "Escape") {
+    if ((event as KeyboardEvent).key === "Escape" && event.composedPath().some(node => node === popover || node === button)) {
+      event.preventDefault();
+      event.stopPropagation();
       closeToolPopover(container);
+      button.focus();
     }
   };
   const pointerdown: EventListener = (event) => {
-    const target = event.target;
-    if (!(target instanceof Node)) {
-      return;
-    }
-
-    if (popover.contains(target) || button.contains(target)) {
+    if (event.composedPath().some(node => node === popover || node === button)) {
       return;
     }
 
@@ -787,7 +845,7 @@ function closeToolPopover(container: HTMLElement): void {
     .querySelectorAll<HTMLElement>(CUSTOM_POPOVER_SELECTOR)
     .forEach((popover) => {
       const context = popoverContexts.get(popover);
-      context?.button.removeAttribute("aria-expanded");
+      context?.button.setAttribute("aria-expanded", "false");
       if (!context) {
         findPopoverTrigger(container, popover)?.removeAttribute(
           "aria-expanded",

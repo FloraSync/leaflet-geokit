@@ -1,4 +1,5 @@
 import type { Feature, FeatureCollection } from "geojson";
+import type { MapLayer, LayerStyle, LayerCakeSessionUpdate } from "@src/types/layers";
 import type {
   GeoJSONImportBehavior,
   GeoJSONImportOptions,
@@ -10,9 +11,17 @@ import type {
   IntegratedToolHooks,
   MarkerIconConfig,
   MeasurementSystem,
+  SnappingOptions,
+  MeasurementOverlayOptions,
   TileProviderErrorDetail,
   ToolButtonConfig,
   ToolButtonName,
+  ToolCapabilities,
+  ToolProviderCapability,
+  ToolCommandAction,
+  ToolCommandEventDetail,
+  ToolEventDetail,
+  ToolLifecycleEventName,
   ToolToolbarGroupConfig,
   ToolTriggerEventDetail,
   ToolTriggerOptions,
@@ -29,6 +38,9 @@ import {
 import { createLogger, type Logger, type LogLevel } from "@src/utils/logger";
 import { applyLeafletStylingIfNeeded } from "@src/lib/leaflet-assets";
 import { MapController } from "@src/lib/MapController";
+import { createRasterProvider } from "@src/lib/providers";
+import type { BasemapAdapter, ProviderDiagnostics } from "@src/lib/providers";
+import { buildToolCapabilities } from "@src/lib/tool-capabilities";
 import {
   normalizeMarkerIconAttributes,
   normalizeMarkerIconConfig,
@@ -89,6 +101,14 @@ export class LeafletDrawMapElement
   private _markerIconConfig: MarkerIconConfig | null | undefined;
   private _toolButtonConfig: ToolButtonConfig | null | undefined;
   private _toolbarGroups: ToolToolbarGroupConfig[] | null | undefined;
+  private _snapping: SnappingOptions | null | undefined;
+  private _measurementOverlay: MeasurementOverlayOptions | null | undefined;
+  private _internalToolEvents = new WeakSet<Event>();
+  private _toolCommandSequence = 0;
+  private _activeTool: ToolButtonName | null = null;
+  private _providerCapabilityError: ToolProviderCapability["reason"] = null;
+  private _lastCapabilities = "";
+  private _configurationUpdate: Promise<void> = Promise.resolve();
   private _status: StatusEventDetail = {
     state: "uninitialized",
     ready: false,
@@ -109,6 +129,7 @@ export class LeafletDrawMapElement
       void this.deactivateTool({
         source: detail.source ?? "event",
         groupId: detail.groupId,
+        commandId: detail.commandId,
       });
       return;
     }
@@ -118,6 +139,7 @@ export class LeafletDrawMapElement
     void this.activateTool(detail.tool, {
       source: detail.source ?? "event",
       groupId: detail.groupId,
+      commandId: detail.commandId,
     });
   };
 
@@ -128,6 +150,58 @@ export class LeafletDrawMapElement
     void this.deactivateTool({
       source: detail?.source ?? "event",
       groupId: detail?.groupId,
+      commandId: detail?.commandId,
+    });
+  };
+
+  private _externalToolCommandListener = (event: Event): void => {
+    if (this._internalToolEvents.has(event)) return;
+    const detail = (event as CustomEvent).detail as
+      ToolCommandEventDetail | undefined;
+    if (!detail?.tool) return;
+
+    const source = detail.source ?? "event";
+    const commandId = detail.commandId?.trim() || this._nextToolCommandId();
+    const action: ToolCommandAction =
+      detail.action === "deactivate" || detail.tool === "select"
+        ? "deactivate"
+        : "activate";
+    detail.tool = action === "deactivate" ? "select" : detail.tool;
+    Object.assign(detail, {
+      tool: detail.tool,
+      action,
+      source,
+      groupId: detail.groupId,
+      commandId,
+      previousTool: this._activeTool,
+      activeTool: this._activeTool,
+      featureIds: [],
+      timestamp: Date.now(),
+    } satisfies ToolEventDetail);
+    queueMicrotask(() => {
+      this._emitToolTriggerRequested(
+        action === "deactivate" ? "select" : detail.tool,
+        { source, groupId: detail.groupId, commandId },
+      );
+
+      const controller = this._controller as
+        | (MapController & {
+            handleToolCommand?: (command: ToolCommandEventDetail) => boolean;
+          })
+        | null;
+      if (typeof controller?.handleToolCommand === "function") {
+        controller.handleToolCommand(detail);
+        return;
+      }
+
+      const tool = action === "deactivate" ? "select" : detail.tool;
+      this._emitStandaloneToolFailure(
+        tool,
+        action,
+        { source, groupId: detail.groupId, commandId },
+        "Map controller is not initialized",
+        false,
+      );
     });
   };
 
@@ -148,7 +222,7 @@ export class LeafletDrawMapElement
           position: relative;
         }
       </style>
-      <div class="map-container" part="map"></div>
+      <div class="map-container" part="host map"></div>
     `;
 
     const container = this._root.querySelector(".map-container");
@@ -229,6 +303,7 @@ export class LeafletDrawMapElement
       readOnly: this._readOnly,
       logger: this._logger.child("controller"),
       callbacks: {
+        onToolCapabilitiesChanged: () => this._emitToolCapabilities(),
         onReady: (detail) => {
           this.dispatchEvent(new CustomEvent(DrawEvent.Ready, { detail }));
           void this._syncStatusFromController({
@@ -297,6 +372,15 @@ export class LeafletDrawMapElement
         onToolTrigger: (detail) => {
           this._emitToolTriggerResult(detail);
         },
+        onToolEvent: (eventName, detail) => {
+          this._emitToolLifecycleEvent(eventName, detail);
+        },
+        onLayerEvent: (eventName, detail) => {
+          this.dispatchEvent(new CustomEvent(eventName, { detail, bubbles: true, composed: true }));
+        },
+        onLayerStyleRequested: (detail) => {
+          return !this.dispatchEvent(new CustomEvent("leaflet-geokit:layer-style-request", { detail, cancelable: true, bubbles: true, composed: true }));
+        },
         onSaved: (detail) => {
           this.dispatchEvent(
             new CustomEvent(DrawEvent.Export, {
@@ -324,8 +408,14 @@ export class LeafletDrawMapElement
       markerIconConfig: this._effectiveMarkerIconConfig(),
       toolButtonConfig: this._effectiveToolButtonConfig(),
       toolbarGroups: this._effectiveToolbarGroups(),
+      snapping: this._snapping ?? null,
+      measurementOverlay: this._measurementOverlay ?? null,
     });
 
+    this.addEventListener(
+      GeoKitEvent.ToolCommand,
+      this._externalToolCommandListener,
+    );
     this.addEventListener(
       "leaflet-geokit:trigger-tool",
       this._externalToolTriggerListener,
@@ -352,10 +442,17 @@ export class LeafletDrawMapElement
 
   async disconnectedCallback(): Promise<void> {
     this._logger.debug("disconnectedCallback");
+    this._activeTileProvider = "tile-url";
+    this._providerCapabilityError = null;
     if (this._controller) {
       await this._controller.destroy();
       this._controller = null;
     }
+    this._activeTool = null;
+    this.removeEventListener(
+      GeoKitEvent.ToolCommand,
+      this._externalToolCommandListener,
+    );
     this.removeEventListener(
       "leaflet-geokit:trigger-tool",
       this._externalToolTriggerListener,
@@ -538,8 +635,15 @@ export class LeafletDrawMapElement
         name === "edit-features" ||
         name === "delete-features"
       ) {
-        // For now, re-init controller to apply structural changes
-        void this._controller.destroy().then(() => this._controller!.init());
+        const controller = this._controller;
+        controller.configure?.(this._mapConfig(), this._controlsFromAttributes());
+        // Serialize rebuilds so rapid attribute toggles cannot create overlapping maps.
+        this._configurationUpdate = this._configurationUpdate.then(async () => {
+          if (this._controller !== controller || !this.isConnected) return;
+          controller.configure?.(this._mapConfig(), this._controlsFromAttributes());
+          await controller.init();
+          if (this._tileProvider) this._updateTileLayer();
+        });
       }
     }
   }
@@ -561,6 +665,7 @@ export class LeafletDrawMapElement
       return;
     }
 
+    this._providerCapabilityError = null;
     try {
       if (this._tileProvider) {
         const provider = this._tileProvider;
@@ -637,6 +742,9 @@ export class LeafletDrawMapElement
         error instanceof Error ? error.message : "Unknown tile layer error",
         this._tileProvider ?? "unknown",
       );
+    } finally {
+      this._controller?.setToolProvider?.(this._toolProviderCapability());
+      this._emitToolCapabilities();
     }
   }
 
@@ -647,6 +755,12 @@ export class LeafletDrawMapElement
   ): void {
     this._logger.error(`Tile provider error (${code}): ${message}`);
     const timestamp = Date.now();
+
+    // Capability diagnostics never include provider URLs, keys, or arbitrary error payloads.
+    this._providerCapabilityError = {
+      code: code === "missing_api_key" ? "missing_api_key" : code === "unknown_provider" ? "missing_provider" : "runtime_error",
+      message: code === "missing_api_key" ? "Requested provider requires an API key" : code === "unknown_provider" ? "Requested provider is unavailable" : "Requested provider failed; using fallback tiles",
+    };
 
     this.dispatchEvent(
       new CustomEvent("tile-provider-error", {
@@ -691,6 +805,8 @@ export class LeafletDrawMapElement
       });
       this._activeTileProvider = "osm";
     }
+    this._controller?.setToolProvider?.(this._toolProviderCapability());
+    this._emitToolCapabilities();
   }
 
   private _emitTileProviderChanged(
@@ -709,6 +825,73 @@ export class LeafletDrawMapElement
         },
       }),
     );
+  }
+
+  private _toolProviderCapability(): ToolProviderCapability {
+    const requested = this._activeTileProvider === "adapter" ? "adapter" : this._tileProvider ?? "tile-url";
+    let reason = this._providerCapabilityError;
+    if (requested !== "adapter" && requested !== "tile-url" && requested !== "osm" && requested !== "here") {
+      reason = { code: "missing_provider", message: "Requested provider is unavailable" };
+    } else if (requested === "here" && !this._apiKey?.trim()) {
+      reason = { code: "missing_api_key", message: "Requested provider requires an API key" };
+    }
+    return {
+      requested, active: this._activeTileProvider,
+      state: reason ? "unavailable" : "enabled",
+      reason: reason ? { ...reason } : null,
+    };
+  }
+
+  /** Call after ready; reconnect restores attribute-configured raster tiles. */
+  setBasemapAdapter(adapter: BasemapAdapter | null): void {
+    if (!this._status.ready || !this._controller) throw new Error("Map is not ready");
+    if (!adapter) {
+      this._updateTileLayer();
+      return;
+    }
+    this._controller.setBasemapAdapter(adapter);
+    const previous = this._activeTileProvider;
+    this._activeTileProvider = "adapter";
+    this._providerCapabilityError = null;
+    this._emitTileProviderChanged("adapter", undefined, previous);
+    this._controller.setToolProvider?.(this._toolProviderCapability());
+    this._emitToolCapabilities();
+  }
+
+  getProviderDiagnostics(): ProviderDiagnostics | null {
+    const diagnostics = this._controller?.getProviderDiagnostics?.() ?? null;
+    if (!diagnostics || this._activeTileProvider === "adapter") return diagnostics;
+    const active = this._activeTileProvider === "tile-url" && this._tileUrl === buildTileURL({ provider: "osm" }).urlTemplate
+      ? "osm" : this._activeTileProvider;
+    if (active === "osm" || active === "here") {
+      const provider = createRasterProvider({ provider: active });
+      return { ...diagnostics, ...provider.capabilities };
+    }
+    return diagnostics;
+  }
+
+  getToolCapabilities(): ToolCapabilities {
+    const snapshot = this._controller?.getToolCapabilities?.() ?? buildToolCapabilities({
+      ready: false, readOnly: this._readOnly, controls: this._controlsFromAttributes(),
+      available: {}, layerCount: 0, selectedFeatureIds: [], activeTool: null,
+      config: this._effectiveToolButtonConfig(), groups: this._effectiveToolbarGroups(),
+      provider: this._toolProviderCapability(),
+    });
+    return { ...snapshot, provider: this._toolProviderCapability() };
+  }
+
+  setToolSelection(featureIds: readonly string[]): void {
+    this._controller?.setToolSelection(featureIds);
+  }
+
+  private _emitToolCapabilities(): void {
+    const detail = this.getToolCapabilities();
+    const serialized = JSON.stringify(detail);
+    if (serialized === this._lastCapabilities) return;
+    this._lastCapabilities = serialized;
+    this.dispatchEvent(new CustomEvent(GeoKitEvent.ToolCapabilitiesChanged, {
+      detail, bubbles: true, composed: true,
+    }));
   }
 
   private _isMarkerIconAttribute(name: string): boolean {
@@ -1050,6 +1233,34 @@ export class LeafletDrawMapElement
     this._syncToolbarGroups();
   }
 
+  get snapping(): SnappingOptions | null | undefined {
+    return this._snapping;
+  }
+  set snapping(value: SnappingOptions | null | undefined) {
+    const previous = this._snapping;
+    this._snapping = value;
+    try {
+      this._controller?.setSnappingOptions(value);
+    } catch (error) {
+      this._snapping = previous;
+      throw error;
+    }
+  }
+
+  get measurementOverlay(): MeasurementOverlayOptions | null | undefined {
+    return this._measurementOverlay;
+  }
+  set measurementOverlay(value: MeasurementOverlayOptions | null | undefined) {
+    const previous = this._measurementOverlay;
+    this._measurementOverlay = value;
+    try {
+      this._controller?.setMeasurementOverlayOptions(value);
+    } catch (error) {
+      this._measurementOverlay = previous;
+      throw error;
+    }
+  }
+
   get leafletInstance(): typeof LeafletNS | undefined {
     return this._leafletInstance;
   }
@@ -1280,34 +1491,103 @@ export class LeafletDrawMapElement
     this._controller.setRulerUnits(system);
   }
 
-  async activateTool(
+  getSnappingOptions(): SnappingOptions | null {
+    return this._controller?.getSnappingOptions() ?? (this._snapping ? { ...this._snapping } : null);
+  }
+
+  getMeasurementOverlayOptions(): MeasurementOverlayOptions | null {
+    return this._controller?.getMeasurementOverlayOptions() ?? (this._measurementOverlay ? { ...this._measurementOverlay } : null);
+  }
+
+  private _nextToolCommandId(): string {
+    this._toolCommandSequence += 1;
+    return `tool-${Date.now().toString(36)}-element-${this._toolCommandSequence.toString(36)}`;
+  }
+
+  private _emitToolTriggerRequested(
     tool: ToolButtonName,
-    options: ToolTriggerOptions = {},
-  ): Promise<boolean> {
-    const source = options.source ?? "api";
+    options: Required<Pick<ToolTriggerOptions, "source" | "commandId">> &
+      Pick<ToolTriggerOptions, "groupId">,
+  ): void {
     this.dispatchEvent(
       new CustomEvent("leaflet-geokit:tool-trigger-requested", {
         bubbles: true,
         composed: true,
         detail: {
           tool,
-          source,
+          source: options.source,
           groupId: options.groupId,
+          commandId: options.commandId,
           handled: false,
           timestamp: Date.now(),
         } satisfies ToolTriggerEventDetail,
       }),
     );
+  }
+
+  private _baseToolEventDetail(
+    tool: ToolButtonName,
+    action: ToolCommandAction,
+    options: Required<Pick<ToolTriggerOptions, "source" | "commandId">> &
+      Pick<ToolTriggerOptions, "groupId">,
+  ): ToolEventDetail {
+    return {
+      tool,
+      action,
+      source: options.source,
+      groupId: options.groupId,
+      commandId: options.commandId,
+      previousTool: null,
+      activeTool: null,
+      featureIds: [],
+      timestamp: Date.now(),
+    };
+  }
+
+  private _emitStandaloneToolFailure(
+    tool: ToolButtonName,
+    action: ToolCommandAction,
+    options: Required<Pick<ToolTriggerOptions, "source" | "commandId">> &
+      Pick<ToolTriggerOptions, "groupId">,
+    reason: string,
+    emitCommand = true,
+  ): void {
+    const detail = this._baseToolEventDetail(tool, action, options);
+    if (emitCommand) {
+      this._emitToolLifecycleEvent(GeoKitEvent.ToolCommand, detail);
+    }
+    this._emitToolLifecycleEvent(GeoKitEvent.ToolFailed, {
+      ...detail,
+      reason,
+      timestamp: Date.now(),
+    });
+    this._emitToolTriggerResult({
+      tool,
+      source: options.source,
+      groupId: options.groupId,
+      commandId: options.commandId,
+      handled: false,
+      timestamp: Date.now(),
+      error: reason,
+    });
+  }
+
+  async activateTool(
+    tool: ToolButtonName,
+    options: ToolTriggerOptions = {},
+  ): Promise<boolean> {
+    const source = options.source ?? "api";
+    const commandId = options.commandId?.trim() || this._nextToolCommandId();
+    const normalized = { source, groupId: options.groupId, commandId };
+    this._emitToolTriggerRequested(tool, normalized);
 
     if (!this._controller) {
-      this._emitToolTriggerResult({
+      this._emitStandaloneToolFailure(
         tool,
-        source,
-        groupId: options.groupId,
-        handled: false,
-        timestamp: Date.now(),
-        error: "Map controller is not initialized",
-      });
+        tool === "select" ? "deactivate" : "activate",
+        normalized,
+        "Map controller is not initialized",
+      );
       return false;
     }
 
@@ -1327,21 +1607,16 @@ export class LeafletDrawMapElement
         : maybeController.triggerTool?.bind(maybeController);
 
     if (!activate) {
-      this._emitToolTriggerResult({
+      this._emitStandaloneToolFailure(
         tool,
-        source,
-        groupId: options.groupId,
-        handled: false,
-        timestamp: Date.now(),
-        error: "Map controller cannot activate tools",
-      });
+        tool === "select" ? "deactivate" : "activate",
+        normalized,
+        "Map controller cannot activate tools",
+      );
       return false;
     }
 
-    return activate(tool, {
-      source,
-      groupId: options.groupId,
-    });
+    return activate(tool, normalized);
   }
 
   async triggerTool(
@@ -1353,29 +1628,17 @@ export class LeafletDrawMapElement
 
   async deactivateTool(options: ToolTriggerOptions = {}): Promise<boolean> {
     const source = options.source ?? "api";
-    this.dispatchEvent(
-      new CustomEvent("leaflet-geokit:tool-trigger-requested", {
-        bubbles: true,
-        composed: true,
-        detail: {
-          tool: "select",
-          source,
-          groupId: options.groupId,
-          handled: false,
-          timestamp: Date.now(),
-        } satisfies ToolTriggerEventDetail,
-      }),
-    );
+    const commandId = options.commandId?.trim() || this._nextToolCommandId();
+    const normalized = { source, groupId: options.groupId, commandId };
+    this._emitToolTriggerRequested("select", normalized);
 
     if (!this._controller) {
-      this._emitToolTriggerResult({
-        tool: "select",
-        source,
-        groupId: options.groupId,
-        handled: false,
-        timestamp: Date.now(),
-        error: "Map controller is not initialized",
-      });
+      this._emitStandaloneToolFailure(
+        "select",
+        "deactivate",
+        normalized,
+        "Map controller is not initialized",
+      );
       return false;
     }
 
@@ -1392,10 +1655,7 @@ export class LeafletDrawMapElement
     };
 
     if (typeof maybeController.deactivateTool === "function") {
-      return maybeController.deactivateTool({
-        source,
-        groupId: options.groupId,
-      });
+      return maybeController.deactivateTool(normalized);
     }
 
     const activate =
@@ -1404,21 +1664,16 @@ export class LeafletDrawMapElement
         : maybeController.triggerTool?.bind(maybeController);
 
     if (!activate) {
-      this._emitToolTriggerResult({
-        tool: "select",
-        source,
-        groupId: options.groupId,
-        handled: false,
-        timestamp: Date.now(),
-        error: "Map controller cannot deactivate tools",
-      });
+      this._emitStandaloneToolFailure(
+        "select",
+        "deactivate",
+        normalized,
+        "Map controller cannot deactivate tools",
+      );
       return false;
     }
 
-    return activate("select", {
-      source,
-      groupId: options.groupId,
-    });
+    return activate("select", normalized);
   }
 
   async loadGeoJSONFromUrl(
@@ -1584,6 +1839,7 @@ export class LeafletDrawMapElement
 
     try {
       const ids = await this._importWithController(finalFc, {
+        ...options,
         behavior,
         fitToData: options.fitToData ?? false,
       });
@@ -1612,6 +1868,17 @@ export class LeafletDrawMapElement
     }
   }
 
+  getLayers(): MapLayer[] { return this._controller?.getLayers() ?? []; }
+  async setLayerVisibility(id: string, visible: boolean): Promise<void> { this._controller?.setLayerVisibility(id, visible); }
+  async setLayerStyle(id: string, style: LayerStyle): Promise<void> { this._controller?.setLayerStyle(id, style); }
+  async reorderLayers(ids: readonly string[]): Promise<void> { this._controller?.reorderLayers(ids); }
+  async focusLayer(id: string): Promise<void> { await this._controller?.focusLayer(id); }
+  async removeLayer(id: string): Promise<void> { await this._controller?.removeLayer(id); }
+  getLayerCakeSession() { return this._controller?.getLayerCakeSession() ?? null; }
+  async updateLayerCakeSession(update: LayerCakeSessionUpdate): Promise<void> { this._controller?.updateLayerCakeSession(update); }
+  async saveLayerCakeSession(): Promise<void> { this._controller?.saveLayerCakeSession(); }
+  async cancelLayerCakeSession(): Promise<void> { this._controller?.cancelLayerCakeSession(); }
+
   private async _importWithController(
     fc: FeatureCollection,
     options: GeoJSONImportOptions,
@@ -1628,7 +1895,11 @@ export class LeafletDrawMapElement
     };
 
     if (typeof maybeController.importGeoJSON === "function") {
-      return maybeController.importGeoJSON(fc, { behavior, fitToData });
+      return maybeController.importGeoJSON(fc, {
+        ...options,
+        behavior,
+        fitToData,
+      });
     }
 
     if (behavior === "add") {
@@ -1712,6 +1983,22 @@ export class LeafletDrawMapElement
       this._themeStyleEl.remove();
       this._themeStyleEl = null;
     }
+  }
+
+  private _emitToolLifecycleEvent(
+    eventName: ToolLifecycleEventName,
+    detail: ToolEventDetail,
+  ): void {
+    if (eventName === GeoKitEvent.ToolStateChanged) {
+      this._activeTool = detail.activeTool;
+    }
+    const event = new CustomEvent(eventName, {
+      bubbles: true,
+      composed: true,
+      detail,
+    });
+    this._internalToolEvents.add(event);
+    this.dispatchEvent(event);
   }
 
   private _emitToolTriggerResult(detail: ToolTriggerEventDetail): void {

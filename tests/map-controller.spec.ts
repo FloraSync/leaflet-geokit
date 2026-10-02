@@ -64,6 +64,77 @@ describe("MapController", () => {
     controller.destroy();
   });
 
+  it("keeps snapping edit hooks isolated across two maps and restores them on destroy", async () => {
+    const secondContainer = document.createElement("div");
+    secondContainer.style.width = "400px";
+    secondContainer.style.height = "400px";
+    document.body.appendChild(secondContainer);
+    const originalCreateMarker = (L as any).Edit?.PolyVerticesEdit?.prototype?._createMarker;
+    const first = new MapController({
+      ...opts,
+      container,
+      snapping: { enabled: true, modes: ["vertex"], tolerancePx: 8 },
+    });
+    const second = new MapController({
+      ...opts,
+      container: secondContainer,
+      snapping: { enabled: true, modes: ["vertex"], tolerancePx: 8 },
+    });
+
+    try {
+      await first.init();
+      await second.init();
+      expect((L as any).Edit?.PolyVerticesEdit?.prototype?._createMarker).toBe(originalCreateMarker);
+      await first.destroy();
+      expect((L as any).Edit?.PolyVerticesEdit?.prototype?._createMarker).toBe(originalCreateMarker);
+      await second.destroy();
+      expect((L as any).Edit?.PolyVerticesEdit?.prototype?._createMarker).toBe(originalCreateMarker);
+    } finally {
+      await first.destroy();
+      await second.destroy();
+      secondContainer.remove();
+    }
+  });
+
+  it("applies raw touch coordinates and preserves the original touch handler on a snap miss", () => {
+    const controller = new MapController(opts);
+    const position = { lat: 1, lng: 1 };
+    const listeners = new Map<string, (event: any) => void>();
+    const marker = {
+      _geokitSnapBound: false,
+      on: vi.fn((type: string, listener: (event: any) => void) => {
+        listeners.set(type, listener);
+        return marker;
+      }),
+      off: vi.fn(),
+      getLatLng: vi.fn(() => position),
+      setLatLng: vi.fn((next: { lat: number; lng: number }) => {
+        position.lat = next.lat;
+        position.lng = next.lng;
+        return marker;
+      }),
+    };
+    const originalTouch = vi.fn();
+    const originalDrag = vi.fn();
+    const handler = {
+      _onTouchMove: originalTouch,
+      _onMarkerDrag: originalDrag,
+      _poly: { _fid: "edited", toGeoJSON: vi.fn(() => null) },
+    };
+    const cleanup: Array<() => void> = [];
+    vi.spyOn(controller as any, "eventLatLng").mockReturnValue({ lat: 2, lng: 3 });
+    vi.spyOn(controller as any, "findSnapResult").mockReturnValue(null);
+
+    (controller as any).installEditMarkerSnap(marker, handler, cleanup);
+    listeners.get("touchmove")?.({ originalEvent: { touches: [{}] } });
+
+    expect(position).toEqual({ lat: 2, lng: 3 });
+    expect(originalTouch).toHaveBeenCalledTimes(1);
+    expect(originalTouch).toHaveBeenCalledWith(expect.objectContaining({ target: marker }));
+    expect(originalDrag).not.toHaveBeenCalled();
+    cleanup.forEach((dispose) => dispose());
+  });
+
   it("handles read-only mode", async () => {
     opts.readOnly = true;
     const controller = new MapController(opts);
@@ -428,8 +499,8 @@ describe("MapController", () => {
       ".leaflet-geokit-tool-button-icon img",
     ) as HTMLImageElement;
     expect(icon.src).toBe("https://example.com/bed-boundary.svg");
-    expect(icon.parentElement?.style.width).toBe("20px");
-    expect(icon.parentElement?.style.height).toBe("22px");
+    expect(icon.parentElement?.style.getPropertyValue("--_geokit-icon-width")).toBe("20px");
+    expect(icon.parentElement?.style.getPropertyValue("--_geokit-icon-height")).toBe("22px");
 
     const cakeBuiltInIcon = container.querySelector(
       ".leaflet-geokit-cake-icon",
@@ -460,6 +531,11 @@ describe("MapController", () => {
 
     (controller as any).applyToolButtonCustomizations();
 
+    // This fixture skips init; represent a ready runtime before clicking controls.
+    (controller as any).map = { off: vi.fn(), remove: vi.fn() };
+    (controller as any).drawnItems = { getLayers: () => [] };
+    (controller as any).applyToolButtonCustomizations();
+
     expect(container.hasAttribute("data-geokit-default-toolbar-hidden")).toBe(
       true,
     );
@@ -476,7 +552,7 @@ describe("MapController", () => {
     ) as HTMLButtonElement;
     expect(saveButton).toBeTruthy();
     expect(saveButton.querySelector("svg")).toBeTruthy();
-    expect(saveButton.textContent?.trim()).toBe("");
+    expect(saveButton.querySelector('[part="tooltip"]')?.textContent).toBe("Save map geometry");
 
     saveButton.click();
 
@@ -620,6 +696,10 @@ describe("MapController", () => {
 
     (controller as any).applyToolButtonCustomizations();
 
+    (controller as any).map = { off: vi.fn(), remove: vi.fn() };
+    (controller as any).drawnItems = { getLayers: () => [] };
+    (controller as any).applyToolButtonCustomizations();
+
     const drawGroup = container.querySelector(
       '[data-geokit-toolbar-group="irrigation-draw"]',
     ) as HTMLElement;
@@ -664,16 +744,16 @@ describe("MapController", () => {
     expect(
       container.querySelector('[data-geokit-tool-popover="true"]'),
     ).toBeNull();
-    expect(polygonButton.getAttribute("aria-expanded")).toBeNull();
+    expect(polygonButton.getAttribute("aria-expanded")).toBe("false");
     expect(onPopoverClose).toHaveBeenCalledTimes(1);
 
     polygonButton.click();
     expect(polygonEnable).toHaveBeenCalledTimes(2);
-    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    container.querySelector('[data-geokit-tool-popover="true"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, composed: true }));
     expect(
       container.querySelector('[data-geokit-tool-popover="true"]'),
     ).toBeNull();
-    expect(polygonButton.getAttribute("aria-expanded")).toBeNull();
+    expect(polygonButton.getAttribute("aria-expanded")).toBe("false");
     expect(onPopoverClose).toHaveBeenCalledTimes(2);
 
     expect(onToolTrigger).toHaveBeenLastCalledWith(
@@ -732,6 +812,10 @@ describe("MapController", () => {
 
     (controller as any).applyToolButtonCustomizations();
 
+    (controller as any).map = { off: vi.fn(), remove: vi.fn() };
+    (controller as any).drawnItems = { getLayers: () => [] };
+    (controller as any).applyToolButtonCustomizations();
+
     const primaryGroup = container.querySelector(
       '[data-geokit-toolbar-group="irrigation-primary"]',
     ) as HTMLElement;
@@ -771,7 +855,7 @@ describe("MapController", () => {
     secondaryButton.click();
 
     expect(polygonEnable).toHaveBeenCalledTimes(2);
-    expect(primaryButton.getAttribute("aria-expanded")).toBeNull();
+    expect(primaryButton.getAttribute("aria-expanded")).toBe("false");
     expect(secondaryButton.getAttribute("aria-expanded")).toBe("true");
     expect(
       container.querySelectorAll('[data-geokit-tool-popover="true"]'),

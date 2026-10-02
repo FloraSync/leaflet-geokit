@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.9.0 - 2026-10-02
+
+- Added host-controlled toolbar capabilities, lifecycle events, keyboard accessibility, responsive layout, and extensible styling for polished custom map controls.
+- Added named layer registration, visibility and style management, provider adapters, and a layer-manager harness for application-owned layer workflows.
+- Added GeoJSON validation and transformation pipelines, snapping and measurement primitives, grower-oriented geometry utilities, and public type coverage for the new APIs.
+- Hardened pointer-driven feature movement and expanded unit and Playwright coverage across tool activation, touch geometry, accessibility, providers, layers, snapping, and consumer-facing contracts.
+- Documented the new toolbar, layer, provider, GeoJSON, geometry, snapping, measurement, and Google Maps adapter surfaces.
+
 ## 0.8.3 - 2026-08-28
 
 - Upgraded `uuid` to a patched release so consumer audits no longer inherit GHSA-w5hq-g745-h8pq through GeoKit.
