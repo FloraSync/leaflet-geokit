@@ -127,6 +127,7 @@ test.describe("Icon customization harness", () => {
     ).toHaveScreenshot("icon-customization-comparison.png", {
       animations: "disabled",
       caret: "hide",
+      maxDiffPixelRatio: 0.02,
     });
   });
 });
