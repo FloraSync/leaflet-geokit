@@ -65,6 +65,8 @@
 
       aside {
         display: grid;
+        min-height: 0;
+        overflow: auto;
         align-content: start;
         gap: 14px;
         padding: 16px;
@@ -243,7 +245,6 @@ leaflet-geokit::part(toolbar-group) {
         tile-url="/synthetic-irrigation-tile.svg"
         tile-attribution="Synthetic irrigation demo tile"
         draw-polygon
-        draw-polyline
         draw-rectangle
         draw-circle
         draw-layer-cake
