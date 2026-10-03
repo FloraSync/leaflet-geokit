@@ -1,3 +1,4 @@
+import type { LayerDefinition } from "@src/types/layers";
 import type {
   Feature,
   FeatureCollection,
@@ -14,7 +15,7 @@ export interface GeoJSONImportOptions {
   /** Restore the portable registry snapshot; supported with replace only. */
   preserveLayers?: boolean;
   /** Group imported features, including guide/reference or measurement overlays. */
-  layer?: import("@src/types/layers").LayerDefinition;
+  layer?: LayerDefinition;
   behavior?: GeoJSONImportBehavior;
   fitToData?: boolean;
   /** Reject invalid data before changing layers. Legacy default is false. */
