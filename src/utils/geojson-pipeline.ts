@@ -326,7 +326,9 @@ export function normalizeGeoJSON(
   const summary = validateGeoJSON(input);
   if (!summary.valid) throw new GeoJSONValidationError(summary);
   const value = clone(input) as
-    FeatureCollection | Feature | Feature["geometry"];
+    | FeatureCollection
+    | Feature
+    | Feature["geometry"];
   const fc: FeatureCollection =
     value.type === "FeatureCollection"
       ? value

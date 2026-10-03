@@ -93,8 +93,12 @@ function collapseExpandedFeatureGroup(
   });
   const first = sorted[0]!.feature;
   const properties = buildCollapsedProperties(baseId, first.properties);
-  const sources = first.properties?.[SOURCE_KEY] as ExpansionSource[] | undefined;
-  const source = Array.isArray(sources) ? sources[sources.length - 1] : undefined;
+  const sources = first.properties?.[SOURCE_KEY] as
+    | ExpansionSource[]
+    | undefined;
+  const source = Array.isArray(sources)
+    ? sources[sources.length - 1]
+    : undefined;
   const geometries = sorted
     .map((entry) => entry.feature.geometry)
     .filter((geometry): geometry is Geometry => geometry != null);
@@ -107,17 +111,26 @@ function collapseExpandedFeatureGroup(
     };
   } else if (geometries.length === 1 && !source) {
     geometry = geometries[0]!;
-  } else if (source?.type !== "GeometryCollection" && geometries.every((candidate) => candidate.type === "Point")) {
+  } else if (
+    source?.type !== "GeometryCollection" &&
+    geometries.every((candidate) => candidate.type === "Point")
+  ) {
     geometry = {
       type: "MultiPoint",
       coordinates: geometries.map((candidate) => candidate.coordinates),
     };
-  } else if (source?.type !== "GeometryCollection" && geometries.every((candidate) => candidate.type === "LineString")) {
+  } else if (
+    source?.type !== "GeometryCollection" &&
+    geometries.every((candidate) => candidate.type === "LineString")
+  ) {
     geometry = {
       type: "MultiLineString",
       coordinates: geometries.map((candidate) => candidate.coordinates),
     };
-  } else if (source?.type !== "GeometryCollection" && geometries.every((candidate) => candidate.type === "Polygon")) {
+  } else if (
+    source?.type !== "GeometryCollection" &&
+    geometries.every((candidate) => candidate.type === "Polygon")
+  ) {
     geometry = {
       type: "MultiPolygon",
       coordinates: geometries.map((candidate) => candidate.coordinates),
@@ -138,7 +151,10 @@ function collapseExpandedFeatureGroup(
   return {
     type: "Feature",
     id: source?.id ?? baseId,
-    properties: source?.nullProperties && Object.keys(properties ?? {}).length === 0 ? null : properties,
+    properties:
+      source?.nullProperties && Object.keys(properties ?? {}).length === 0
+        ? null
+        : properties,
     geometry,
   };
 }
@@ -279,7 +295,9 @@ export function expandMultiGeometries(
         (properties as Record<string, unknown>).id = derivedId;
       }
 
-      const previous = Array.isArray(baseProps[SOURCE_KEY]) ? baseProps[SOURCE_KEY] : [];
+      const previous = Array.isArray(baseProps[SOURCE_KEY])
+        ? baseProps[SOURCE_KEY]
+        : [];
       const source: ExpansionSource = {
         type: f.geometry.type,
         hasPropertyId: Object.prototype.hasOwnProperty.call(baseProps, "id"),
@@ -288,7 +306,8 @@ export function expandMultiGeometries(
       if (f.id !== undefined) source.id = f.id;
       else if (sourceId !== undefined) source.id = sourceId;
       if (source.hasPropertyId) source.propertyId = baseProps.id;
-      if (options.preserveMetadata) properties[SOURCE_KEY] = [...previous, source];
+      if (options.preserveMetadata)
+        properties[SOURCE_KEY] = [...previous, source];
 
       return {
         type: "Feature",
@@ -335,7 +354,14 @@ export function expandMultiGeometries(
     }
   }
   const expanded = { type: "FeatureCollection" as const, features: out };
-  if (options.preserveMetadata && out.some((f) => f.geometry.type.startsWith("Multi") || f.geometry.type === "GeometryCollection")) {
+  if (
+    options.preserveMetadata &&
+    out.some(
+      (f) =>
+        f.geometry.type.startsWith("Multi") ||
+        f.geometry.type === "GeometryCollection",
+    )
+  ) {
     return expandMultiGeometries(expanded, options);
   }
   return expanded;
@@ -348,9 +374,13 @@ export function adaptFeatureCollectionForExport(
   const adapter = options.adapter ?? "editing";
   if (adapter !== "source") return fc;
 
-  const depth = (f: Feature): number => Array.isArray(f.properties?.[SOURCE_KEY]) ? f.properties![SOURCE_KEY].length : 0;
+  const depth = (f: Feature): number =>
+    Array.isArray(f.properties?.[SOURCE_KEY])
+      ? f.properties![SOURCE_KEY].length
+      : 0;
   const maxDepth = fc.features.reduce((max, f) => Math.max(max, depth(f)), 0);
-  const eligible = (f: Feature) => maxDepth === 0 ? !options.provenanceOnly : depth(f) === maxDepth;
+  const eligible = (f: Feature) =>
+    maxDepth === 0 ? !options.provenanceOnly : depth(f) === maxDepth;
   const grouped = new Map<string, ExpandedFeatureEntry[]>();
   for (const feature of fc.features) {
     if (!eligible(feature)) continue;
@@ -370,7 +400,10 @@ export function adaptFeatureCollectionForExport(
   const emittedBaseIds = new Set<string>();
   const features: Feature[] = [];
   for (const feature of fc.features) {
-    if (!eligible(feature)) { features.push(feature); continue; }
+    if (!eligible(feature)) {
+      features.push(feature);
+      continue;
+    }
     const parsed = parseExpandedChildId(feature);
     if (!parsed) {
       features.push(feature);
@@ -385,7 +418,14 @@ export function adaptFeatureCollectionForExport(
   }
 
   const result: FeatureCollection = { type: "FeatureCollection", features };
-  if (features.some((f) => Array.isArray(f.properties?.[SOURCE_KEY]) && f.properties![SOURCE_KEY].length > 0 && parseExpandedChildId(f))) {
+  if (
+    features.some(
+      (f) =>
+        Array.isArray(f.properties?.[SOURCE_KEY]) &&
+        f.properties![SOURCE_KEY].length > 0 &&
+        parseExpandedChildId(f),
+    )
+  ) {
     return adaptFeatureCollectionForExport(result, options);
   }
   return result;

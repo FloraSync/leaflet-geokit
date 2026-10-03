@@ -21,16 +21,25 @@ export function bindMovePointer(
   let pointerId: number | null = null;
   let restoreDragging = false;
   // Leaflet already disabled its handlers before emitting unload.
-  const unloading = () => { restoreDragging = false; };
+  const unloading = () => {
+    restoreDragging = false;
+  };
   map.on("unload", unloading);
-  const eventFor = (event: PointerEvent, target?: L.Layer) => ({
-    target, originalEvent: event, latlng: map.mouseEventToLatLng(event),
-  }) as unknown as L.LeafletMouseEvent;
-  const stop = (event: PointerEvent) => { event.preventDefault(); event.stopPropagation(); };
+  const eventFor = (event: PointerEvent, target?: L.Layer) =>
+    ({
+      target,
+      originalEvent: event,
+      latlng: map.mouseEventToLatLng(event),
+    }) as unknown as L.LeafletMouseEvent;
+  const stop = (event: PointerEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
   const release = () => {
     const id = pointerId;
     pointerId = null; // lostpointercapture after a normal release must not cancel.
-    if (id !== null && container.hasPointerCapture?.(id)) container.releasePointerCapture(id);
+    if (id !== null && container.hasPointerCapture?.(id))
+      container.releasePointerCapture(id);
     if (restoreDragging) map.dragging.enable();
     restoreDragging = false;
   };
@@ -40,17 +49,27 @@ export function bindMovePointer(
     const path = event.composedPath();
     const point = map.mouseEventToLayerPoint(event);
     const testedRenderers = new Set<unknown>();
-    layers.eachLayer(layer => {
+    layers.eachLayer((layer) => {
       const element = (layer as any).getElement?.();
       if (element && path.includes(element)) selected = layer;
       // Canvas paths have no DOM element. Reuse Leaflet's rendered hit testing
       // and draw order (including stroke tolerance), not geographic bounds.
       const renderer = (layer as any)._renderer;
-      if (!element && renderer && !testedRenderers.has(renderer) && path.includes(renderer._container)) {
+      if (
+        !element &&
+        renderer &&
+        !testedRenderers.has(renderer) &&
+        path.includes(renderer._container)
+      ) {
         testedRenderers.add(renderer);
         for (let order = renderer._drawFirst; order; order = order.next) {
           const candidate = order.layer;
-          if (layers.hasLayer(candidate) && candidate.options.interactive && candidate._containsPoint(point)) selected = candidate;
+          if (
+            layers.hasLayer(candidate) &&
+            candidate.options.interactive &&
+            candidate._containsPoint(point)
+          )
+            selected = candidate;
         }
       }
     });

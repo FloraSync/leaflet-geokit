@@ -2,7 +2,11 @@ import type { Feature, FeatureCollection } from "geojson";
 import type { GeoJSONExportAdapter } from "@src/utils/geojson";
 
 export type GeoKitStatusState =
-  "uninitialized" | "initializing" | "ready" | "loading" | "error";
+  | "uninitialized"
+  | "initializing"
+  | "ready"
+  | "loading"
+  | "error";
 
 export interface GeoKitDiagnosticSummary {
   code: string;

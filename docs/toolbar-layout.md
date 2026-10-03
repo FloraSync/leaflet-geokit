@@ -69,7 +69,9 @@ leaflet-geokit::part(toolbar-group-draw) {
     --geokit-toolbar-order: -1;
   }
 }
-leaflet-geokit { --geokit-zone-gap: 8px; }
+leaflet-geokit {
+  --geokit-zone-gap: 8px;
+}
 ```
 
 Configuration responds to **map width**; this CSS media-query example responds to

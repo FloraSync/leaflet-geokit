@@ -92,8 +92,8 @@ export class LayerRegistry {
       ids.some((id) => !this.layers.some((layer) => layer.id === id))
     )
       throw new Error("Order must contain every layer id exactly once");
-    this.layers = ids.map((id) =>
-      this.layers.find((layer) => layer.id === id)!,
+    this.layers = ids.map(
+      (id) => this.layers.find((layer) => layer.id === id)!,
     );
   }
   removeLayer(id: string): void {

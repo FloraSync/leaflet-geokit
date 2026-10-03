@@ -1,6 +1,9 @@
 import type * as Leaflet from "leaflet";
 import { buildTileURL } from "./TileProviderFactory";
-import type { TileProviderConfig, TileURLTemplate } from "./TileProviderFactory";
+import type {
+  TileProviderConfig,
+  TileURLTemplate,
+} from "./TileProviderFactory";
 
 /** Technical potential is not a license to cache a vendor's data. */
 export type OfflineSupport = "unsupported" | "host-managed" | "unknown";
@@ -68,7 +71,9 @@ export function getProviderDiagnostics(
   };
 }
 
-export function createRasterProvider(config: TileProviderConfig): RasterTileProvider {
+export function createRasterProvider(
+  config: TileProviderConfig,
+): RasterTileProvider {
   const name = config.provider.trim().toLowerCase();
   // Snapshot the config so later caller mutation cannot silently change a provider.
   const snapshot = { ...config };
@@ -84,11 +89,17 @@ export function createRasterProvider(config: TileProviderConfig): RasterTileProv
 }
 
 /** Existing custom tile-url behavior, without guessing licensing or authentication. */
-export function createCustomRasterProvider(config: TileURLTemplate): RasterTileProvider {
+export function createCustomRasterProvider(
+  config: TileURLTemplate,
+): RasterTileProvider {
   const snapshot = { ...config, subdomains: config.subdomains?.slice() };
   return {
     kind: "raster",
-    capabilities: { attributionRequired: true, offline: "unknown", apiKey: "host-defined" },
+    capabilities: {
+      attributionRequired: true,
+      offline: "unknown",
+      apiKey: "host-defined",
+    },
     resolve: () => ({ ...snapshot, subdomains: snapshot.subdomains?.slice() }),
   };
 }

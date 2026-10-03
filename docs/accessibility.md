@@ -6,17 +6,17 @@ existing capability gates and public lifecycle events.
 
 ## Command map
 
-| Key | Context | Action |
-| --- | --- | --- |
-| Tab / Shift+Tab | Map controls | Visit enabled controls using the browser's normal tab order; no toolbar focus trap. |
-| Left / Right | Horizontal toolbar | Previous / next enabled tool, wrapping at the ends. |
-| Up / Down | Vertical toolbar | Previous / next enabled tool, wrapping at the ends. |
-| Home / End | Toolbar | First / last enabled tool. |
-| Enter / Space | Tool button | Activate the tool. Also works on native Leaflet anchor buttons and the ruler control. |
-| Escape | Active map mode | Deactivate/cancel using the existing select command; no export. |
-| Escape | Focused tool popover or settings dialog | Close it and return focus to its trigger. A subsequent Escape can cancel an active map mode. |
-| Ctrl+Enter / Cmd+Enter | Map or toolbar | Commit active edit/delete changes; confirm a pending move; otherwise export completed geometry via the save command. |
-| Tab / Shift+Tab | Measurement units dialog | Cycle through the selected unit radio and Close button. Radio arrow keys remain native. |
+| Key                    | Context                                 | Action                                                                                                               |
+| ---------------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Tab / Shift+Tab        | Map controls                            | Visit enabled controls using the browser's normal tab order; no toolbar focus trap.                                  |
+| Left / Right           | Horizontal toolbar                      | Previous / next enabled tool, wrapping at the ends.                                                                  |
+| Up / Down              | Vertical toolbar                        | Previous / next enabled tool, wrapping at the ends.                                                                  |
+| Home / End             | Toolbar                                 | First / last enabled tool.                                                                                           |
+| Enter / Space          | Tool button                             | Activate the tool. Also works on native Leaflet anchor buttons and the ruler control.                                |
+| Escape                 | Active map mode                         | Deactivate/cancel using the existing select command; no export.                                                      |
+| Escape                 | Focused tool popover or settings dialog | Close it and return focus to its trigger. A subsequent Escape can cancel an active map mode.                         |
+| Ctrl+Enter / Cmd+Enter | Map or toolbar                          | Commit active edit/delete changes; confirm a pending move; otherwise export completed geometry via the save command. |
+| Tab / Shift+Tab        | Measurement units dialog                | Cycle through the selected unit radio and Close button. Radio arrow keys remain native.                              |
 
 Text fields, selects, editable content and dialogs do not receive map-level
 shortcuts. Single-letter shortcuts are deliberately avoided. Measurement mode is

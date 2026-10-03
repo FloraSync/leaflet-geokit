@@ -2,7 +2,8 @@
 
 Status: design spike only. No Google SDK, browser key, billing account, paid tile
 endpoint or runtime network request has been added to GeoKit. Core stays Leaflet
-+ OSM. See [provider boundary and security guidance](providers.md).
+
+- OSM. See [provider boundary and security guidance](providers.md).
 
 ## Package boundary
 

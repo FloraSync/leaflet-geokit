@@ -5,7 +5,10 @@ import type {
   ToolToolbarPosition,
 } from "@src/types/public";
 import { toolbarStyles } from "./toolbar-styles";
-import { installToolbarAccessibility, announceToolStatus } from "./toolbar-accessibility";
+import {
+  installToolbarAccessibility,
+  announceToolStatus,
+} from "./toolbar-accessibility";
 import { createToolbarLayout, usesToolbarLayout } from "./toolbar-layout";
 
 interface ToolButtonTarget {
@@ -144,8 +147,10 @@ export function applyToolButtonConfig(
 
   renderToolbarGroups(container, config, options);
   installToolbarAccessibility(container);
-  if (!container.querySelector("[data-geokit-announcement='status']")) announceToolStatus(container, "");
-  if (!container.querySelector("[data-geokit-announcement='alert']")) announceToolStatus(container, "", true);
+  if (!container.querySelector("[data-geokit-announcement='status']"))
+    announceToolStatus(container, "");
+  if (!container.querySelector("[data-geokit-announcement='alert']"))
+    announceToolStatus(container, "", true);
   setActiveToolbarTool(
     container,
     (container.dataset.geokitActiveTool as ToolButtonName) || null,
@@ -162,11 +167,20 @@ export function setActiveToolbarTool(
     .querySelectorAll<HTMLButtonElement>(".leaflet-geokit-toolbar-button")
     .forEach((button) => {
       const active = Boolean(
-        tool && button.dataset.geokitTool === TOOL_BUTTON_TARGETS[tool].dataTool,
+        tool &&
+          button.dataset.geokitTool === TOOL_BUTTON_TARGETS[tool].dataTool,
       );
       const modeTools = [
-        "polygon", "polyline", "rectangle", "circle", "marker",
-        "layer-cake", "move", "edit", "delete", "ruler",
+        "polygon",
+        "polyline",
+        "rectangle",
+        "circle",
+        "marker",
+        "layer-cake",
+        "move",
+        "edit",
+        "delete",
+        "ruler",
       ];
       if (modeTools.includes(button.dataset.geokitTool ?? "")) {
         button.setAttribute("aria-pressed", String(active));
@@ -460,17 +474,27 @@ function bindTrigger(
     });
 
     // Draw activation can focus the map after opening the configured dialog.
-    const popover = container.querySelector<HTMLElement>(CUSTOM_POPOVER_SELECTOR);
+    const popover = container.querySelector<HTMLElement>(
+      CUSTOM_POPOVER_SELECTOR,
+    );
     if (popover) {
-      (popover.querySelector<HTMLElement>("button:not(:disabled), [href], input, select, textarea, [tabindex='0']") ?? popover).focus();
+      (
+        popover.querySelector<HTMLElement>(
+          "button:not(:disabled), [href], input, select, textarea, [tabindex='0']",
+        ) ?? popover
+      ).focus();
     }
 
     // Leaflet.draw focuses the map when enabling a mode. Keyboard users must
     // keep their place in the toolbar unless the command opened a dialog.
     if ((event as MouseEvent).detail === 0) {
       const root = button.getRootNode();
-      const active = root instanceof ShadowRoot ? root.activeElement : document.activeElement;
-      if (!(active instanceof HTMLElement && active.closest("[role='dialog']"))) button.focus();
+      const active =
+        root instanceof ShadowRoot
+          ? root.activeElement
+          : document.activeElement;
+      if (!(active instanceof HTMLElement && active.closest("[role='dialog']")))
+        button.focus();
     }
 
     if (options.activate) {
@@ -522,7 +546,10 @@ function renderToolbarGroups(
     (group) => group?.hideDefaultToolbar !== false,
   );
   setDefaultToolbarsHidden(container, shouldHideDefaultToolbar);
-  const layoutEntries: { element: HTMLElement; config: ToolToolbarGroupConfig }[] = [];
+  const layoutEntries: {
+    element: HTMLElement;
+    config: ToolToolbarGroupConfig;
+  }[] = [];
 
   groups.forEach((group) => {
     if (!group?.id || !Array.isArray(group.tools) || group.tools.length === 0) {
@@ -570,13 +597,17 @@ function renderToolbarGroups(
     });
 
     if (usesToolbarLayout(group)) {
-      toolbar.setAttribute("part", `toolbar-group toolbar-group-${group.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`);
+      toolbar.setAttribute(
+        "part",
+        `toolbar-group toolbar-group-${group.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`,
+      );
       layoutEntries.push({ element: toolbar, config: group });
     } else {
       container.appendChild(toolbar);
     }
   });
-  if (layoutEntries.length) container.appendChild(createToolbarLayout(layoutEntries));
+  if (layoutEntries.length)
+    container.appendChild(createToolbarLayout(layoutEntries));
 }
 
 function setDefaultToolbarsHidden(
@@ -678,8 +709,8 @@ function createToolbarButton(
     slot.name = `${slotPrefix}-${name}`;
     slot.textContent =
       name === "badge"
-        ? config?.badge ?? ""
-        : config?.tooltip ?? config?.ariaLabel ?? title;
+        ? (config?.badge ?? "")
+        : (config?.tooltip ?? config?.ariaLabel ?? title);
     affordance.appendChild(slot);
     button.appendChild(affordance);
   }
@@ -771,7 +802,11 @@ function showToolPopover(
   });
   bindPopoverCloseEvents(options.container, button, popover);
   popover.tabIndex = -1;
-  (popover.querySelector<HTMLElement>("button:not(:disabled), [href], input, select, textarea, [tabindex='0']") ?? popover).focus();
+  (
+    popover.querySelector<HTMLElement>(
+      "button:not(:disabled), [href], input, select, textarea, [tabindex='0']",
+    ) ?? popover
+  ).focus();
 
   config.popover.onOpen?.({
     tool,
@@ -812,7 +847,10 @@ function bindPopoverCloseEvents(
   popover: HTMLElement,
 ): void {
   const keydown: EventListener = (event) => {
-    if ((event as KeyboardEvent).key === "Escape" && event.composedPath().some(node => node === popover || node === button)) {
+    if (
+      (event as KeyboardEvent).key === "Escape" &&
+      event.composedPath().some((node) => node === popover || node === button)
+    ) {
       event.preventDefault();
       event.stopPropagation();
       closeToolPopover(container);
@@ -820,7 +858,9 @@ function bindPopoverCloseEvents(
     }
   };
   const pointerdown: EventListener = (event) => {
-    if (event.composedPath().some(node => node === popover || node === button)) {
+    if (
+      event.composedPath().some((node) => node === popover || node === button)
+    ) {
       return;
     }
 

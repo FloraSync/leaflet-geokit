@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { applyToolButtonConfig } from "@src/lib/tool-buttons";
-import { announceToolStatus, installToolbarAccessibility } from "@src/lib/toolbar-accessibility";
+import {
+  announceToolStatus,
+  installToolbarAccessibility,
+} from "@src/lib/toolbar-accessibility";
 
 const container = document.createElement("div");
 afterEach(() => {
@@ -8,13 +11,35 @@ afterEach(() => {
   container.replaceChildren();
   container.remove();
 });
-const key = (element: HTMLElement, value: string) => element.dispatchEvent(new KeyboardEvent("keydown", { key: value, bubbles: true, composed: true, cancelable: true }));
+const key = (element: HTMLElement, value: string) =>
+  element.dispatchEvent(
+    new KeyboardEvent("keydown", {
+      key: value,
+      bubbles: true,
+      composed: true,
+      cancelable: true,
+    }),
+  );
 
 describe("toolbar accessibility", () => {
   it("navigates orientation, wraps, and skips disabled tools without removing Tab access", () => {
     document.body.append(container);
-    applyToolButtonConfig(container, { marker: { disabled: true } }, { toolbarGroups: [{ id: "tools", tools: ["polygon", "marker", "save"], orientation: "horizontal" }] });
-    const [first, disabled, last] = Array.from(container.querySelectorAll("button"));
+    applyToolButtonConfig(
+      container,
+      { marker: { disabled: true } },
+      {
+        toolbarGroups: [
+          {
+            id: "tools",
+            tools: ["polygon", "marker", "save"],
+            orientation: "horizontal",
+          },
+        ],
+      },
+    );
+    const [first, disabled, last] = Array.from(
+      container.querySelectorAll("button"),
+    );
     first.focus();
     key(first, "ArrowRight");
     expect(document.activeElement).toBe(last);
@@ -29,9 +54,10 @@ describe("toolbar accessibility", () => {
   });
 
   it("activates native anchor buttons once with Space and Enter after repeated installation", () => {
-    container.innerHTML = '<div class="leaflet-draw-toolbar"><a href="#" data-geokit-tool="polygon" title="Draw polygon"></a></div>';
+    container.innerHTML =
+      '<div class="leaflet-draw-toolbar"><a href="#" data-geokit-tool="polygon" title="Draw polygon"></a></div>';
     const button = container.querySelector("a")!;
-    const click = vi.fn(event => event.preventDefault());
+    const click = vi.fn((event) => event.preventDefault());
     button.addEventListener("click", click);
     installToolbarAccessibility(container);
     installToolbarAccessibility(container);
@@ -49,8 +75,21 @@ describe("toolbar accessibility", () => {
     document.body.append(host);
     const root = host.attachShadow({ mode: "open" });
     root.append(container);
-    applyToolButtonConfig(container, { save: { popover: { title: "Save options", html: '<button type="button">Confirm</button>' } } }, { toolbarGroups: [{ id: "tools", tools: ["save"] }] });
-    const button = container.querySelector<HTMLButtonElement>(".leaflet-geokit-toolbar-button")!;
+    applyToolButtonConfig(
+      container,
+      {
+        save: {
+          popover: {
+            title: "Save options",
+            html: '<button type="button">Confirm</button>',
+          },
+        },
+      },
+      { toolbarGroups: [{ id: "tools", tools: ["save"] }] },
+    );
+    const button = container.querySelector<HTMLButtonElement>(
+      ".leaflet-geokit-toolbar-button",
+    )!;
     button.click();
     const dialog = container.querySelector<HTMLElement>("[role='dialog']")!;
     expect(root.activeElement).toBe(dialog.querySelector("button"));
@@ -64,8 +103,12 @@ describe("toolbar accessibility", () => {
   it("announces status and errors as text in distinct persistent live regions", () => {
     announceToolStatus(container, "polygon: started");
     announceToolStatus(container, "<error>", true);
-    expect(container.querySelector("[role='status']")?.textContent).toBe("polygon: started");
-    expect(container.querySelector("[role='alert']")?.textContent).toBe("<error>");
+    expect(container.querySelector("[role='status']")?.textContent).toBe(
+      "polygon: started",
+    );
+    expect(container.querySelector("[role='alert']")?.textContent).toBe(
+      "<error>",
+    );
     expect(container.querySelector("error")).toBeNull();
     announceToolStatus(container, "polygon: completed");
     expect(container.querySelectorAll("[role='status']")).toHaveLength(1);

@@ -51,4 +51,9 @@ export type {
   SupportedGeoJSON,
 } from "@src/utils/grower-geometry";
 export { findSnap } from "@src/lib/snapping";
-export type { SnapLatLng, SnapResult, SnapScreenPoint, SnapTarget } from "@src/lib/snapping";
+export type {
+  SnapLatLng,
+  SnapResult,
+  SnapScreenPoint,
+  SnapTarget,
+} from "@src/lib/snapping";

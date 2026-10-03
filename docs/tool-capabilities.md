@@ -44,18 +44,18 @@ Snapshots and events never expose mutable internal arrays or registry objects.
 
 The registry reflects:
 
-| Reason code | Meaning / recovery |
-| --- | --- |
-| `not_ready` | Wait for initialization or reconnect the element. |
-| `read_only` | Drawing, move, edit and delete need read-only removed. Save/select/ruler remain usable. |
-| `missing_attribute` | Enable the named draw/edit/delete/ruler attribute. Delete also needs `edit-features` because Leaflet.draw owns remove under its edit toolbar. |
-| `unavailable_plugin` | The configured tool's actual handler/plugin is absent. Supply the runtime/plugin and rebuild. |
-| `no_editable_layers` | Move/edit/delete need at least one actual editable layer, not merely a GeoJSON feature count. |
-| `empty_selection` | An opt-in selection prerequisite has no valid selected feature ids. |
-| `missing_provider` | Requested tile provider is not supported. |
-| `missing_api_key` | Requested provider needs credentials; use a supported free provider or configure credentials privately. |
-| `runtime_error` | A tool threw/failed or the requested provider failed. Tool activation may be retried explicitly; successful retry/rebuild clears its failure. Provider change/reconfiguration clears provider failure. |
-| `configured_disabled` | Host disabled the managed button; imperative compatibility API remains available. |
+| Reason code           | Meaning / recovery                                                                                                                                                                                     |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `not_ready`           | Wait for initialization or reconnect the element.                                                                                                                                                      |
+| `read_only`           | Drawing, move, edit and delete need read-only removed. Save/select/ruler remain usable.                                                                                                                |
+| `missing_attribute`   | Enable the named draw/edit/delete/ruler attribute. Delete also needs `edit-features` because Leaflet.draw owns remove under its edit toolbar.                                                          |
+| `unavailable_plugin`  | The configured tool's actual handler/plugin is absent. Supply the runtime/plugin and rebuild.                                                                                                          |
+| `no_editable_layers`  | Move/edit/delete need at least one actual editable layer, not merely a GeoJSON feature count.                                                                                                          |
+| `empty_selection`     | An opt-in selection prerequisite has no valid selected feature ids.                                                                                                                                    |
+| `missing_provider`    | Requested tile provider is not supported.                                                                                                                                                              |
+| `missing_api_key`     | Requested provider needs credentials; use a supported free provider or configure credentials privately.                                                                                                |
+| `runtime_error`       | A tool threw/failed or the requested provider failed. Tool activation may be retried explicitly; successful retry/rebuild clears its failure. Provider change/reconfiguration clears provider failure. |
+| `configured_disabled` | Host disabled the managed button; imperative compatibility API remains available.                                                                                                                      |
 
 Reasons have deterministic precedence: readiness, read-only, attributes, plugin,
 editable layers, selection, provider, runtime error, host-disabled flag. Changes
@@ -102,7 +102,9 @@ selection engine, provider provisioning, or host API wiring is introduced.
   map.addEventListener("leaflet-geokit:tool-capabilities-changed", render);
   render();
   for (const button of buttons) {
-    button.addEventListener("click", () => map.activateTool(button.dataset.tool));
+    button.addEventListener("click", () =>
+      map.activateTool(button.dataset.tool),
+    );
   }
 </script>
 ```

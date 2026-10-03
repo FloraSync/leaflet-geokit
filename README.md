@@ -890,7 +890,9 @@ console.log("Imported features with IDs:", ids);
 ```javascript
 await map.loadGeoJSON({
   type: "FeatureCollection",
-  features: [/* ... */],
+  features: [
+    /* ... */
+  ],
 });
 ```
 
@@ -926,7 +928,9 @@ await map.clearLayers();
 await map.updateFeature(featureId, {
   type: "Feature",
   properties: { name: "Updated" },
-  geometry: {/* ... */},
+  geometry: {
+    /* ... */
+  },
 });
 ```
 

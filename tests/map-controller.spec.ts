@@ -69,7 +69,8 @@ describe("MapController", () => {
     secondContainer.style.width = "400px";
     secondContainer.style.height = "400px";
     document.body.appendChild(secondContainer);
-    const originalCreateMarker = (L as any).Edit?.PolyVerticesEdit?.prototype?._createMarker;
+    const originalCreateMarker = (L as any).Edit?.PolyVerticesEdit?.prototype
+      ?._createMarker;
     const first = new MapController({
       ...opts,
       container,
@@ -84,11 +85,17 @@ describe("MapController", () => {
     try {
       await first.init();
       await second.init();
-      expect((L as any).Edit?.PolyVerticesEdit?.prototype?._createMarker).toBe(originalCreateMarker);
+      expect((L as any).Edit?.PolyVerticesEdit?.prototype?._createMarker).toBe(
+        originalCreateMarker,
+      );
       await first.destroy();
-      expect((L as any).Edit?.PolyVerticesEdit?.prototype?._createMarker).toBe(originalCreateMarker);
+      expect((L as any).Edit?.PolyVerticesEdit?.prototype?._createMarker).toBe(
+        originalCreateMarker,
+      );
       await second.destroy();
-      expect((L as any).Edit?.PolyVerticesEdit?.prototype?._createMarker).toBe(originalCreateMarker);
+      expect((L as any).Edit?.PolyVerticesEdit?.prototype?._createMarker).toBe(
+        originalCreateMarker,
+      );
     } finally {
       await first.destroy();
       await second.destroy();
@@ -122,7 +129,10 @@ describe("MapController", () => {
       _poly: { _fid: "edited", toGeoJSON: vi.fn(() => null) },
     };
     const cleanup: Array<() => void> = [];
-    vi.spyOn(controller as any, "eventLatLng").mockReturnValue({ lat: 2, lng: 3 });
+    vi.spyOn(controller as any, "eventLatLng").mockReturnValue({
+      lat: 2,
+      lng: 3,
+    });
     vi.spyOn(controller as any, "findSnapResult").mockReturnValue(null);
 
     (controller as any).installEditMarkerSnap(marker, handler, cleanup);
@@ -130,7 +140,9 @@ describe("MapController", () => {
 
     expect(position).toEqual({ lat: 2, lng: 3 });
     expect(originalTouch).toHaveBeenCalledTimes(1);
-    expect(originalTouch).toHaveBeenCalledWith(expect.objectContaining({ target: marker }));
+    expect(originalTouch).toHaveBeenCalledWith(
+      expect.objectContaining({ target: marker }),
+    );
     expect(originalDrag).not.toHaveBeenCalled();
     cleanup.forEach((dispose) => dispose());
   });
@@ -499,8 +511,12 @@ describe("MapController", () => {
       ".leaflet-geokit-tool-button-icon img",
     ) as HTMLImageElement;
     expect(icon.src).toBe("https://example.com/bed-boundary.svg");
-    expect(icon.parentElement?.style.getPropertyValue("--_geokit-icon-width")).toBe("20px");
-    expect(icon.parentElement?.style.getPropertyValue("--_geokit-icon-height")).toBe("22px");
+    expect(
+      icon.parentElement?.style.getPropertyValue("--_geokit-icon-width"),
+    ).toBe("20px");
+    expect(
+      icon.parentElement?.style.getPropertyValue("--_geokit-icon-height"),
+    ).toBe("22px");
 
     const cakeBuiltInIcon = container.querySelector(
       ".leaflet-geokit-cake-icon",
@@ -552,7 +568,9 @@ describe("MapController", () => {
     ) as HTMLButtonElement;
     expect(saveButton).toBeTruthy();
     expect(saveButton.querySelector("svg")).toBeTruthy();
-    expect(saveButton.querySelector('[part="tooltip"]')?.textContent).toBe("Save map geometry");
+    expect(saveButton.querySelector('[part="tooltip"]')?.textContent).toBe(
+      "Save map geometry",
+    );
 
     saveButton.click();
 
@@ -749,7 +767,13 @@ describe("MapController", () => {
 
     polygonButton.click();
     expect(polygonEnable).toHaveBeenCalledTimes(2);
-    container.querySelector('[data-geokit-tool-popover="true"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, composed: true }));
+    container.querySelector('[data-geokit-tool-popover="true"]')!.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Escape",
+        bubbles: true,
+        composed: true,
+      }),
+    );
     expect(
       container.querySelector('[data-geokit-tool-popover="true"]'),
     ).toBeNull();

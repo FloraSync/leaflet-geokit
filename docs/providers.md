@@ -97,12 +97,14 @@ const protocol = new Protocol();
 maplibregl.addProtocol("pmtiles", protocol.tile);
 
 // After GeoKit ready; /maps/style.json contains the PMTiles source.
-mapElement.setBasemapAdapter(createMapLibreBasemapAdapter({
-  createLayer: () => maplibreGL({ style: "/maps/style.json" }),
-  attribution: "Your licensed dataset attribution",
-  offline: "host-managed",
-  apiKey: "none",
-}));
+mapElement.setBasemapAdapter(
+  createMapLibreBasemapAdapter({
+    createLayer: () => maplibreGL({ style: "/maps/style.json" }),
+    attribution: "Your licensed dataset attribution",
+    offline: "host-managed",
+    apiKey: "none",
+  }),
+);
 
 // Remove all maps/bridges BEFORE host-global protocol teardown.
 mapElement.setBasemapAdapter(null);
@@ -136,12 +138,12 @@ error payloads or vendor metadata are returned. `scope: "configuration"` explici
 means this is not a tile-load health, key-validity or renderer-readiness probe.
 Use existing provider/status events for runtime failures.
 
-| Path | Kind | API key | Offline | Drawing |
-| --- | --- | --- | --- | --- |
-| OSM public tiles | raster | none | unsupported | leaflet-draw |
-| HERE built-in | raster | required | unsupported | leaflet-draw |
-| Custom tile URL | raster | host-defined | unknown | leaflet-draw |
-| MapLibre shim | vector | host-defined by default | unknown by default | leaflet-draw |
+| Path             | Kind   | API key                 | Offline            | Drawing      |
+| ---------------- | ------ | ----------------------- | ------------------ | ------------ |
+| OSM public tiles | raster | none                    | unsupported        | leaflet-draw |
+| HERE built-in    | raster | required                | unsupported        | leaflet-draw |
+| Custom tile URL  | raster | host-defined            | unknown            | leaflet-draw |
+| MapLibre shim    | vector | host-defined by default | unknown by default | leaflet-draw |
 
 Attribution is `present` or `missing`, not a legal-compliance validation. Hosts
 must provide the required data/vendor notices even for offline maps. Missing

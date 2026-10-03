@@ -226,7 +226,6 @@ union. This keeps robust clipping/overlay behavior in maintained libraries
 instead of an ad-hoc implementation while allowing bundlers to tree-shake each
 operation.
 
-
 ## Public grower presets
 
 `GROWER_PRESETS` contains practical starting values for `bedWidthMeters`,

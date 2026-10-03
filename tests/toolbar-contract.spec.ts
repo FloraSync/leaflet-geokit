@@ -112,7 +112,13 @@ describe("public toolbar styling contract", () => {
     expect(
       container.querySelector('[part~="popover"]')?.getAttribute("style"),
     ).not.toContain("!important");
-    container.querySelector('[part~="popover"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, composed: true }));
+    container.querySelector('[part~="popover"]')!.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Escape",
+        bubbles: true,
+        composed: true,
+      }),
+    );
     expect(container.querySelector('[part~="popover"]')).toBeNull();
   });
 });

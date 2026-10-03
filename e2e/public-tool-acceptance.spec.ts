@@ -22,7 +22,10 @@ type PublicToolEvent = {
 };
 
 type InvocationSurface =
-  "activateTool" | "triggerTool" | "activate-event" | "command-event";
+  | "activateTool"
+  | "triggerTool"
+  | "activate-event"
+  | "command-event";
 
 type ToolCase = {
   tool: string;

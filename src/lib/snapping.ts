@@ -108,7 +108,10 @@ function closestOnSegment(
   if (lengthSquared === 0) return { ...start };
   const t = Math.max(
     0,
-    Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared),
+    Math.min(
+      1,
+      ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared,
+    ),
   );
   return { x: start.x + t * dx, y: start.y + t * dy };
 }
@@ -120,8 +123,7 @@ function optionModes(options: SnappingOptions): SnapMode[] {
 
 function meridionalRadius(latitudeRadians: number): number {
   const sinLatitude = Math.sin(latitudeRadians);
-  return (WGS84_A * (1 - WGS84_E2)) /
-    (1 - WGS84_E2 * sinLatitude ** 2) ** 1.5;
+  return (WGS84_A * (1 - WGS84_E2)) / (1 - WGS84_E2 * sinLatitude ** 2) ** 1.5;
 }
 
 /**
@@ -132,26 +134,32 @@ function meridionalRadius(latitudeRadians: number): number {
 function meridionalArc(latitudeRadians: number): number {
   const e4 = WGS84_E2 ** 2;
   const e6 = WGS84_E2 ** 3;
-  return WGS84_A * (
-    (1 - WGS84_E2 / 4 - 3 * e4 / 64 - 5 * e6 / 256) * latitudeRadians -
-    (3 * WGS84_E2 / 8 + 3 * e4 / 32 + 45 * e6 / 1024) * Math.sin(2 * latitudeRadians) +
-    (15 * e4 / 256 + 45 * e6 / 1024) * Math.sin(4 * latitudeRadians) -
-    (35 * e6 / 3072) * Math.sin(6 * latitudeRadians)
+  return (
+    WGS84_A *
+    ((1 - WGS84_E2 / 4 - (3 * e4) / 64 - (5 * e6) / 256) * latitudeRadians -
+      ((3 * WGS84_E2) / 8 + (3 * e4) / 32 + (45 * e6) / 1024) *
+        Math.sin(2 * latitudeRadians) +
+      ((15 * e4) / 256 + (45 * e6) / 1024) * Math.sin(4 * latitudeRadians) -
+      ((35 * e6) / 3072) * Math.sin(6 * latitudeRadians))
   );
 }
 
 function latitudeFromMeridionalArc(northing: number): number {
-  let latitude = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, northing / WGS84_A));
+  let latitude = Math.max(
+    -Math.PI / 2,
+    Math.min(Math.PI / 2, northing / WGS84_A),
+  );
   for (let iteration = 0; iteration < 8; iteration++) {
-    latitude -= (meridionalArc(latitude) - northing) / meridionalRadius(latitude);
+    latitude -=
+      (meridionalArc(latitude) - northing) / meridionalRadius(latitude);
   }
   return latitude / DEG_TO_RAD;
 }
 
 function metersPerDegreeLongitude(latitudeDegrees: number): number {
   const latitudeRadians = latitudeDegrees * DEG_TO_RAD;
-  const primeVerticalRadius = WGS84_A /
-    Math.sqrt(1 - WGS84_E2 * Math.sin(latitudeRadians) ** 2);
+  const primeVerticalRadius =
+    WGS84_A / Math.sqrt(1 - WGS84_E2 * Math.sin(latitudeRadians) ** 2);
   return primeVerticalRadius * Math.cos(latitudeRadians) * DEG_TO_RAD;
 }
 
@@ -170,19 +178,23 @@ function physicalGridNode(
     !Number.isFinite(originLat) ||
     Math.abs(raw.lat) > MAX_GRID_LATITUDE ||
     Math.abs(originLat) > MAX_GRID_LATITUDE
-  ) return null;
+  )
+    return null;
 
   const originNorthing = meridionalArc(originLat * DEG_TO_RAD);
   const rawNorthing = meridionalArc(raw.lat * DEG_TO_RAD);
-  const gridNorthing = originNorthing +
-    Math.round((rawNorthing - originNorthing) / size!) * size!;
+  const gridNorthing =
+    originNorthing + Math.round((rawNorthing - originNorthing) / size!) * size!;
   const gridLat = latitudeFromMeridionalArc(gridNorthing);
-  if (!Number.isFinite(gridLat) || Math.abs(gridLat) > MAX_GRID_LATITUDE) return null;
+  if (!Number.isFinite(gridLat) || Math.abs(gridLat) > MAX_GRID_LATITUDE)
+    return null;
 
   const longitudeScale = metersPerDegreeLongitude(gridLat);
   if (!Number.isFinite(longitudeScale) || longitudeScale <= 0) return null;
-  const gridLng = originLng +
-    Math.round(((raw.lng - originLng) * longitudeScale) / size!) * size! / longitudeScale;
+  const gridLng =
+    originLng +
+    (Math.round(((raw.lng - originLng) * longitudeScale) / size!) * size!) /
+      longitudeScale;
   return { lng: gridLng, lat: gridLat };
 }
 /**
@@ -214,7 +226,12 @@ export function findSnap(
     if (distancePx > tolerancePx) return;
     const modeRank = modes.indexOf(mode);
     const bestRank = best ? modes.indexOf(best.mode) : Number.MAX_SAFE_INTEGER;
-    if (best && (distancePx > best.distancePx + 0.001 || (distancePx >= best.distancePx - 0.001 && modeRank > bestRank))) return;
+    if (
+      best &&
+      (distancePx > best.distancePx + 0.001 ||
+        (distancePx >= best.distancePx - 0.001 && modeRank > bestRank))
+    )
+      return;
     best = {
       latlng: exactLatLng ?? unproject(point),
       point,
@@ -225,18 +242,35 @@ export function findSnap(
   };
 
   for (const target of targets) {
-    if (!target.visible || target.layerKind === "measurement" || target.featureId === excludedFeatureId) continue;
-    const targetModes: SnapMode[] = target.layerKind === "guide"
-      ? (modes.includes("guide") ? ["guide"] : [])
-      : modes.filter((mode): mode is "vertex" | "edge" => mode === "vertex" || mode === "edge");
+    if (
+      !target.visible ||
+      target.layerKind === "measurement" ||
+      target.featureId === excludedFeatureId
+    )
+      continue;
+    const targetModes: SnapMode[] =
+      target.layerKind === "guide"
+        ? modes.includes("guide")
+          ? ["guide"]
+          : []
+        : modes.filter(
+            (mode): mode is "vertex" | "edge" =>
+              mode === "vertex" || mode === "edge",
+          );
     for (const mode of targetModes) {
       if (mode === "vertex") {
         eachVertex(target.feature.geometry, (position) => {
           const coordinate = finitePosition(position);
-          if (coordinate) consider(project({ lng: coordinate[0], lat: coordinate[1] }), mode, {
-            targetFeatureId: target.featureId,
-            targetLayerId: target.layerId,
-          }, { lng: coordinate[0], lat: coordinate[1] });
+          if (coordinate)
+            consider(
+              project({ lng: coordinate[0], lat: coordinate[1] }),
+              mode,
+              {
+                targetFeatureId: target.featureId,
+                targetLayerId: target.layerId,
+              },
+              { lng: coordinate[0], lat: coordinate[1] },
+            );
         });
       } else {
         eachLine(target.feature.geometry, (positions) => {
@@ -247,21 +281,46 @@ export function findSnap(
             const startPoint = project({ lng: start[0], lat: start[1] });
             const endPoint = project({ lng: end[0], lat: end[1] });
             const projected = closestOnSegment(pointer, startPoint, endPoint);
-            const segmentLengthSquared = (endPoint.x - startPoint.x) ** 2 + (endPoint.y - startPoint.y) ** 2;
-            const t = segmentLengthSquared === 0
-              ? 0
-              : Math.max(0, Math.min(1, ((projected.x - startPoint.x) * (endPoint.x - startPoint.x) + (projected.y - startPoint.y) * (endPoint.y - startPoint.y)) / segmentLengthSquared));
-            consider(projected, mode, {
-              targetFeatureId: target.featureId,
-              targetLayerId: target.layerId,
-            }, { lng: start[0] + (end[0] - start[0]) * t, lat: start[1] + (end[1] - start[1]) * t });
+            const segmentLengthSquared =
+              (endPoint.x - startPoint.x) ** 2 +
+              (endPoint.y - startPoint.y) ** 2;
+            const t =
+              segmentLengthSquared === 0
+                ? 0
+                : Math.max(
+                    0,
+                    Math.min(
+                      1,
+                      ((projected.x - startPoint.x) *
+                        (endPoint.x - startPoint.x) +
+                        (projected.y - startPoint.y) *
+                          (endPoint.y - startPoint.y)) /
+                        segmentLengthSquared,
+                    ),
+                  );
+            consider(
+              projected,
+              mode,
+              {
+                targetFeatureId: target.featureId,
+                targetLayerId: target.layerId,
+              },
+              {
+                lng: start[0] + (end[0] - start[0]) * t,
+                lat: start[1] + (end[1] - start[1]) * t,
+              },
+            );
           }
         });
       }
     }
   }
 
-  if (modes.includes("grid") && Number.isFinite(options.gridSizeMeters) && (options.gridSizeMeters ?? 0) > 0) {
+  if (
+    modes.includes("grid") &&
+    Number.isFinite(options.gridSizeMeters) &&
+    (options.gridSizeMeters ?? 0) > 0
+  ) {
     const gridNode = physicalGridNode(raw, options);
     if (gridNode) {
       const point = project(gridNode);

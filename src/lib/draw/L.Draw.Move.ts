@@ -43,9 +43,9 @@ export class DrawMove extends (L as any).Draw.Feature {
     // Set cursor style for the map container
     L.DomUtil.addClass(map.getContainer(), "leaflet-draw-move-mode");
     this._unbindPointer = bindMovePointer(map, this._featureGroup, {
-      start: e => this._onLayerMouseDown(e),
-      move: e => this._onMouseMove(e),
-      end: e => this._onMouseUp(e),
+      start: (e) => this._onLayerMouseDown(e),
+      move: (e) => this._onMouseMove(e),
+      end: (e) => this._onMouseUp(e),
       cancel: () => this.cancelMove(),
       pending: () => this.hasPendingMove(),
     });
@@ -362,9 +362,9 @@ export function ensureDrawMoveRegistered(Lns: typeof L): void {
 
       Lns.DomUtil.addClass(map.getContainer(), "leaflet-draw-move-mode");
       this._unbindPointer = bindMovePointer(map, this._featureGroup, {
-        start: e => this._onLayerMouseDown(e),
-        move: e => this._onMouseMove(e),
-        end: e => this._onMouseUp(e),
+        start: (e) => this._onLayerMouseDown(e),
+        move: (e) => this._onMouseMove(e),
+        end: (e) => this._onMouseUp(e),
         cancel: () => this.cancelMove(),
         pending: () => this.hasPendingMove(),
       });

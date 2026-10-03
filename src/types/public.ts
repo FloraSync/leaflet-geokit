@@ -8,7 +8,12 @@ import type {
   GeoJSONImportOptions,
 } from "@src/utils/geojson";
 import type * as Leaflet from "leaflet";
-import type { MapLayer, LayerStyle, LayerCakeSession, LayerCakeSessionUpdate } from "@src/types/layers";
+import type {
+  MapLayer,
+  LayerStyle,
+  LayerCakeSession,
+  LayerCakeSessionUpdate,
+} from "@src/types/layers";
 export * from "@src/types/layers";
 import type { BasemapAdapter, ProviderDiagnostics } from "@src/lib/providers";
 
@@ -111,9 +116,16 @@ export type ToolButtonName =
 
 export type ToolCapabilityState = "enabled" | "disabled" | "unavailable";
 export type ToolRequirementReason =
-  | "not_ready" | "read_only" | "missing_attribute" | "unavailable_plugin"
-  | "empty_selection" | "no_editable_layers" | "missing_provider"
-  | "missing_api_key" | "runtime_error" | "configured_disabled";
+  | "not_ready"
+  | "read_only"
+  | "missing_attribute"
+  | "unavailable_plugin"
+  | "empty_selection"
+  | "no_editable_layers"
+  | "missing_provider"
+  | "missing_api_key"
+  | "runtime_error"
+  | "configured_disabled";
 
 export interface ToolCapabilityReason {
   code: ToolRequirementReason;
@@ -215,10 +227,18 @@ export type ToolButtonConfig = Partial<
 >;
 
 export type ToolToolbarPosition =
-  "topleft" | "topright" | "bottomleft" | "bottomright" | ToolToolbarZone;
+  | "topleft"
+  | "topright"
+  | "bottomleft"
+  | "bottomright"
+  | ToolToolbarZone;
 
 export type ToolToolbarZone =
-  "top-start" | "top-end" | "bottom-start" | "bottom-end" | "center-end";
+  | "top-start"
+  | "top-end"
+  | "bottom-start"
+  | "bottom-end"
+  | "center-end";
 
 export interface ToolToolbarPlacement {
   position?: ToolToolbarPosition;

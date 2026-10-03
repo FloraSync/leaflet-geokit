@@ -1,5 +1,9 @@
 import type { Feature, FeatureCollection } from "geojson";
-import type { MapLayer, LayerStyle, LayerCakeSessionUpdate } from "@src/types/layers";
+import type {
+  MapLayer,
+  LayerStyle,
+  LayerCakeSessionUpdate,
+} from "@src/types/layers";
 import type {
   GeoJSONImportBehavior,
   GeoJSONImportOptions,
@@ -145,7 +149,8 @@ export class LeafletDrawMapElement
 
   private _externalToolDeactivateListener = (event: Event): void => {
     const detail = (event as CustomEvent).detail as
-      ToolTriggerOptions | undefined;
+      | ToolTriggerOptions
+      | undefined;
 
     void this.deactivateTool({
       source: detail?.source ?? "event",
@@ -157,7 +162,8 @@ export class LeafletDrawMapElement
   private _externalToolCommandListener = (event: Event): void => {
     if (this._internalToolEvents.has(event)) return;
     const detail = (event as CustomEvent).detail as
-      ToolCommandEventDetail | undefined;
+      | ToolCommandEventDetail
+      | undefined;
     if (!detail?.tool) return;
 
     const source = detail.source ?? "event";
@@ -376,10 +382,23 @@ export class LeafletDrawMapElement
           this._emitToolLifecycleEvent(eventName, detail);
         },
         onLayerEvent: (eventName, detail) => {
-          this.dispatchEvent(new CustomEvent(eventName, { detail, bubbles: true, composed: true }));
+          this.dispatchEvent(
+            new CustomEvent(eventName, {
+              detail,
+              bubbles: true,
+              composed: true,
+            }),
+          );
         },
         onLayerStyleRequested: (detail) => {
-          return !this.dispatchEvent(new CustomEvent("leaflet-geokit:layer-style-request", { detail, cancelable: true, bubbles: true, composed: true }));
+          return !this.dispatchEvent(
+            new CustomEvent("leaflet-geokit:layer-style-request", {
+              detail,
+              cancelable: true,
+              bubbles: true,
+              composed: true,
+            }),
+          );
         },
         onSaved: (detail) => {
           this.dispatchEvent(
@@ -636,11 +655,17 @@ export class LeafletDrawMapElement
         name === "delete-features"
       ) {
         const controller = this._controller;
-        controller.configure?.(this._mapConfig(), this._controlsFromAttributes());
+        controller.configure?.(
+          this._mapConfig(),
+          this._controlsFromAttributes(),
+        );
         // Serialize rebuilds so rapid attribute toggles cannot create overlapping maps.
         this._configurationUpdate = this._configurationUpdate.then(async () => {
           if (this._controller !== controller || !this.isConnected) return;
-          controller.configure?.(this._mapConfig(), this._controlsFromAttributes());
+          controller.configure?.(
+            this._mapConfig(),
+            this._controlsFromAttributes(),
+          );
           await controller.init();
           if (this._tileProvider) this._updateTileLayer();
         });
@@ -758,8 +783,18 @@ export class LeafletDrawMapElement
 
     // Capability diagnostics never include provider URLs, keys, or arbitrary error payloads.
     this._providerCapabilityError = {
-      code: code === "missing_api_key" ? "missing_api_key" : code === "unknown_provider" ? "missing_provider" : "runtime_error",
-      message: code === "missing_api_key" ? "Requested provider requires an API key" : code === "unknown_provider" ? "Requested provider is unavailable" : "Requested provider failed; using fallback tiles",
+      code:
+        code === "missing_api_key"
+          ? "missing_api_key"
+          : code === "unknown_provider"
+            ? "missing_provider"
+            : "runtime_error",
+      message:
+        code === "missing_api_key"
+          ? "Requested provider requires an API key"
+          : code === "unknown_provider"
+            ? "Requested provider is unavailable"
+            : "Requested provider failed; using fallback tiles",
     };
 
     this.dispatchEvent(
@@ -828,15 +863,30 @@ export class LeafletDrawMapElement
   }
 
   private _toolProviderCapability(): ToolProviderCapability {
-    const requested = this._activeTileProvider === "adapter" ? "adapter" : this._tileProvider ?? "tile-url";
+    const requested =
+      this._activeTileProvider === "adapter"
+        ? "adapter"
+        : (this._tileProvider ?? "tile-url");
     let reason = this._providerCapabilityError;
-    if (requested !== "adapter" && requested !== "tile-url" && requested !== "osm" && requested !== "here") {
-      reason = { code: "missing_provider", message: "Requested provider is unavailable" };
+    if (
+      requested !== "adapter" &&
+      requested !== "tile-url" &&
+      requested !== "osm" &&
+      requested !== "here"
+    ) {
+      reason = {
+        code: "missing_provider",
+        message: "Requested provider is unavailable",
+      };
     } else if (requested === "here" && !this._apiKey?.trim()) {
-      reason = { code: "missing_api_key", message: "Requested provider requires an API key" };
+      reason = {
+        code: "missing_api_key",
+        message: "Requested provider requires an API key",
+      };
     }
     return {
-      requested, active: this._activeTileProvider,
+      requested,
+      active: this._activeTileProvider,
       state: reason ? "unavailable" : "enabled",
       reason: reason ? { ...reason } : null,
     };
@@ -844,7 +894,8 @@ export class LeafletDrawMapElement
 
   /** Call after ready; reconnect restores attribute-configured raster tiles. */
   setBasemapAdapter(adapter: BasemapAdapter | null): void {
-    if (!this._status.ready || !this._controller) throw new Error("Map is not ready");
+    if (!this._status.ready || !this._controller)
+      throw new Error("Map is not ready");
     if (!adapter) {
       this._updateTileLayer();
       return;
@@ -860,9 +911,13 @@ export class LeafletDrawMapElement
 
   getProviderDiagnostics(): ProviderDiagnostics | null {
     const diagnostics = this._controller?.getProviderDiagnostics?.() ?? null;
-    if (!diagnostics || this._activeTileProvider === "adapter") return diagnostics;
-    const active = this._activeTileProvider === "tile-url" && this._tileUrl === buildTileURL({ provider: "osm" }).urlTemplate
-      ? "osm" : this._activeTileProvider;
+    if (!diagnostics || this._activeTileProvider === "adapter")
+      return diagnostics;
+    const active =
+      this._activeTileProvider === "tile-url" &&
+      this._tileUrl === buildTileURL({ provider: "osm" }).urlTemplate
+        ? "osm"
+        : this._activeTileProvider;
     if (active === "osm" || active === "here") {
       const provider = createRasterProvider({ provider: active });
       return { ...diagnostics, ...provider.capabilities };
@@ -871,12 +926,20 @@ export class LeafletDrawMapElement
   }
 
   getToolCapabilities(): ToolCapabilities {
-    const snapshot = this._controller?.getToolCapabilities?.() ?? buildToolCapabilities({
-      ready: false, readOnly: this._readOnly, controls: this._controlsFromAttributes(),
-      available: {}, layerCount: 0, selectedFeatureIds: [], activeTool: null,
-      config: this._effectiveToolButtonConfig(), groups: this._effectiveToolbarGroups(),
-      provider: this._toolProviderCapability(),
-    });
+    const snapshot =
+      this._controller?.getToolCapabilities?.() ??
+      buildToolCapabilities({
+        ready: false,
+        readOnly: this._readOnly,
+        controls: this._controlsFromAttributes(),
+        available: {},
+        layerCount: 0,
+        selectedFeatureIds: [],
+        activeTool: null,
+        config: this._effectiveToolButtonConfig(),
+        groups: this._effectiveToolbarGroups(),
+        provider: this._toolProviderCapability(),
+      });
     return { ...snapshot, provider: this._toolProviderCapability() };
   }
 
@@ -889,9 +952,13 @@ export class LeafletDrawMapElement
     const serialized = JSON.stringify(detail);
     if (serialized === this._lastCapabilities) return;
     this._lastCapabilities = serialized;
-    this.dispatchEvent(new CustomEvent(GeoKitEvent.ToolCapabilitiesChanged, {
-      detail, bubbles: true, composed: true,
-    }));
+    this.dispatchEvent(
+      new CustomEvent(GeoKitEvent.ToolCapabilitiesChanged, {
+        detail,
+        bubbles: true,
+        composed: true,
+      }),
+    );
   }
 
   private _isMarkerIconAttribute(name: string): boolean {
@@ -1492,11 +1559,17 @@ export class LeafletDrawMapElement
   }
 
   getSnappingOptions(): SnappingOptions | null {
-    return this._controller?.getSnappingOptions() ?? (this._snapping ? { ...this._snapping } : null);
+    return (
+      this._controller?.getSnappingOptions() ??
+      (this._snapping ? { ...this._snapping } : null)
+    );
   }
 
   getMeasurementOverlayOptions(): MeasurementOverlayOptions | null {
-    return this._controller?.getMeasurementOverlayOptions() ?? (this._measurementOverlay ? { ...this._measurementOverlay } : null);
+    return (
+      this._controller?.getMeasurementOverlayOptions() ??
+      (this._measurementOverlay ? { ...this._measurementOverlay } : null)
+    );
   }
 
   private _nextToolCommandId(): string {
@@ -1868,16 +1941,36 @@ export class LeafletDrawMapElement
     }
   }
 
-  getLayers(): MapLayer[] { return this._controller?.getLayers() ?? []; }
-  async setLayerVisibility(id: string, visible: boolean): Promise<void> { this._controller?.setLayerVisibility(id, visible); }
-  async setLayerStyle(id: string, style: LayerStyle): Promise<void> { this._controller?.setLayerStyle(id, style); }
-  async reorderLayers(ids: readonly string[]): Promise<void> { this._controller?.reorderLayers(ids); }
-  async focusLayer(id: string): Promise<void> { await this._controller?.focusLayer(id); }
-  async removeLayer(id: string): Promise<void> { await this._controller?.removeLayer(id); }
-  getLayerCakeSession() { return this._controller?.getLayerCakeSession() ?? null; }
-  async updateLayerCakeSession(update: LayerCakeSessionUpdate): Promise<void> { this._controller?.updateLayerCakeSession(update); }
-  async saveLayerCakeSession(): Promise<void> { this._controller?.saveLayerCakeSession(); }
-  async cancelLayerCakeSession(): Promise<void> { this._controller?.cancelLayerCakeSession(); }
+  getLayers(): MapLayer[] {
+    return this._controller?.getLayers() ?? [];
+  }
+  async setLayerVisibility(id: string, visible: boolean): Promise<void> {
+    this._controller?.setLayerVisibility(id, visible);
+  }
+  async setLayerStyle(id: string, style: LayerStyle): Promise<void> {
+    this._controller?.setLayerStyle(id, style);
+  }
+  async reorderLayers(ids: readonly string[]): Promise<void> {
+    this._controller?.reorderLayers(ids);
+  }
+  async focusLayer(id: string): Promise<void> {
+    await this._controller?.focusLayer(id);
+  }
+  async removeLayer(id: string): Promise<void> {
+    await this._controller?.removeLayer(id);
+  }
+  getLayerCakeSession() {
+    return this._controller?.getLayerCakeSession() ?? null;
+  }
+  async updateLayerCakeSession(update: LayerCakeSessionUpdate): Promise<void> {
+    this._controller?.updateLayerCakeSession(update);
+  }
+  async saveLayerCakeSession(): Promise<void> {
+    this._controller?.saveLayerCakeSession();
+  }
+  async cancelLayerCakeSession(): Promise<void> {
+    this._controller?.cancelLayerCakeSession();
+  }
 
   private async _importWithController(
     fc: FeatureCollection,
