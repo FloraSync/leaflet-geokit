@@ -226,7 +226,7 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           TARBALL_PATH: ${{ steps.artifact.outputs.path }}
-        run: npm publish "$TARBALL_PATH" --access public --provenance
+        run: npm publish "./$TARBALL_PATH" --access public --provenance
 
       - name: Verify immutable registry bytes and integrity
         env:
