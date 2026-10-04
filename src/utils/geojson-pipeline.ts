@@ -257,8 +257,10 @@ export function validateGeoJSON(input: unknown): GeoJSONValidationSummary {
   };
   // Guard serialization so cyclic/non-JSON metadata cannot fail later, after mutation.
   const active = new Set<object>();
+  let unsafeGraph = false;
   const json = (value: unknown, path: string, depth: number): void => {
     if (depth > 128) {
+      unsafeGraph = true;
       report("nesting-limit", path, "JSON nesting exceeds 128.");
       return;
     }
@@ -270,6 +272,8 @@ export function validateGeoJSON(input: unknown): GeoJSONValidationSummary {
       return;
     if (typeof value === "number" && Number.isFinite(value)) return;
     if (typeof value !== "object" || value === null || active.has(value)) {
+      if (typeof value === "object" && value !== null && active.has(value))
+        unsafeGraph = true;
       report("invalid-json", path, "Expected finite, acyclic JSON values.");
       return;
     }
@@ -292,6 +296,9 @@ export function validateGeoJSON(input: unknown): GeoJSONValidationSummary {
     active.delete(value);
   };
   json(input, "$", 0);
+  // Do not traverse rejected graphs again: branching cycles can otherwise
+  // multiply geometry visits exponentially before the depth guard is reached.
+  if (unsafeGraph) return { valid: false, featureCount, diagnostics };
   if (!record(input))
     report("invalid-input", "$", "Expected a GeoJSON object.");
   else if (input.type === "FeatureCollection") {

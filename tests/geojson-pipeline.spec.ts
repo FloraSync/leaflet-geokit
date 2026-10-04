@@ -23,6 +23,21 @@ const fc = (...features: Feature[]): FeatureCollection => ({
 });
 
 describe("GeoJSON pipeline", () => {
+  it("stops before geometry traversal when JSON preflight rejects a cycle", () => {
+    const geometry: { type: string; geometries: unknown[] } = {
+      type: "GeometryCollection",
+      geometries: [],
+    };
+    geometry.geometries.push(geometry, geometry);
+    const result = importGeoJSONData(geometry);
+    expect(result.valid).toBe(false);
+    expect(result.data).toBeNull();
+    expect(result.diagnostics.map((d) => d.code)).toEqual([
+      "invalid-json",
+      "invalid-json",
+    ]);
+  });
+
   it("rejects sparse arrays, malformed provenance and invalid fallback IDs", () => {
     expect(validateGeoJSON({ type: { toString: 0 } }).valid).toBe(false);
     expect(validateGeoJSON({ ...point(), id: { toString: 0 } }).valid).toBe(

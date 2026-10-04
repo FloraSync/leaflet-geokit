@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.10.0 - 2026-10-04
+
+- Refresh compatible locked build/test dependencies, including patched Vite, Vitest, Happy DOM, Rollup, and glob tooling; upgrade `lint-staged` to 16.4.0 so hook globs no longer traverse the vulnerable `braces` chain. Production dependency audit remains clear; six development-only audit entries remain aliases of the unpatched `braces` advisory through build-only `tsc-alias`.
+- Stop GeoJSON processing immediately after JSON preflight rejects cyclic or excessively nested input, preventing repeated geometry traversal of rejected graphs.
+
 ## 0.9.0 - 2026-10-02
 
 - Added host-controlled toolbar capabilities, lifecycle events, keyboard accessibility, responsive layout, and extensible styling for polished custom map controls.

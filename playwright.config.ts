@@ -17,8 +17,26 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
+      testIgnore: ["touch-geometry.spec.ts"],
       use: {
         ...devices["Desktop Chrome"],
+      },
+    },
+    {
+      name: "chromium-touch-canvas",
+      testMatch: ["touch-geometry.spec.ts"],
+      use: {
+        ...devices["Pixel 7"],
+        viewport: { width: 390, height: 844 },
+      },
+    },
+    {
+      name: "chromium-touch-svg",
+      testMatch: ["touch-geometry.spec.ts"],
+      metadata: { svg: true },
+      use: {
+        ...devices["Pixel 7"],
+        viewport: { width: 390, height: 844 },
       },
     },
   ],
