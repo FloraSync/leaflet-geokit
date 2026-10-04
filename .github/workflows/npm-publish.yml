@@ -315,7 +315,7 @@ jobs:
         if: steps.tag.outputs.exists != 'true'
         env:
           CANDIDATE_SHA: ${{ steps.approval.outputs.sha }}
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.CI_TOKEN }}
           TAG_NAME: v${{ steps.package.outputs.version }}
         run: |
           gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
