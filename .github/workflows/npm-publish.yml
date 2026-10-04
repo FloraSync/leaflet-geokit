@@ -8,13 +8,18 @@ on:
         required: true
         type: string
       candidate_sha:
-        description: Approved full commit SHA (must equal origin/main and candidate run head)
+        description: Approved full commit SHA (must match the candidate run head)
         required: true
         type: string
       tarball_sha256:
         description: Approved SHA-256 of the exact npm tarball to publish
         required: true
         type: string
+      finalize_only:
+        description: Verify an already-published exact artifact and finish CDN/tag checks
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: publish-npm
@@ -39,6 +44,7 @@ jobs:
           CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}
           TARBALL_SHA256: ${{ inputs.tarball_sha256 }}
+          FINALIZE_ONLY: ${{ inputs.finalize_only }}
         run: |
           if [[ ! "$CANDIDATE_RUN_ID" =~ ^[0-9]+$ ]]; then
             echo "candidate_run_id must be numeric."
@@ -52,10 +58,15 @@ jobs:
             echo "tarball_sha256 must be a 64-character SHA-256 digest."
             exit 1
           fi
+          if [ "$FINALIZE_ONLY" != "true" ] && [ "$FINALIZE_ONLY" != "false" ]; then
+            echo "finalize_only must be true or false."
+            exit 1
+          fi
 
           echo "run_id=$CANDIDATE_RUN_ID" >> "$GITHUB_OUTPUT"
           echo "sha=${CANDIDATE_SHA,,}" >> "$GITHUB_OUTPUT"
           echo "sha256=${TARBALL_SHA256,,}" >> "$GITHUB_OUTPUT"
+          echo "finalize_only=$FINALIZE_ONLY" >> "$GITHUB_OUTPUT"
 
       - name: Checkout exact approved source
         uses: actions/checkout@v4
@@ -63,9 +74,10 @@ jobs:
           ref: ${{ steps.approval.outputs.sha }}
           fetch-depth: 0
 
-      - name: Verify approved source is the immutable main tip
+      - name: Verify approved source against main
         env:
           CANDIDATE_SHA: ${{ steps.approval.outputs.sha }}
+          FINALIZE_ONLY: ${{ steps.approval.outputs.finalize_only }}
         run: |
           checked_out_sha="$(git rev-parse HEAD)"
           if [ "$checked_out_sha" != "$CANDIDATE_SHA" ]; then
@@ -75,7 +87,12 @@ jobs:
 
           git fetch --no-tags origin main
           main_sha="$(git rev-parse origin/main)"
-          if [ "$main_sha" != "$CANDIDATE_SHA" ]; then
+          if [ "$FINALIZE_ONLY" = "true" ]; then
+            if ! git merge-base --is-ancestor "$CANDIDATE_SHA" origin/main; then
+              echo "Approved SHA $CANDIDATE_SHA is not an ancestor of origin/main $main_sha."
+              exit 1
+            fi
+          elif [ "$main_sha" != "$CANDIDATE_SHA" ]; then
             echo "origin/main is $main_sha, not approved SHA $CANDIDATE_SHA."
             exit 1
           fi
@@ -189,14 +206,25 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Ensure release tag does not already exist
+      - name: Ensure release tag is absent or exact
+        id: tag
+        env:
+          CANDIDATE_SHA: ${{ steps.approval.outputs.sha }}
         run: |
-          if git rev-parse "v${{ steps.package.outputs.version }}" >/dev/null 2>&1; then
-            echo "Tag v${{ steps.package.outputs.version }} already exists."
-            exit 1
+          tag="v${{ steps.package.outputs.version }}"
+          if git rev-parse "$tag" >/dev/null 2>&1; then
+            tagged_sha="$(git rev-list -n 1 "$tag")"
+            if [ "$tagged_sha" != "$CANDIDATE_SHA" ]; then
+              echo "Tag $tag points to $tagged_sha, not approved SHA $CANDIDATE_SHA."
+              exit 1
+            fi
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Ensure package version is unpublished
+        if: steps.approval.outputs.finalize_only != 'true'
         env:
           PACKAGE_NAME: ${{ steps.package.outputs.name }}
           PACKAGE_VERSION: ${{ steps.package.outputs.version }}
@@ -214,6 +242,7 @@ jobs:
           fi
 
       - name: Publish exact approved tarball
+        if: steps.approval.outputs.finalize_only != 'true'
         env:
           TARBALL_PATH: ${{ steps.artifact.outputs.path }}
         run: npm publish "./$TARBALL_PATH" --access public --provenance
@@ -227,13 +256,13 @@ jobs:
           package_spec="$PACKAGE_NAME@$PACKAGE_VERSION"
           registry_tarball=""
           registry_integrity=""
-          for attempt in {1..12}; do
+          for attempt in {1..60}; do
             registry_tarball="$(npm view "$package_spec" dist.tarball 2>/dev/null || true)"
             registry_integrity="$(npm view "$package_spec" dist.integrity 2>/dev/null || true)"
             if [ -n "$registry_tarball" ] && [ -n "$registry_integrity" ]; then
               break
             fi
-            sleep 5
+            sleep 10
           done
           if [ -z "$registry_tarball" ] || [ -z "$registry_integrity" ]; then
             echo "Registry metadata did not become available for $package_spec."
@@ -272,18 +301,20 @@ jobs:
         run: |
           django_url="https://cdn.jsdelivr.net/npm/@florasync/leaflet-geokit@$PACKAGE_VERSION/dist/django/index.js"
           downloaded="$RUNNER_TEMP/django-index.js"
-          for attempt in {1..12}; do
+          for attempt in {1..60}; do
             if curl --fail --silent --show-error --location "$django_url" --output "$downloaded" && [ -s "$downloaded" ]; then
               echo "Browser-loadable Django entrypoint verified: $django_url"
               exit 0
             fi
-            sleep 5
+            sleep 10
           done
           echo "Version-pinned Django entrypoint was not browser-loadable: $django_url"
           exit 1
 
       - name: Tag release
+        if: steps.tag.outputs.exists != 'true'
         run: git tag "v${{ steps.package.outputs.version }}"
 
       - name: Push tag
+        if: steps.tag.outputs.exists != 'true'
         run: git push origin "v${{ steps.package.outputs.version }}"
