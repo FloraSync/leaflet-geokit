@@ -26,8 +26,8 @@ Defaults include 44px buttons, hover background, a focus outline, inset active r
 and dashed disabled border plus opacity. Keep these affordances visible when
 replacing styles. Disabled native buttons skip Tab and cannot trigger actions.
 Tooltips and badges are decorative (`aria-hidden`): include essential information
-in `ariaLabel` or accessible popover content. This slice does not introduce modal
-focus trapping or responsive zones/overflow.
+in `ariaLabel` or accessible popover content. Popovers do not trap focus.
+For implemented responsive zones/overflow, see [toolbar layout](toolbar-layout.md).
 
 ## CSS custom properties
 

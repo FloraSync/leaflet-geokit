@@ -13,6 +13,8 @@ export default [
       "test-results/**",
       "playwright-report/**",
       ".npm-cache/**",
+      ".release/vite-cache/**",
+      ".wip/vite-cache/**",
       ".letta/**",
       "test-data/**",
     ],
@@ -72,7 +74,7 @@ export default [
   },
   {
     files: [
-      "scripts/**/*.{ts,js}",
+      "scripts/**/*.{ts,js,mjs}",
       "**/*.config.{ts,js,cjs,mjs}",
       "vite.config.ts",
       "vitest.config.ts",

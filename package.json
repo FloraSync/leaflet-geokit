@@ -1,6 +1,6 @@
 {
   "name": "@florasync/leaflet-geokit",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Framework-agnostic Leaflet + Leaflet.draw web component with TypeScript, verbose logging, and tests.",
   "type": "module",
   "main": "./dist/leaflet-geokit.umd.js",
@@ -41,6 +41,15 @@
     "dist",
     "LICENSE",
     "README.md",
+    "ARCHITECTURE.md",
+    "docs/api-reference.md",
+    "docs/custom-toolbar.md",
+    "docs/diagnostics.md",
+    "docs/integration-recipes.md",
+    "docs/release-verification.md",
+    "docs/toolbar-layout.md",
+    "docs/shims",
+    "custom-toolbar.html",
     "docs/toolbar-styling.md",
     "docs/accessibility.md",
     "docs/geojson-pipelines.md",
@@ -50,6 +59,7 @@
     "docs/providers.md",
     "docs/google-maps-adapter-spike.md",
     "docs/grower-geometry.md",
+    "docs/grower-measurement.md",
     "docs/snapping-and-measurements.md",
     "CHANGELOG.md"
   ],
@@ -69,7 +79,7 @@
   "homepage": "https://github.com/FloraSync/leaflet-geokit#readme",
   "scripts": {
     "dev": "vite",
-    "build": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json --emitDeclarationOnly && tsc-alias -p tsconfig.build.json && vite build && vite build -c vite.config.external.ts && vite build -c vite.config.django.ts && vite build -c vite.config.preact.ts && vite build -c vite.config.preact-bundled.ts && vite build -c vite.config.react.ts && vite build -c vite.config.react-bundled.ts",
+    "build": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json --emitDeclarationOnly && tsc-alias -p tsconfig.build.json && node scripts/resolve-declaration-imports.mjs && vite build && vite build -c vite.config.external.ts && vite build -c vite.config.django.ts && vite build -c vite.config.preact.ts && vite build -c vite.config.preact-bundled.ts && vite build -c vite.config.react.ts && vite build -c vite.config.react-bundled.ts",
     "build:analyze": "npm run build:analyze:main && npm run build:analyze:external && npm run build:analyze:django && npm run build:analyze:preact && npm run build:analyze:preact-bundled && npm run build:analyze:react && npm run build:analyze:react-bundled",
     "build:analyze:main": "BUNDLE_ANALYZE=1 BUNDLE_ANALYZE_REPORT=dist/stats/main.html vite build",
     "build:analyze:external": "BUNDLE_ANALYZE=1 BUNDLE_ANALYZE_REPORT=dist/stats/external.html vite build -c vite.config.external.ts",
@@ -96,7 +106,8 @@
     "spec-kitty:doctor": "spec-kitty doctor",
     "prepack": "npm run build",
     "pack:dry": "npm pack --dry-run",
-    "release:dry": "npm run typecheck && npm run test:unit && npm run build && npm pack --dry-run",
+    "test:consumer": "node scripts/verify-package.mjs",
+    "release:dry": "npm run typecheck && npm run test:unit && npm run build && npm pack --dry-run && npm run test:consumer",
     "test:e2e:snapping": "playwright test --config=playwright.snapping.config.ts"
   },
   "keywords": [

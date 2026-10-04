@@ -1,362 +1,195 @@
-# ARCHITECTURE: Leaflet GeoKit
+# Architecture: Leaflet GeoKit
 
-This document specifies the end-to-end architecture for a framework-agnostic, TypeScript-first web component for Leaflet + Leaflet.draw. It aligns with the initial plan in [implementation_plan.md](implementation_plan.md:1) and incorporates the approved decisions (Preset B).
+This is a map of the implemented library, not a future implementation plan.
+GeoKit exposes a framework-agnostic custom element backed by Leaflet and
+Leaflet.draw. The canonical tag is `<leaflet-geokit>`; `<leaflet-draw-map>` is a
+registered compatibility alias. Host applications own persistence, authentication,
+vendor credentials, and framework UI.
 
-## Decisions snapshot
+For task-oriented examples start with [integration recipes](docs/integration-recipes.md).
+The [README](README.md) describes the public API; the source contracts are
+[public.ts](src/types/public.ts), [events.ts](src/types/events.ts), and
+[layers.ts](src/types/layers.ts).
 
-- Name and directory
-  - Package name: @florasync/leaflet-geokit
-  - Location: repo root
-- Bundling
-  - **Bundled (Default)**: Bundle leaflet and leaflet-draw JS/CSS into the library (no peer deps).
-  - **External**: Provide an entrypoint that externalizes the Leaflet stack for hosts that already provide it.
-  - Inject styling into Shadow DOM (with opt-out for external mode).
-- Target and compatibility
-  - Build target: ES2019, evergreen browsers (Chromium, Firefox, Safari modern)
-- Developer ergonomics
-  - Default log level: debug
-  - Allow custom logger injection
-  - Multi-page dev harness for live prototyping across all integration variants.
-- Tests
-  - Vitest (unit/basic integration) included.
-  - Playwright e2e included for cross-browser smoke testing.
-
-## High-level design
-
-- Public API remains framework-agnostic (Custom Element + DOM events + methods).
-- First-class wrappers provided for **Preact** and **React** to simplify framework integration.
-- Internals leverage TypeScript to enforce contracts; diagnostics ship via public status/error events rather than an overlay UI.
-- Separation of concerns:
-  - Custom Element host [LeafletDrawMapElement](src/components/LeafletDrawMapElement.ts:1)
-  - Map lifecycle + Leaflet.draw bridge [MapController](src/lib/MapController.ts:1)
-  - In-memory, id-centric GeoJSON store [FeatureStore](src/lib/FeatureStore.ts:1)
-  - Logging utility [createLogger()](src/utils/logger.ts:1)
-  - Shared types [public.ts](src/types/public.ts:1), [events.ts](src/types/events.ts:1)
-
-### Component diagram
+## Runtime boundaries
 
 ```mermaid
-flowchart LR
-  A[LeafletDrawMapElement (Custom Element)] --> B[MapController]
-  B --> D[Leaflet Map + Leaflet.draw]
-  B --> E[FeatureStore]
-  E <--> D
-  B -->|dispatch CustomEvent| A
-  A -->|attributes/props| B
+flowchart TD
+  Host[Host app / React / Preact / Django shim] --> Element[LeafletDrawMapElement]
+  Element --> Controller[MapController]
+  Controller --> Leaflet[Leaflet map + Leaflet.draw + ruler]
+  Controller --> Store[FeatureStore: GeoJSON by string ID]
+  Controller --> Registry[LayerRegistry: named presentation groups]
+  Controller --> Cake[LayerCakeManager + CakeBaker]
+  Controller --> Toolbar[Toolbar styling / layout / accessibility / capabilities]
+  Controller --> Provider[Raster provider or injected basemap adapter]
+  Element --> Events[DOM status / diagnostic / draw / tool / layer events]
+  Events --> Host
+  Pipeline[GeoJSON pipeline / grower geometry helpers] --> Host
 ```
 
-### State sketch
+### Custom element and lifecycle
 
-```mermaid
-stateDiagram-v2
-  [*] --> uninitialized
-  uninitialized --> initializing
-  initializing --> ready
-  ready --> loading
-  loading --> ready
-  [*] --> error
-  initializing --> error
-  note right of ready
-    Recoverable diagnostics keep the map usable
-    and surface through status.lastError / diagnostic events.
-  end note
+[LeafletDrawMapElement](src/components/LeafletDrawMapElement.ts) owns Shadow DOM,
+configuration attributes/properties, style injection, status snapshots, and the
+public method/event bridge. On connection it constructs and initializes a
+controller; on disconnection it destroys the controller and removes its listeners.
+Give the host an explicit height and attach readiness/error listeners before
+connecting it. Custom-element registration alone is not map readiness.
+
+Public status states are `uninitialized`, `initializing`, `ready`, `loading`, and
+`error`. `leaflet-geokit:status` reports readiness, busy state and feature count;
+`leaflet-geokit:diagnostic` and `leaflet-draw:error` expose failures. Recoverable
+errors can leave the map usable. `dev-overlay` is a compatibility flag, not an
+implemented debugging overlay. Logging defaults to `debug` and supports a custom
+logger; do not assume diagnostic output is appropriate for sensitive data.
+
+### Controller and map ownership
+
+[MapController](src/lib/MapController.ts) owns the Leaflet map, drawn FeatureGroup,
+feature-to-rendered-layer bindings, basemap, draw/ruler controls, active tool
+commands, and editing sessions. It translates Leaflet changes into store updates
+and public callbacks. It also manages structural reconfiguration, read-only tool
+behavior, snapping, measurement overlays and cleanup. Integrations should use the
+element API rather than reach into the Shadow DOM or private Leaflet handlers.
+
+[FeatureStore](src/lib/FeatureStore.ts) is map-agnostic: it stores GeoJSON by string
+ID, provides CRUD and computes coordinate bounds. It does **not** own Leaflet
+layers or bidirectional Leaflet bindings. IDs come from `feature.id`, then
+`properties.id`, then generated UUIDs. Legacy store operations use shallow copies;
+clone a snapshot when retaining an independent editing baseline.
+
+[LayerRegistry](src/lib/LayerRegistry.ts) stores detached presentation records:
+name, kind, visibility, order, feature membership and portable style. Hiding a
+group removes its rendered features from the editable group, not the data store.
+The `base` record is reserved. Default GeoJSON export is feature data;
+`preserveLayers: true` explicitly persists registry metadata. See
+[named layers and layer-cake sessions](docs/layers.md) for invariants and restoration.
+
+## Data and geometry
+
+The element exposes `getGeoJSON`, `importGeoJSON`, `exportGeoJSON`, legacy
+`loadGeoJSON`/`addFeatures`, per-feature CRUD and view-fitting helpers. Import
+supports replace/add behavior, optional validation, named groups and optional
+layer restoration. `loadGeoJSON` replaces without automatically fitting bounds.
+
+[geojson-pipeline.ts](src/utils/geojson-pipeline.ts) implements validation,
+normalization, text/URL ingestion, diagnostic export, diff and patch helpers.
+Validation is opt-in on map imports (`validate: true`); its preflight runs after
+the ingest hook and before destructive replacement. Multi/collection geometries
+expand into editing features, with reserved provenance for diagnostic source
+export. Validation is not a general GIS topology/reprojection service. Read the
+[GeoJSON pipeline contract](docs/geojson-pipelines.md) for ID, provenance,
+validation and legacy export differences.
+
+[grower-geometry.ts](src/utils/grower-geometry.ts) supplies Turf-backed geometry
+operations, measurements and guides, exported by the root and external entries.
+See [grower geometry](docs/grower-geometry.md) and
+[snapping and measurements](docs/snapping-and-measurements.md). These utilities
+are distinct from the controller's interactive tools: calculating geometry does
+not automatically import it or create a visible map layer.
+
+[LayerCakeManager](src/lib/layer-cake/LayerCakeManager.ts) manages concentric-circle
+draft sessions. [CakeBaker](src/lib/layer-cake/CakeBaker.ts) produces saved core/ring
+polygons. The public session API allows external controls to update radii, style
+and name, then save or cancel. A saved polygon group is not an editable draft
+session; see [layers](docs/layers.md).
+
+## Tools, events and host-owned UI
+
+Tool activation is public: `activateTool`, `triggerTool`, `deactivateTool`, and
+`leaflet-geokit:tool-command` share a correlated lifecycle. Command acknowledgement
+is not necessarily interaction completion. Read
+[tool lifecycle](docs/tool-lifecycle.md) for commanded/started/completed/cancelled/
+failed events and [tool capabilities](docs/tool-capabilities.md) for readiness,
+read-only, selection and provider prerequisites.
+
+Existing `leaflet-draw:ready`, `created`, `edited`, `deleted`, `ingest`, `export`,
+and `error` events coexist with the newer tool and layer event families.
+`leaflet-geokit:layers-changed` drives a host sidebar;
+`leaflet-geokit:layer-style-request` is synchronously cancelable so a host can
+replace the built-in style panel. Listen on the element: not every legacy event
+bubbles. Event constants and payload types are exported from root and external.
+
+Managed `toolbarGroups` and `toolButtonConfig` are data-driven; visual customization
+uses CSS custom properties, parts, named slots and optional trusted renderers.
+Do not depend on generated Leaflet class order or private DOM layout. Dedicated
+contracts are maintained in:
+
+- [Toolbar styling](docs/toolbar-styling.md): tokens, parts, states, icons and slots.
+- [Toolbar layout](docs/toolbar-layout.md): zones, responsive placement and overflow.
+- [Accessibility](docs/accessibility.md): labels, focus, keyboard and touch behavior.
+
+## Providers and security
+
+[TileProviderFactory](src/lib/TileProviderFactory.ts) retains OSM/HERE and custom
+raster URL behavior. [providers.ts](src/lib/providers.ts) exports raster factories,
+a dependency-injected MapLibre basemap shim, and configuration diagnostics.
+`setBasemapAdapter` swaps only the basemap after readiness; geometry and
+Leaflet.draw remain owned by GeoKit. Reconnection restores raster configuration.
+
+`DrawEngineAdapter` is a design port, not an implemented replacement drawing
+engine. The MapLibre seam does not bundle a WebGL renderer, PMTiles transport,
+offline cache, Google Maps support or vendor provisioning. The
+[provider guide](docs/providers.md) describes the optional bridge, teardown,
+attribution and production-verification obligations; the
+[Google adapter spike](docs/google-maps-adapter-spike.md) records a separate study.
+
+Treat icon/popover HTML, attribution, theme CSS and adapter code as trusted host
+input. Sanitize untrusted content. Browser keys are visible even when assigned
+through properties; never ship server credentials. Hosts own URL allowlists,
+CORS, upload limits, persistence authorization and concurrency controls.
+
+## Package entries and SSR
+
+[package.json](package.json) is authoritative for supported subpaths.
+
+| Entry                               | Responsibility                                                       | Server import boundary                                                 |
+| ----------------------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `@florasync/leaflet-geokit`         | Bundled browser component, types, pipeline/geometry/provider helpers | Browser-only runtime registration                                      |
+| `/external`                         | Browser component with Leaflet/Draw/ruler JS externalized            | Browser-only; not an SSR entry                                         |
+| `/react`, `/preact`                 | Additive framework wrappers; host-owned Leaflet assets               | Wrapper module import is SSR-safe; registration is deferred to effects |
+| `/react-bundled`, `/preact-bundled` | Self-provisioned framework wrappers                                  | Eager root import; browser-only                                        |
+| `/django`                           | Browser textarea/form bridge (`initDjangoGeokit`)                    | Eager root import; browser-only                                        |
+
+Both browser component entries directly access `customElements`; the element
+extends `HTMLElement` and its runtime imports the mapping stack. Pure helper
+implementations do **not** make a root named import SSR-safe. There is no exported
+`/utils`, `/geojson`, `/providers` or `/ssr` runtime subpath. Type-only root imports
+are erased by TypeScript. Use client-only dynamic imports for browser entries.
+
+The additive wrappers use [ensure-element.ts](src/shims/ensure-element.ts) to load
+the root lazily in the browser. Their SSR-safe module import does not mean a map
+renders on the server. React/Preact runtimes remain consumer-provided optional
+peers. See the [integration recipes](docs/integration-recipes.md) and existing
+[React](docs/shims/react.md), [Preact](docs/shims/preact.md), and
+[Django](docs/shims/django.md) guides.
+
+## Build, assets and verification
+
+The build emits declarations and uses separate Vite configurations for the root,
+external, Django and framework entries. Root output includes ESM/UMD; the other
+exported entries are ESM. Vite targets ES2019. Bundled mode injects Leaflet/Draw
+styles inside Shadow DOM and configures marker assets. External hosts must supply
+a compatible shared Leaflet stack; opting out of injected styles does not make
+ordinary document CSS cross the Shadow DOM boundary.
+
+Vitest unit/integration tests and Playwright browser suites are present, not
+planned work. [tests](tests) cover stores, pipelines, providers, lifecycle,
+wrappers and presentation contracts; [e2e](e2e) exercises real map interactions.
+HTML harnesses include `irrigation-draw-mode.html`, `layer-manager.html`,
+`external.html`, and the React/Preact variants.
+
+```sh
+npm run typecheck
+npm run test:unit
+npm run build
+npm run test:e2e
 ```
 
-## Public API
-
-All interactions occur via the Custom Element host [LeafletDrawMapElement](src/components/LeafletDrawMapElement.ts:1).
-
-### Attributes (string/boolean)
-
-- Map and tiles
-  - latitude, longitude, zoom
-  - min-zoom, max-zoom
-  - tile-url, tile-attribution
-- Controls (boolean; presence = true)
-  - draw-polygon, draw-polyline, draw-rectangle, draw-circle, draw-marker
-  - edit-features, delete-features
-- Behavior
-  - read-only (boolean)
-  - log-level: "trace" | "debug" | "info" | "warn" | "error" | "silent"
-  - dev-overlay (boolean; reserved compatibility flag, no overlay implementation)
-  - theme-url (string, optional): external CSS to inject into Shadow DOM
-
-Attributes reflect to typed properties defined on [LeafletDrawMapElement](src/components/LeafletDrawMapElement.ts:1).
-
-### Properties (typed)
-
-- LeafletDrawMapElement.latitude: number
-- LeafletDrawMapElement.longitude: number
-- LeafletDrawMapElement.zoom: number
-- LeafletDrawMapElement.minZoom?: number
-- LeafletDrawMapElement.maxZoom?: number
-- LeafletDrawMapElement.tileUrl: string
-- LeafletDrawMapElement.tileAttribution?: string
-- LeafletDrawMapElement.readOnly: boolean
-- LeafletDrawMapElement.logLevel: LogLevel
-- LeafletDrawMapElement.devOverlay: boolean
-- LeafletDrawMapElement.status: StatusEventDetail
-- LeafletDrawMapElement.themeCss: string
-
-### Methods
-
-- LeafletDrawMapElement.getGeoJSON(): Promise<FeatureCollection>
-- LeafletDrawMapElement.loadGeoJSON(fc: FeatureCollection): Promise<void>
-- LeafletDrawMapElement.clearLayers(): Promise<void>
-- LeafletDrawMapElement.addFeatures(fc: FeatureCollection): Promise<string[]>
-- LeafletDrawMapElement.updateFeature(id: string, feature: Feature): Promise<void>
-- LeafletDrawMapElement.removeFeature(id: string): Promise<void>
-- LeafletDrawMapElement.fitBoundsToData(padding?: number): Promise<void>
-- LeafletDrawMapElement.fitBounds(bounds: [[number, number], [number, number]], padding?: number): Promise<void>
-- LeafletDrawMapElement.setView(lat: number, lng: number, zoom?: number): Promise<void>
-- LeafletDrawMapElement.exportGeoJSON(): Promise<FeatureCollection>
-
-All methods log inputs/outputs and timing (debug level) via [createLogger()](src/utils/logger.ts:1).
-
-### Events
-
-- 'leaflet-geokit:status' → StatusEventDetail
-- 'leaflet-geokit:diagnostic' → DiagnosticEventDetail
-- 'leaflet-draw:ready' → ReadyEventDetail
-- 'leaflet-draw:created' → CreatedEventDetail
-- 'leaflet-draw:edited' → EditedEventDetail
-- 'leaflet-draw:deleted' → DeletedEventDetail
-- 'leaflet-draw:error' → ErrorEventDetail
-- 'leaflet-draw:ingest' → { fc: FeatureCollection, mode: 'load'|'add' } — dispatched before features are added; listeners can mutate detail.fc to transform input
-
-Public draw/edit start-stop lifecycle events are intentionally out of scope in this repo.
-
-Event detail types live in [events.ts](src/types/events.ts:1) and are documented for consumers.
-
-## Internal modules
-
-### Custom Element host
-
-- [LeafletDrawMapElement](src/components/LeafletDrawMapElement.ts:1)
-  - Creates Shadow DOM and renders container(s)
-  - Reflects attributes ↔ properties
-  - Instantiates [MapController](src/lib/MapController.ts:1) on first connect; disposes on disconnect
-  - Exposes public methods and re-dispatches controller events as CustomEvent
-  - Accepts optional injected logger (property) falling back to [createLogger()](src/utils/logger.ts:1)
-
-### Controller
-
-- [MapController](src/lib/MapController.ts:1)
-  - Responsibilities
-    - Initialize Leaflet map against a provided container element
-    - Create tile layer (tile URL + attribution)
-    - Create [L.FeatureGroup](https://leafletjs.com/reference.html#featuregroup) to host drawn items
-    - Build Draw control options based on [DrawControlsConfig](src/types/public.ts:1)
-    - Attach Leaflet.draw events and translate to component events
-    - Apply read-only mode (disable drawing/editing/remove)
-    - Surface errors via 'leaflet-draw:error'
-  - Interfaces with [FeatureStore](src/lib/FeatureStore.ts:1) for add/update/remove and id mapping
-  - Exposes procedural methods invoked by the element (fit bounds, setView, CRUD passthrough)
-
-### GeoJSON Feature Store
-
-- [FeatureStore](src/lib/FeatureStore.ts:1)
-  - Ensures every feature has a stable id:
-    - Use feature.id if present; else feature.properties.id; else generate uuid v4
-  - APIs
-    - [add(fc: FeatureCollection): string[]](src/lib/FeatureStore.ts:1)
-    - [update(id: string, feature: Feature): void](src/lib/FeatureStore.ts:1)
-    - [remove(id: string): void](src/lib/FeatureStore.ts:1)
-    - [toFeatureCollection(): FeatureCollection](src/lib/FeatureStore.ts:1)
-    - [bounds(): L.LatLngBounds | null](src/lib/FeatureStore.ts:1)
-  - Maintains bidirectional maps: id → L.Layer and L.Layer → id to translate edit/delete events
-
-### Dev Overlay
-
-- `dev-overlay` remains a reserved compatibility flag only. Runtime diagnostics are exposed through `leaflet-geokit:status` and `leaflet-geokit:diagnostic`.
-
-### State
-
-- Public state snapshots are exposed as [StatusEventDetail](src/types/events.ts:1) on the element `status` getter and `leaflet-geokit:status` events.
-
-### Logging
-
-- LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'silent'
-- Logger: level + methods
-- Factory [createLogger(name: string, level: LogLevel)](src/utils/logger.ts:1)
-  - Namespaced loggers:
-    - component:leaflet-draw
-    - controller
-    - feature-store
-  - Structured messages: include counts, ids, bbox, durations
-  - Configurable via attribute log-level and runtime property override; supports custom injection
-
-## Types
-
-- [public.ts](src/types/public.ts:1)
-  - [MapConfig](src/types/public.ts:1)
-  - [DrawControlsConfig](src/types/public.ts:1)
-  - Re-exports of GeoJSON Feature, FeatureCollection, Geometry
-- [events.ts](src/types/events.ts:1)
-  - [CreatedEventDetail](src/types/events.ts:1) { layerType: 'polygon' | 'polyline' | 'rectangle' | 'circle' | 'marker'; geoJSON: Feature; id: string }
-  - [EditedEventDetail](src/types/events.ts:1) { geoJSON: FeatureCollection; ids: string[] }
-  - [DeletedEventDetail](src/types/events.ts:1) { geoJSON: FeatureCollection; ids: string[] }
-  - [ReadyEventDetail](src/types/events.ts:1) { bounds?: [[number, number], [number, number]] }
-  - [ErrorEventDetail](src/types/events.ts:1) { message: string; cause?: unknown }
-
-## File layout (this repo)
-
-- Library
-  - package.json, vite.config.ts, tsconfig.json, README.md, ARCHITECTURE.md
-  - src/index.ts
-  - src/components/LeafletDrawMapElement.ts
-  - src/lib/MapController.ts
-  - src/lib/FeatureStore.ts
-  - src/lib/leaflet-assets.ts
-  - src/types/public.ts, src/types/events.ts
-  - src/utils/logger.ts, src/utils/geojson.ts
-  - src/state/types.ts
-- Tests and examples
-  - tests/element.spec.ts
-  - index.html (dev harness)
-
-## Build and bundling
-
-- [vite.config.ts](vite.config.ts:1)
-  - Library mode with UMD and ESM outputs
-  - Bundle leaflet and leaflet-draw (mark neither as external)
-  - Include CSS via Vite CSS handling; inject into Shadow DOM at runtime
-  - Ensure asset URLs for Leaflet markers are imported via [leaflet-assets.ts](src/lib/leaflet-assets.ts:1) and wired through L.Icon.Default
-  - Build target: es2019
-  - Define exports fileName: 'leaflet-geokit'
-- [package.json](package.json:1)
-  - "type": "module"
-  - "main": "./dist/leaflet-geokit.umd.js"
-  - "module": "./dist/leaflet-geokit.es.js"
-  - "types": "./dist/types/index.d.ts"
-  - "exports" mapping for import/require and types
-  - "sideEffects": ["**/*.css"] to preserve CSS
-  - Scripts: dev, build, test:unit, test:e2e, lint, typecheck, docs
-- [tsconfig.json](tsconfig.json:1)
-  - Strict true; DOM libs; JSX=react-jsx with "jsxImportSource": "preact"
-  - Declarations enabled; path aliases for "src/\*"
-
-## Leaflet integration specifics
-
-- Initialization sequence in [MapController](src/lib/MapController.ts:1)
-  1. Create map on container element
-  2. Add tile layer (tile-url + tile-attribution)
-  3. Create drawn items FeatureGroup and add to map
-  4. Configure Draw control dynamically from [DrawControlsConfig](src/types/public.ts:1)
-  5. Install event listeners: CREATED, EDITED, DELETED
-  6. Respect read-only: hide or disable draw/edit/remove UI and interactions
-  7. Dispatch 'leaflet-draw:ready' with initial bounds if data exists
-- CSS and icons
-  - Import Leaflet and Leaflet.draw CSS as strings and inject inside Shadow DOM
-  - Apply theme overrides via theme-url (link) and themeCss (inline style) after defaults
-  - Use [leaflet-assets.ts](src/lib/leaflet-assets.ts:1) to resolve default marker icons via URL imports
-- Data loading
-  - On LeafletDrawMapElement.loadGeoJSON(): clear and add via FeatureStore.add(); it does not auto-fit
-
-## FeatureStore details
-
-- ID assignment strategy
-  - Prefer feature.id (string or number coerced to string)
-  - Else feature.properties.id (string/number)
-  - Else generate uuid v4
-- Geometry mapping
-  - Point → L.Marker
-  - LineString/Polygon/Multi\* → appropriate vector layers via L.geoJSON factory; collect produced layers per feature id
-- Synchronization
-  - On CREATED: assign id, add layer(s), dispatch event with id
-  - On EDITED: find ids for affected layers, update GeoJSON by reading back geometry from layers
-  - On DELETED: remove id(s) and layers; dispatch ids in event detail
-- Export
-  - [toFeatureCollection()](src/lib/FeatureStore.ts:1) returns normalized snapshot
-  - [bounds()](src/lib/FeatureStore.ts:1) computes LatLngBounds across all layers
-
-## Events and payloads (detailed)
-
-- 'leaflet-draw:created' → [CreatedEventDetail](src/types/events.ts:1)
-  - { id, layerType, geoJSON }
-- 'leaflet-draw:edited' → [EditedEventDetail](src/types/events.ts:1)
-  - { ids, geoJSON }
-- 'leaflet-draw:deleted' → [DeletedEventDetail](src/types/events.ts:1)
-  - { ids, geoJSON }
-- 'leaflet-draw:ready' → [ReadyEventDetail](src/types/events.ts:1)
-  - { bounds? }
-- 'leaflet-draw:error' → [ErrorEventDetail](src/types/events.ts:1)
-  - { message, cause? }
-
-All dispatch paths log at debug level with structured context.
-
-## Dev Overlay
-
-Planned feature; not implemented in this repo.
-
-## Testing strategy
-
-- Unit (Vitest)
-  - DOM env: happy-dom
-  - tests/element.spec.ts: lifecycle and reflection/basic API smoke
-- Additional unit/e2e tests are planned but not present in this repo.
-
-## Documentation
-
-- [README.md](README.md:1)
-  - Installation, basic usage, attributes table, methods table, event details
-  - Typed signatures referencing [public.ts](src/types/public.ts:1) and [events.ts](src/types/events.ts:1)
-  - Example: listening to events, loading data, CRUD by id
-- API docs via TSDoc + typedoc; output linked from README
-- Changelog planned following Keep a Changelog
-
-## Accessibility and UX notes
-
-- Respect host sizing; :host display: block and 100% width/height for internal container in [host.css](src/styles/host.css:1)
-- Keyboard zoom/pan rely on Leaflet defaults; document known shortcuts
-- Focus outlines and high-contrast support for Dev Overlay
-- Theming: host exposes CSS parts/tokens for overlay (future enhancement)
-
-## Performance considerations
-
-- Incremental updates for edits avoid full re-render
-- Large datasets: rely on L.geoJSON; clustering is out-of-scope for v1 (document limitation)
-- Avoid layout thrash in overlay; batch state updates (when overlay exists)
-
-## Error handling
-
-- Wrap Leaflet initialization and event handlers with try/catch; send 'leaflet-draw:error'
-- Degrade gracefully if tile layer fails; keep editing local layers functional where possible
-
-## Security and SSR
-
-- Element is browser-only; guards around window/document access
-- SSR builds should import lazily; document usage in README
-
-## Milestones (execution plan)
-
-- M0: Scaffold project
-  - [package.json](package.json:1), [tsconfig.json](tsconfig.json:1), [vite.config.ts](vite.config.ts:1)
-  - Dev server, build outputs (UMD + ESM)
-- M1: Element + Controller + CSS/Assets
-  - Shadow DOM with injected CSS
-  - Map init, tile layer, FeatureGroup, Draw control
-  - Ready event and logging
-- M2: FeatureStore + Event bridge + Public methods
-  - CRUD by id, bounds, get/load/clear
-  - created/edited/deleted detail payloads
-- M3: Dev Overlay + Logging polish
-  - Status indicators, toggles
-  - Structured logs and timings
-- M4: Tests + Examples + Docs
-  - Vitest unit/integration and Playwright e2e green
-  - Example page and README complete
-  - Typedoc generated
-
-## Example usage (public API)
-
-HTML
-
-- Include built JS bundle on the page; size the element via CSS
-- Add attributes to enable controls and configure map
-
-JS
-
-- Listen for 'leaflet-draw:\*' events; call [LeafletDrawMapElement.loadGeoJSON()](src/components/LeafletDrawMapElement.ts:1) and [LeafletDrawMapElement.getGeoJSON()](src/components/LeafletDrawMapElement.ts:1) to move data in/out
-
-Refer to [README.md](README.md:1) for complete examples.
+Use `npm run test:unit:focused -- tests/<suite>.spec.ts` for a targeted check
+without global coverage thresholds. Specialized Playwright configs exist for
+layers, providers, layout, touch, accessibility, capabilities, snapping and
+release checks. Their fixture-based passes do not validate live vendor service
+availability. [PUBLISHING.md](PUBLISHING.md) owns release instructions and
+[CHANGELOG.md](CHANGELOG.md) records shipped changes.

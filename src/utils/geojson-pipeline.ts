@@ -5,7 +5,7 @@ import {
   expandMultiGeometries,
   normalizeId,
   type GeoJSONExportOptions,
-} from "./geojson";
+} from "./geojson.js";
 
 export interface GeoJSONDiagnostic {
   severity: "error" | "warning" | "info";

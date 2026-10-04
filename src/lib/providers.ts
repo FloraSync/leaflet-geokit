@@ -1,9 +1,9 @@
 import type * as Leaflet from "leaflet";
-import { buildTileURL } from "./TileProviderFactory";
+import { buildTileURL } from "./TileProviderFactory.js";
 import type {
   TileProviderConfig,
   TileURLTemplate,
-} from "./TileProviderFactory";
+} from "./TileProviderFactory.js";
 
 /** Technical potential is not a license to cache a vendor's data. */
 export type OfflineSupport = "unsupported" | "host-managed" | "unknown";

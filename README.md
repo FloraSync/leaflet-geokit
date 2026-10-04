@@ -14,6 +14,11 @@ Primary sources
 
 Documentation quick-links
 
+- Branded toolbar, external layer-cake button, trust boundaries and screenshot checklist: [docs/custom-toolbar.md](docs/custom-toolbar.md); runnable [plain HTML example](custom-toolbar.html).
+- Public API tables: [docs/api-reference.md](docs/api-reference.md).
+- Integration recipes (including SSR): [docs/integration-recipes.md](docs/integration-recipes.md).
+- Diagnostic event catalog and troubleshooting: [docs/diagnostics.md](docs/diagnostics.md).
+- Release and packed-consumer verification: [docs/release-verification.md](docs/release-verification.md).
 - Provider v2 contracts, diagnostics, MapLibre/PMTiles shim and security: [docs/providers.md](docs/providers.md)
 - Optional Google Maps adapter spike: [docs/google-maps-adapter-spike.md](docs/google-maps-adapter-spike.md)
 - Validated GeoJSON adapters, metadata round trips, diff/patch: [docs/geojson-pipelines.md](docs/geojson-pipelines.md)
@@ -638,7 +643,8 @@ map.themeCss = `
 The [complete styling contract](docs/toolbar-styling.md)
 documents all tokens/defaults, slots, state semantics, native-control boundaries,
 and placement/visibility behavior. Try the default/CSS/config/mixed selector in
-`irrigation-draw-mode.html`. Responsive zones and overflow are a separate slice.
+`irrigation-draw-mode.html`. See [responsive zones and overflow](docs/toolbar-layout.md)
+for the implemented layout builder.
 
 #### External Tool Triggers
 

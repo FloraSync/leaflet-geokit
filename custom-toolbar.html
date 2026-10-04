@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GeoKit branded toolbar recipe</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 1rem;
+        font-family: system-ui, sans-serif;
+        background: #f4f8f2;
+        color: #183b27;
+      }
+      nav,
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+      }
+      nav a {
+        color: inherit;
+        text-underline-offset: 0.2em;
+      }
+      button {
+        min-height: 44px;
+        padding: 0.5rem 1rem;
+        border: 1px solid currentColor;
+        border-radius: 0.75rem;
+        background: #edf6ee;
+        color: #183b27;
+        cursor: pointer;
+      }
+      button:focus-visible {
+        outline: 3px solid #287d47;
+        outline-offset: 3px;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      leaflet-geokit {
+        display: block;
+        height: 65vh;
+        min-height: 320px;
+        width: 100%;
+        --geokit-tool-size: 48px;
+        --geokit-tool-radius: 12px;
+        --geokit-tool-background: #edf6ee;
+        --geokit-tool-color: #183b27;
+        --geokit-tool-focus-ring: 3px solid #287d47;
+        --geokit-toolbar-background: #f4f8f2;
+        --geokit-toolbar-gap: 8px;
+      }
+      leaflet-geokit::part(toolbar-group) {
+        border: 1px solid #287d47;
+      }
+      @media (prefers-color-scheme: dark) {
+        body {
+          background: #15261b;
+          color: #e0f1de;
+        }
+        button {
+          background: #203d2a;
+          color: #e0f1de;
+        }
+        leaflet-geokit {
+          --geokit-tool-background: #203d2a;
+          --geokit-tool-color: #e0f1de;
+          --geokit-toolbar-background: #15261b;
+          --geokit-tool-hover-background: #31563c;
+          --geokit-tool-focus-ring: 3px solid #9fdaaa;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        leaflet-geokit::part(toolbar-button) {
+          transition: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <nav aria-label="Recipe navigation">
+      <a href="/">Dev harness</a
+      ><a href="/docs/custom-toolbar.md">Toolbar recipe</a>
+    </nav>
+    <h1>Growing-space tools</h1>
+    <div class="actions">
+      <button id="cake" disabled>Build layered zone</button
+      ><button id="cancel" disabled>Cancel tool</button>
+    </div>
+    <p id="status" role="status">Loading map…</p>
+    <p id="export-status" role="status"></p>
+    <leaflet-geokit
+      id="map"
+      draw-polygon
+      draw-rectangle
+      draw-marker
+      draw-layer-cake
+    ></leaflet-geokit>
+    <script type="module">
+      // In a consumer bundler use: import "@florasync/leaflet-geokit";
+      import "/src/index.ts";
+      const map = document.querySelector("#map");
+      const cake = document.querySelector("#cake");
+      const cancel = document.querySelector("#cancel");
+      const status = document.querySelector("#status");
+      // Developer-owned constant, never interpolated user HTML.
+      const leaf =
+        '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" d="M5 19C2 7 10 3 20 4c0 10-5 17-15 15Zm0 0L16 8"/></svg>';
+      map.toolButtonConfig = {
+        polygon: {
+          title: "Draw growing space",
+          ariaLabel: "Draw growing space",
+          className: "flora-primary",
+          iconHtml: leaf,
+          popover: {
+            title: "Boundary",
+            body: "Click corners, then the first point to finish.",
+          },
+        },
+        save: {
+          title: "Save growing spaces",
+          ariaLabel: "Save growing spaces",
+        },
+      };
+      map.toolbarGroups = [
+        {
+          id: "grow",
+          tools: ["polygon", "select", "save"],
+          position: "bottomleft",
+          orientation: "horizontal",
+          offset: [12, 12],
+          hideDefaultToolbar: true,
+          ariaLabel: "Growing-space tools",
+        },
+      ];
+      map.themeCss =
+        '[data-geokit-tool="polygon"].flora-primary { --geokit-tool-radius: 50%; }';
+      function refresh() {
+        const state = map.getToolCapabilities().tools.layerCake;
+        cake.disabled = state.state !== "enabled";
+        cake.title = state.reason?.message ?? "Build layered zone";
+        cancel.disabled = !map.status.ready;
+        status.textContent = map.status.ready
+          ? "Ready to draw"
+          : "Loading map…";
+      }
+      map.addEventListener("leaflet-geokit:tool-capabilities-changed", refresh);
+      map.addEventListener("leaflet-geokit:status", refresh);
+      cake.addEventListener("click", async () => {
+        await map.activateTool("layerCake", { source: "external-recipe" });
+      });
+      cancel.addEventListener("click", async () => {
+        await map.deactivateTool({ source: "external-recipe" });
+      });
+      map.addEventListener("leaflet-draw:export", (event) => {
+        document.querySelector("#export-status").textContent =
+          `Exported ${event.detail.geoJSON.features.length} growing spaces; host owns persistence.`;
+      });
+      refresh();
+    </script>
+  </body>
+</html>
