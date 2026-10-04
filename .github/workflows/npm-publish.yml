@@ -184,15 +184,6 @@ jobs:
           echo "path=$archive" >> "$GITHUB_OUTPUT"
           echo "Verified approved tarball SHA-256: $actual_sha256"
 
-      - name: Verify npm token is configured
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "NPM_TOKEN is missing. Add an npm automation token with @florasync publish rights before dispatching this workflow."
-            exit 1
-          fi
-
       - name: Configure git
         run: |
           git config user.name "github-actions[bot]"
@@ -224,7 +215,6 @@ jobs:
 
       - name: Publish exact approved tarball
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           TARBALL_PATH: ${{ steps.artifact.outputs.path }}
         run: npm publish "./$TARBALL_PATH" --access public --provenance
 

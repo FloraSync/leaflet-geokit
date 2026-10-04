@@ -56,7 +56,11 @@ For scoped packages (e.g., `@florasync/leaflet-geokit`), `--access public` is re
 
 ## Optional: Publish via GitHub Actions (manual main only)
 
-- Add `NPM_TOKEN` as a GitHub Actions secret (an npm access token with publish rights for `@florasync`).
+- Configure a GitHub Actions trusted publisher in the npm package settings: organization `FloraSync`, repository `leaflet-geokit`, workflow filename `npm-publish.yml`, environment blank. Allow direct `npm publish`.
+- Publishing uses OIDC on a GitHub-hosted runner with `id-token: write`, Node 24, and npm 11.5.1 or newer. No `NPM_TOKEN` secret is required.
+- Supply the successful `develop` candidate run ID, full candidate SHA, and approved tarball SHA-256 when dispatching. The workflow publishes those exact tested bytes and verifies the registry digest before tagging.
+- After a successful OIDC publish, revoke unused publishing tokens and enable “Require two-factor authentication and disallow tokens” in npm package settings. Check for other token consumers before revoking shared credentials.
+- Troubleshooting: publisher fields are case-sensitive; `npm whoami` and dry runs do not verify OIDC publishing. See [npm trusted publishing](https://docs.npmjs.com/trusted-publishers).
 - Run the `Publish (npm)` workflow (`.github/workflows/npm-publish.yml`) on the `main` branch.
 - The workflow validates the package, publishes the existing `package.json` version to npm, then pushes the matching `v<version>` tag back to `main`.
 
