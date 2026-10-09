@@ -311,6 +311,8 @@ export class LeafletDrawMapElement
       callbacks: {
         onToolCapabilitiesChanged: () => this._emitToolCapabilities(),
         onReady: (detail) => {
+          // Ready listeners may synchronously install an optional basemap.
+          this._setStatus({ state: "ready", ready: true, busy: false });
           this.dispatchEvent(new CustomEvent(DrawEvent.Ready, { detail }));
           void this._syncStatusFromController({
             state: "ready",

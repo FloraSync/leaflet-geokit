@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>GeoKit PMTiles example</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body {
+        margin: 0;
+        font-family: system-ui;
+      }
+      header {
+        padding: 12px;
+      }
+      leaflet-geokit {
+        display: block;
+        height: 620px;
+      }
+      button {
+        margin: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <strong>Real PMTiles / MapLibre + Leaflet.draw</strong>
+      <button id="vector">PMTiles</button
+      ><button id="raster">Local raster</button
+      ><button id="draw">Draw polygon</button>
+      <output id="status">Loading</output>
+    </header>
+    <main id="maps"></main>
+    <script type="module" src="/examples/pmtiles.ts"></script>
+  </body>
+</html>

@@ -19,7 +19,8 @@ Documentation quick-links
 - Integration recipes (including SSR): [docs/integration-recipes.md](docs/integration-recipes.md).
 - Diagnostic event catalog and troubleshooting: [docs/diagnostics.md](docs/diagnostics.md).
 - Release and packed-consumer verification: [docs/release-verification.md](docs/release-verification.md).
-- Provider v2 contracts, diagnostics, MapLibre/PMTiles shim and security: [docs/providers.md](docs/providers.md)
+- Provider v2 contracts, diagnostics and security: [docs/providers.md](docs/providers.md)
+- Optional MapLibre/PMTiles adapter, real archive example and browser verification: [docs/pmtiles.md](docs/pmtiles.md)
 - Optional Google Maps adapter spike: [docs/google-maps-adapter-spike.md](docs/google-maps-adapter-spike.md)
 - Validated GeoJSON adapters, metadata round trips, diff/patch: [docs/geojson-pipelines.md](docs/geojson-pipelines.md)
 - Architecture overview: [ARCHITECTURE.md](ARCHITECTURE.md)
