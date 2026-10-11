@@ -48,8 +48,9 @@ let removed = 0;
 const adapter = createPMTilesBasemapAdapter({
   style,
   attribution: "FloraSync synthetic fixture (MIT)",
-  onMap(map: GLMap) {
-    renderers.push(map);
+  onMap(map) {
+    // Browser assertions inspect renderer internals beyond the public event API.
+    renderers.push(map as GLMap);
     map.on("load", () => {
       status.textContent = "PMTiles loaded";
     });

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.11.0 - 2026-10-11
+
+- Add the optional `@florasync/leaflet-geokit/pmtiles` entrypoint with a concrete MapLibre basemap adapter, explicit shared protocol lifecycle, required attribution, and safe renderer teardown and raster fallback.
+- Keep MapLibre and PMTiles optional and external to the default bundles; ship the dedicated entrypoint, declarations, and adoption guide.
+- Verify real PMTiles archive ranges, cross-origin delivery, WebGL pixels, drawing, basemap swaps, simultaneous maps, and failure recovery in Chromium, with dedicated release gates.
+
 ## 0.10.0 - 2026-10-04
 
 - Refresh compatible locked build/test dependencies, including patched Vite, Vitest, Happy DOM, Rollup, and glob tooling; upgrade `lint-staged` to 16.4.0 so hook globs no longer traverse the vulnerable `braces` chain. Production dependency audit remains clear; six development-only audit entries remain aliases of the unpatched `braces` advisory through build-only `tsc-alias`.

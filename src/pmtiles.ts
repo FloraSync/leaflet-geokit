@@ -1,7 +1,7 @@
 import * as L from "leaflet";
 import { maplibreGL } from "@maplibre/maplibre-gl-leaflet";
 import { addProtocol, removeProtocol } from "maplibre-gl";
-import type { Map as MapLibreMap, StyleSpecification } from "maplibre-gl";
+import type { StyleSpecification } from "@maplibre/maplibre-gl-style-spec";
 import { Protocol } from "pmtiles";
 import { createMapLibreBasemapAdapter } from "./lib/providers.js";
 import type { BasemapAdapter } from "./lib/providers.js";
@@ -34,6 +34,17 @@ export function registerPMTilesProtocol(): () => void {
   };
 }
 
+/** Stable event surface of the renderer, without importing its private worker
+ * declarations into strict NodeNext consumers. The runtime value is a MapLibre
+ * Map; hosts needing its full API may narrow it using their own renderer types.
+ */
+export interface PMTilesMap {
+  on(type: "error", listener: (event: { error: Error }) => void): unknown;
+  on(type: "load" | "remove", listener: () => void): unknown;
+  off(type: "error", listener: (event: { error: Error }) => void): unknown;
+  off(type: "load" | "remove", listener: () => void): unknown;
+}
+
 export interface PMTilesBasemapOptions {
   /** Trusted MapLibre style; use pmtiles://https://... vector source URLs.
    * Source-layer names must match the archive. No vendor schema is assumed.
@@ -44,7 +55,7 @@ export interface PMTilesBasemapOptions {
   /** Called on mount, before asynchronous load/error events. Attach listeners
    * here for readiness and explicit host fallback. Never implies offline support.
    */
-  onMap?: (map: MapLibreMap) => void;
+  onMap?: (map: PMTilesMap) => void;
 }
 
 /** Optional concrete MapLibre bridge. Use /external and the same Leaflet module.

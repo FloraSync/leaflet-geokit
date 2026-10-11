@@ -18,7 +18,8 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      testIgnore: ["touch-geometry.spec.ts"],
+      // PMTiles runs separately with its owned range server and WebGL flags.
+      testIgnore: ["touch-geometry.spec.ts", "pmtiles*.spec.ts"],
       use: {
         ...devices["Desktop Chrome"],
       },

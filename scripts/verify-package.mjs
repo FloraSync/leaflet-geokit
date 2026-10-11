@@ -78,7 +78,25 @@ try {
       return `import type * as Entry${index} from ${JSON.stringify(name)};\nexport type Consumer${index} = typeof Entry${index};`;
     })
     .join("\n");
-  writeFileSync(join(scratch, "consumer.ts"), imports);
+  const pmtilesConsumer = `
+import { createPMTilesBasemapAdapter } from "@florasync/leaflet-geokit/pmtiles";
+createPMTilesBasemapAdapter({
+  style: { version: 8, sources: {}, layers: [] },
+  attribution: "Fixture",
+  onMap(map) {
+    map.on("load", () => {});
+    const onError = (event: { error: Error }) => { console.error(event.error.message); };
+    map.on("error", onError);
+    map.off("error", onError);
+  },
+});
+createPMTilesBasemapAdapter({
+  // @ts-expect-error MapLibre styles must use specification version 8.
+  style: { version: 7, sources: {}, layers: [] },
+  attribution: "Fixture",
+});
+`;
+  writeFileSync(join(scratch, "consumer.ts"), imports + pmtilesConsumer);
   writeFileSync(
     join(scratch, "tsconfig.json"),
     JSON.stringify({

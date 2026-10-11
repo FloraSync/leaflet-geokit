@@ -78,7 +78,13 @@ GeoKit deliberately does not guess those from an archive name. Remote style URLs
 attribution HTML, URLs and callbacks must be trusted application input.
 
 `onMap` runs immediately after mount, before asynchronous `load`/`error` events;
-use it to attach listeners. Each mount gets a fresh layer and MapLibre map. The
+use it to attach listeners. The public `PMTilesMap` type exposes `on`/`off` for
+`load`, `error` (with `event.error: Error`), and `remove`. The runtime object is a
+MapLibre map; hosts needing additional renderer APIs may assert their own
+`maplibre-gl` `Map` type. Style objects retain full validation through the
+standalone MapLibre style specification. This keeps renderer-internal worker
+declarations out of strict NodeNext consumers without `skipLibCheck`.
+Each mount gets a fresh layer and MapLibre map. The
 bridge owns `Map.remove()` on raster switch/disconnect; do not remove that map
 yourself. `onMap` exceptions roll back mounting. A synchronous WebGL constructor
 failure removes the half-created container and the existing raster stays active.
