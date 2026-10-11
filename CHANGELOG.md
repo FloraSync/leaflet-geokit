@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.11.0 - 2026-10-11
+
+- Add an opt-in `/pmtiles` entrypoint with optional MapLibre, Leaflet bridge and PMTiles peers; existing entrypoints do not bundle the renderer.
+- Add basemap lifecycle integration, protocol ownership and rollback on renderer construction failure while preserving Leaflet drawing and GeoJSON across basemap swaps.
+- Add a synthetic MIT-licensed PMTiles archive, real range/CORS and WebGL browser verification, bundle isolation checks, and integration documentation. These checks are required by the release-candidate gate.
+- Offline support and production Protomaps styles/schemas are not claimed.
+
 ## 0.10.0 - 2026-10-04
 
 - Refresh compatible locked build/test dependencies, including patched Vite, Vitest, Happy DOM, Rollup, and glob tooling; upgrade `lint-staged` to 16.4.0 so hook globs no longer traverse the vulnerable `braces` chain. Production dependency audit remains clear; six development-only audit entries remain aliases of the unpatched `braces` advisory through build-only `tsc-alias`.
