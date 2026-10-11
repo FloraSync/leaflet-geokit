@@ -65,70 +65,12 @@ capabilities report `requested/active: "adapter"` without vendor configuration.
 
 ## MapLibre and PMTiles execution path
 
-This release ships a **dependency-injected feasibility shim**, not a production
-WebGL renderer. The next optional adapter package can use the existing public
-`setBasemapAdapter` method without changing web component consumers.
-
-Host-side experiment (not installed by this slice):
-
-1. Create a separate adapter/example package. Select and pin mutually compatible
-   `leaflet`, `maplibre-gl`, `@maplibre/maplibre-gl-leaflet`, and `pmtiles` versions.
-   The current upstream bridge documentation uses a named `maplibreGL` export;
-   older bridge versions use different registration patterns. Recheck the selected
-   release, rather than copying a historical global `L.maplibreGL` call.
-2. Use GeoKit's external entrypoint and one shared Leaflet instance. Load Leaflet,
-   draw and MapLibre styles, configure MapLibre's worker/CSP requirements, and
-   supply `leafletInstance` before connecting the element.
-3. Register PMTiles once per host application. Feed the bridge a style whose source
-   is `type: "vector", url: "pmtiles://https://your-host/region.pmtiles"`.
-   PMTiles is a tile archive transport, not a renderer; it also supports raster
-   archives. This vector bridge contract describes the rendering path, not every
-   source inside a MapLibre style.
-4. Wrap the bridge factory in the shipped shim:
-
-```ts
-import { maplibreGL } from "@maplibre/maplibre-gl-leaflet";
-import maplibregl from "maplibre-gl";
-import { Protocol } from "pmtiles";
-import { createMapLibreBasemapAdapter } from "@florasync/leaflet-geokit/external";
-
-// Host initialization: once, using the SAME MapLibre module as the bridge.
-const protocol = new Protocol();
-maplibregl.addProtocol("pmtiles", protocol.tile);
-
-// After GeoKit ready; /maps/style.json contains the PMTiles source.
-mapElement.setBasemapAdapter(
-  createMapLibreBasemapAdapter({
-    createLayer: () => maplibreGL({ style: "/maps/style.json" }),
-    attribution: "Your licensed dataset attribution",
-    offline: "host-managed",
-    apiKey: "none",
-  }),
-);
-
-// Remove all maps/bridges BEFORE host-global protocol teardown.
-mapElement.setBasemapAdapter(null);
-maplibregl.removeProtocol("pmtiles");
-```
-
-This recipe is sourced from upstream APIs, but the optional packages and actual
-archive rendering are **not exercised by this slice**. Before production promotion:
-
-- Verify HTTP range requests, CORS, archive content type, source-layer names,
-  fonts, sprites and licensing with an owned fixture archive.
-- Verify offline mode with network disabled and all required assets provisioned.
-  `host-managed` declares potential, not a cache implementation or permission.
-- Exercise pan/zoom, high-DPI, touch, resize, WebGL loss, worker/CSP failures,
-  renderer error fallback, repeated swaps and multiple simultaneous maps.
-- Keep drawing above the basemap and pointer events with Leaflet. The upstream
-  bridge has no pitch/rotation support and recommends minZoom 1 plus bounds
-  restrictions to avoid renderer synchronization issues. Test those explicitly.
-- Confirm no duplicate Leaflet/MapLibre module instances and no worker/listener
-  leaks on removal. Do not remove a global PMTiles protocol still used by another map.
-
-Sources:
-[MapLibre Leaflet bridge](https://github.com/maplibre/maplibre-gl-leaflet),
-[PMTiles protocol integration](https://docs.protomaps.com/pmtiles/maplibre).
+The generic `createMapLibreBasemapAdapter` remains dependency-injected. For a
+concrete, optional MapLibre/PMTiles implementation, use the new
+[`/pmtiles` entrypoint](pmtiles.md). It leaves renderer dependencies out of core
+and retains Leaflet.draw. The optional browser suite exercises a real licensed
+PMTiles archive, range/CORS requests, actual WebGL pixels, drawing and teardown.
+Offline operation and production Protomaps styles/assets are not implied.
 
 ## Capability diagnostics
 
@@ -188,4 +130,5 @@ External raster requests are intercepted with deterministic image fixtures; HERE
 credentials and service access are not tested. The vector fixture is deliberately
 an injected Leaflet layer, not an imitation MapLibre renderer. It proves the shim
 boundary, attribution, diagnostics, public switching and real pointer drawing with
-feature preservation. Actual WebGL/PMTiles is the optional follow-on gate above.
+feature preservation. Actual WebGL/PMTiles is covered separately by
+`npm run test:e2e:pmtiles`; see [optional adapter verification](pmtiles.md).

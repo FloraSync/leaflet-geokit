@@ -1,6 +1,6 @@
 {
   "name": "@florasync/leaflet-geokit",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Framework-agnostic Leaflet + Leaflet.draw web component with TypeScript, verbose logging, and tests.",
   "type": "module",
   "main": "./dist/leaflet-geokit.umd.js",
@@ -35,6 +35,10 @@
     "./react-bundled": {
       "types": "./dist/types/react-bundled/index.d.ts",
       "import": "./dist/react-bundled/index.js"
+    },
+    "./pmtiles": {
+      "types": "./dist/types/pmtiles.d.ts",
+      "import": "./dist/leaflet-geokit.pmtiles.es.js"
     }
   },
   "files": [
@@ -61,7 +65,8 @@
     "docs/grower-geometry.md",
     "docs/grower-measurement.md",
     "docs/snapping-and-measurements.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "docs/pmtiles.md"
   ],
   "sideEffects": [
     "**/*.css"
@@ -79,7 +84,7 @@
   "homepage": "https://github.com/FloraSync/leaflet-geokit#readme",
   "scripts": {
     "dev": "vite",
-    "build": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json --emitDeclarationOnly && tsc-alias -p tsconfig.build.json && node scripts/resolve-declaration-imports.mjs && vite build && vite build -c vite.config.external.ts && vite build -c vite.config.django.ts && vite build -c vite.config.preact.ts && vite build -c vite.config.preact-bundled.ts && vite build -c vite.config.react.ts && vite build -c vite.config.react-bundled.ts",
+    "build": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json --emitDeclarationOnly && tsc-alias -p tsconfig.build.json && node scripts/resolve-declaration-imports.mjs && vite build && vite build -c vite.config.external.ts && vite build -c vite.config.django.ts && vite build -c vite.config.preact.ts && vite build -c vite.config.preact-bundled.ts && vite build -c vite.config.react.ts && vite build -c vite.config.react-bundled.ts && vite build -c vite.config.pmtiles.ts",
     "build:analyze": "npm run build:analyze:main && npm run build:analyze:external && npm run build:analyze:django && npm run build:analyze:preact && npm run build:analyze:preact-bundled && npm run build:analyze:react && npm run build:analyze:react-bundled",
     "build:analyze:main": "BUNDLE_ANALYZE=1 BUNDLE_ANALYZE_REPORT=dist/stats/main.html vite build",
     "build:analyze:external": "BUNDLE_ANALYZE=1 BUNDLE_ANALYZE_REPORT=dist/stats/external.html vite build -c vite.config.external.ts",
@@ -108,7 +113,8 @@
     "pack:dry": "npm pack --dry-run",
     "test:consumer": "node scripts/verify-package.mjs",
     "release:dry": "npm run typecheck && npm run test:unit && npm run build && npm pack --dry-run && npm run test:consumer",
-    "test:e2e:snapping": "playwright test --config=playwright.snapping.config.ts"
+    "test:e2e:snapping": "playwright test --config=playwright.snapping.config.ts",
+    "test:e2e:pmtiles": "playwright test -c playwright.pmtiles.config.ts"
   },
   "keywords": [
     "leaflet",
@@ -144,7 +150,10 @@
   "peerDependencies": {
     "preact": "^10.24.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "maplibre-gl": "^5.24.0",
+    "@maplibre/maplibre-gl-leaflet": "^0.1.4",
+    "pmtiles": "^4.5.0"
   },
   "peerDependenciesMeta": {
     "preact": {
@@ -155,10 +164,20 @@
     },
     "react-dom": {
       "optional": true
+    },
+    "maplibre-gl": {
+      "optional": true
+    },
+    "@maplibre/maplibre-gl-leaflet": {
+      "optional": true
+    },
+    "pmtiles": {
+      "optional": true
     }
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@maplibre/maplibre-gl-leaflet": "0.1.4",
     "@playwright/test": "^1.58.2",
     "@preact/preset-vite": "^2.8.0",
     "@testing-library/dom": "^10.4.0",
@@ -179,6 +198,8 @@
     "happy-dom": "^20.6.3",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
+    "maplibre-gl": "5.24.0",
+    "pmtiles": "4.5.0",
     "preact": "^10.28.3",
     "prettier": "^3.3.2",
     "react": "^18.3.1",
